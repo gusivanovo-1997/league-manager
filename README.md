@@ -1,10 +1,10 @@
-# Futsal League Manager
+# League Manager
 
 A futsal league run from one page: fixtures and the draw, a live match screen
 with the clock and the goal log, the table, squads, discipline, attendance,
 the Golden Boot, finals, and a season bulletin.
 
-**Open it here:** https://USERNAME.github.io/futsal-league-manager/
+**Open it here:** https://gusivanovo-1997.github.io/league-manager/
 
 ## How it works
 
