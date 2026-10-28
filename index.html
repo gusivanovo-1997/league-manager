@@ -1707,6 +1707,38 @@ tspan.gstar{fill:var(--gold)}
   #shell main{padding:10px 10px 44px}
   .card{padding:11px}
   .subtab{padding:7px 12px}
+  /* A table with nine columns on a 375-point screen is a table nobody reads.
+     The columns marked hs are the ones you would scroll past anyway — the
+     published page has drawn them this way for a while, and the league table
+     has hidden its own three since the start. The rest still scroll
+     sideways in their box, so nothing is lost, only put out of the way. */
+  .hs{display:none}
+
+  /* ── a referee, one hand, at the side of the court ──────────────────
+     The rail stops holding the top of the screen: on a phone it is a tall
+     block of tabs you are not using while a game is on, so it scrolls away
+     and the scoreboard takes its place, pinned, where a glance can find it
+     with both squads still scrolling underneath.
+
+     Once a match is open the picker, Open match and the line explaining
+     what the screen is have done their job and are put away — the match is
+     the screen. Close match stays, because it is the way out.
+
+     And everything you tap during a game gets a proper target: the squad
+     rows, the attendance ticks and the clock's buttons. */
+  #rail{position:static}
+  #liveBody:not(.bcast) .scoreboard{position:sticky;top:0;z-index:12;
+    box-shadow:0 10px 22px -14px rgba(0,0,0,.85),var(--hair)}
+  .view[data-view="live"].running #liveSel,
+  .view[data-view="live"].running #btnLiveLoad,
+  .view[data-view="live"].running #liveHint,
+  .view[data-view="live"].running #btnFull{display:none}
+  .view[data-view="live"].running > .card:first-child{padding:8px 11px;margin-bottom:8px}
+  .plyrbtn{padding:10px 11px;margin-bottom:7px}
+  .plyrbtn .btn{min-height:44px}
+  .att{min-width:40px;min-height:40px}
+  .clock .row .btn,.scoreboard .btn,.per{min-height:40px}
+  .per{padding:6px 13px}
 }
 /* ── tabs inside a tab: the rail keeps one button per part of the job, the
    page carries the rest along its top ── */
@@ -1835,13 +1867,15 @@ tspan.gstar{fill:var(--gold)}
   <div class="toolbar">
     <span class="rolechip" id="roleChip" style="display:none"><span class="dot"></span><b id="roleName"></b></span>
     <span class="syncchip" id="syncChip" hidden></span>
+    <!-- Four things you reach for while the league is running. Backing up,
+         restoring and the Excel workbook were here too, which put three
+         buttons nobody presses during a match next to three they do — they
+         live in Settings → Data, where they already had a home. -->
     <div class="toolrow">
       <button class="btn ico" id="btnAppFull" data-tip="Full screen — hide the browser and leave only the app"></button>
+      <button class="btn ico" id="btnSettings" data-tip="Settings"></button>
       <button class="btn ico" id="btnLock" style="display:none" data-tip="Lock — hand the tablet over"></button>
       <button class="btn ico" id="btnTheme" data-tip="Light or dark"></button>
-      <button class="btn ico" id="btnBackup" data-tip="Back the league up to a .json file"></button>
-      <button class="btn ico" id="btnRestore" data-tip="Restore the league from a .json backup"></button>
-      <button class="btn ico accent" id="btnExcel" data-tip="Export everything to Excel"></button>
     </div>
   </div>
 </aside>
@@ -2009,7 +2043,7 @@ tspan.gstar{fill:var(--gold)}
         <button class="btn" id="btnCloseTop" data-tip="Close the open match, or clear one left running">Close match</button>
         <button class="btn" id="btnFull" data-tip="Put the match on a TV or a projector">Full screen</button>
         <div class="spacer"></div>
-        <span class="muted small">Referee / scorer mode — tap a player to log the event.</span>
+        <span class="muted small" id="liveHint">Referee / scorer mode — tap a player to log the event.</span>
       </div>
     </div>
     <div id="liveBody"></div>
@@ -4092,13 +4126,14 @@ const ICON = {
 const icon = k => '<svg viewBox="0 0 16 16" aria-hidden="true">' + (ICON[k] || '') + '</svg>';
 // an icon-only button still has to say what it is, to a screen reader now
 // and to a hovering pointer in a moment
-[['btnAppFull', 'appfull'], ['btnLock', 'lock'], ['btnTheme', 'theme'], ['btnBackup', 'backup'],
- ['btnRestore', 'restore'], ['btnExcel', 'excel']].forEach(([id, k]) => {
+[['btnAppFull', 'appfull'], ['btnSettings', 'settings'], ['btnLock', 'lock'], ['btnTheme', 'theme']].forEach(([id, k]) => {
   const b = $(id);
   if (!b) return;
-  b.innerHTML = icon(k);
+  // the waiting sign-ups rode on the Settings tab; they ride on its button now
+  b.innerHTML = icon(k) + (id === 'btnSettings' ? '<span class="badge" id="navBadge" hidden></span>' : '');
   b.setAttribute('aria-label', b.getAttribute('data-tip') || k);
 });
+$('btnSettings').onclick = () => go('settings');
 
 /* ── tooltips that wait ──────────────────────────────────────────────────
    1.1 seconds: long enough that crossing the row on the way somewhere else
@@ -4137,8 +4172,11 @@ const TIP_DELAY = 1100;
 // the match is what the tool is for on a Thursday night, so it leads
 const VIEWS = [
   ['dash', 'Dashboard'], ['fixtures', 'Fixtures'], ['bulletin', 'Bulletin'], ['live', 'Live match'], ['table', 'Table'],
-  ['teams', 'Teams'], ['stats', 'Stats'], ['attend', 'Attendance'], ['honours', 'Honours'], ['settings', 'Settings']
+  ['teams', 'Teams'], ['stats', 'Stats'], ['attend', 'Attendance'], ['honours', 'Honours']
 ];
+/* Settings is not a part of the job like Fixtures or the Table — it is where
+   you go to set the thing up — so it is a gear beside Full screen rather
+   than a tab in the rail. Its own four tabs still run along the top of it. */
 /* Tabs inside a tab: the rail keeps one button for each part of the job and
    the page carries the rest as a row of tabs along its top. Each keeps its
    own view and key — so "open this in Results" still lands — and the rail
@@ -4172,7 +4210,6 @@ function buildNav() {
       (k === 'live' ? '<span class="livedot"></span>' : icon(k)) +
       (k === 'live' ? '<span class="nvlabel">' + label + '</span>' : label) +
       (k === 'live' ? '<span class="livescore" id="navLiveScore" style="display:none"></span>' : '') +
-      (k === 'settings' ? '<span class="badge" id="navBadge" hidden></span>' : '') +
       (k === 'teams' ? '<span class="badge injbadge" id="navInj" hidden></span>' : '') +
     '</button>').join('');
   $('nav').insertAdjacentHTML('beforeend', '<i id="navInk"></i>');
@@ -4193,6 +4230,10 @@ function go(v) {
   freshView = true;                       // this render is an arrival, so it animates
   document.querySelectorAll('.view').forEach(s => s.classList.toggle('on', s.dataset.view === v));
   document.querySelectorAll('[data-nav]').forEach(b => b.classList.toggle('on', b.dataset.nav === parentOf(v)));
+  // the gear is not a nav button, so it is lit by hand — and a referee has no
+  // settings to be in, so it is not there at all
+  const gear = $('btnSettings');
+  if (gear) { gear.classList.toggle('on', parentOf(v) === 'settings'); gear.style.display = allowedView('settings') ? '' : 'none'; }
   render();
   liveTicker();
   moveInk();
@@ -7416,6 +7457,9 @@ function renderLive() {
   else if (!freshView && keep && DB.fixtures.some(f => f.id === keep)) sel.value = keep;
   else if (todo.length) sel.value = todo[0].id;                      // land on the next one
   sel.dataset.open = live.id || '';
+  // a phone gives the picker's room back to the match once one is open
+  const sec = document.querySelector('.view[data-view="live"]');
+  if (sec) sec.classList.toggle('running', !!live.id);
 
   // the same Close that is on the match log, reachable before you open one
   const stuck = stuckLive(), cb = $('btnCloseTop');
@@ -9000,12 +9044,12 @@ function renderStats() {
   const ht = hatMap();
   const sc = scorerTable().filter(r => r.personId);       // unnamed goals count for teams, not in this list
   const scTop = sc.slice(0, 10), scBest = bootTop(sc), scPlace = bootPlaces(scTop);
-  $('scorerTbl').innerHTML = '<tr><th class="num">#</th><th>Player</th><th>Team</th><th class="num">Played</th><th class="num">Goals</th><th class="num">HT</th><th class="num">Per match</th></tr>' +
+  $('scorerTbl').innerHTML = '<tr><th class="num">#</th><th>Player</th><th class="hs">Team</th><th class="num">Played</th><th class="num">Goals</th><th class="num hs">HT</th><th class="num hs">Per match</th></tr>' +
     (sc.length ? scTop.map((r, i) => '<tr><td class="num">' + (bootHas(r, scBest) ? BOOT_ICON : scPlace[i]) + '</td><td>' +
       (bootHas(r, scBest) ? '<b>' + plLink(r.personId, esc(r.name)) + '</b>' : plLink(r.personId, esc(r.name))) + '</td>' +
-      '<td class="small muted">' + crest(r.teamId) + '' +
+      '<td class="small muted hs">' + crest(r.teamId) + '' +
         esc(teamName(r.teamId)) + '</td><td class="num">' + (r.personId ? attendCount(r.personId) : '—') + '</td>' +
-      '<td class="num"><b>' + r.goals + '</b></td><td class="num">' + (ht[r.personId] || '') + '</td><td class="num">' +
+      '<td class="num"><b>' + r.goals + '</b></td><td class="num hs">' + (ht[r.personId] || '') + '</td><td class="num hs">' +
         (r.personId && attendCount(r.personId) ? (r.goals / attendCount(r.personId)).toFixed(1) : '—') +
       '</td></tr>').join('')
       : '<tr><td colspan="6" class="empty">No goals logged.</td></tr>');
@@ -9020,12 +9064,12 @@ function renderStats() {
   scorerTable().forEach(r => { if (r.personId) gl[r.personId] = r.goals; });
   const rows = at.map(r => Object.assign({ goals: gl[r.personId] || 0 }, r))
     .sort((x, y) => y.goals - x.goals || y.games - x.games || x.name.localeCompare(y.name));
-  $('attendTbl').innerHTML = '<tr><th>Player</th><th>Team</th><th class="num">Games attended</th><th class="num">Goals</th><th class="num">HT</th><th class="num">Per game</th></tr>' +
+  $('attendTbl').innerHTML = '<tr><th>Player</th><th class="hs">Team</th><th class="num">Games attended</th><th class="num">Goals</th><th class="num hs">HT</th><th class="num hs">Per game</th></tr>' +
     (rows.length ? rows.map(r => '<tr><td>' + plLink(r.personId, esc(r.name)) + '</td>' +
-      '<td class="small muted">' + crest(r.teamId) + '' +
+      '<td class="small muted hs">' + crest(r.teamId) + '' +
         esc(r.teamId ? teamName(r.teamId) : '—') + '</td>' +
-      '<td class="num">' + r.games + '</td><td class="num"><b>' + r.goals + '</b></td><td class="num">' + (ht[r.personId] || '') + '</td>' +
-      '<td class="num muted">' + (r.games && r.goals ? (r.goals / r.games).toFixed(1) : '—') + '</td></tr>').join('')
+      '<td class="num">' + r.games + '</td><td class="num"><b>' + r.goals + '</b></td><td class="num hs">' + (ht[r.personId] || '') + '</td>' +
+      '<td class="num muted hs">' + (r.games && r.goals ? (r.goals / r.games).toFixed(1) : '—') + '</td></tr>').join('')
       : '<tr><td colspan="6" class="empty">No players yet.</td></tr>');
 
   const cd = cardTable();
@@ -9042,7 +9086,7 @@ function renderStats() {
 
   const st = standings();
   $('teamStatTbl').innerHTML = '<tr><th>Team</th><th class="num">Played</th><th class="num">GF</th><th class="num">GA</th>' +
-    '<th class="num">Goals/game</th><th class="num">Clean sheets</th><th class="num">Yellow</th><th class="num">Red</th><th class="num">Squad</th></tr>' +
+    '<th class="num hs">Goals/game</th><th class="num hs">Clean sheets</th><th class="num">Yellow</th><th class="num">Red</th><th class="num hs">Squad</th></tr>' +
     (st.length ? st.map(r0 => {
       const r = Object.assign({}, r0, playedAll(r0.id)), cs = r.CS;
       const y = allEvents().filter(e => e.type === 'yellow' && e.teamId === r.id).length;
@@ -9050,8 +9094,8 @@ function renderStats() {
       const t = team(r.id);
       return '<tr><td>' + crest(r.id) + '' + esc(r.name) + champMark(r.id) + '</td>' +
         '<td class="num">' + r.P + '</td><td class="num">' + r.GF + '</td><td class="num">' + r.GA + '</td>' +
-        '<td class="num">' + (r.P ? (r.GF / r.P).toFixed(1) : '—') + '</td><td class="num">' + cs + '</td>' +
-        '<td class="num">' + y + '</td><td class="num">' + rc + '</td><td class="num">' + t.players.length + '</td></tr>';
+        '<td class="num hs">' + (r.P ? (r.GF / r.P).toFixed(1) : '—') + '</td><td class="num hs">' + cs + '</td>' +
+        '<td class="num">' + y + '</td><td class="num">' + rc + '</td><td class="num hs">' + t.players.length + '</td></tr>';
     }).join('') : '<tr><td colspan="9" class="empty">No teams.</td></tr>');
 }
 
@@ -9231,15 +9275,15 @@ function renderHonours() {
     : '<div class="empty">No champions recorded yet.</div>';
   // 2nd and 3rd are on record here and nowhere else: only a title earns a star
   const medal = (name, metal, glyph) => name ? '<span class="hmed">' + glyph + '</span><b>' + esc(name) + '</b>' : '';
-  $('honourTbl').innerHTML = '<tr><th class="num">Year</th><th>Season</th><th>Champion</th><th>Runner-up</th><th>3rd</th>' +
-    '<th>Golden Boot</th><th>Notes</th><th></th></tr>' +
-    (list.length ? list.map(h => '<tr><td class="num">' + h.year + '</td><td>' + esc(h.season) + '</td>' +
+  $('honourTbl').innerHTML = '<tr><th class="num">Year</th><th class="hs">Season</th><th>Champion</th><th class="hs">Runner-up</th><th class="hs">3rd</th>' +
+    '<th>Golden Boot</th><th class="hs">Notes</th><th></th></tr>' +
+    (list.length ? list.map(h => '<tr><td class="num">' + h.year + '</td><td class="hs">' + esc(h.season) + '</td>' +
       '<td>' + ((x => x ? crest(x.id, 'sm') : '')(h.championId ? team(h.championId) : teamForChampion(h.champion))) +
         '<b class="champ">' + esc(h.champion) + '</b><span class="gstar" data-tip="' + esc(h.year + ' champions') + '">★</span>' +
         (tally[h.id] > 1 ? ' <span class="pill acc">×' + tally[h.id] + '</span>' : '') + (h === cur ? ' ' + CUR : '') + '</td>' +
-      '<td>' + medal(h.runnerUp, 'silver', '🥈') + '</td><td>' + medal(h.third, 'bronze', '🥉') + '</td>' +
+      '<td class="hs">' + medal(h.runnerUp, 'silver', '🥈') + '</td><td class="hs">' + medal(h.third, 'bronze', '🥉') + '</td>' +
       '<td class="small">' + bootLink(h.topScorer) + '</td>' +
-      '<td class="small muted">' + esc(h.notes) + '</td>' +
+      '<td class="small muted hs">' + esc(h.notes) + '</td>' +
       (isMgr() ? '<td style="text-align:right"><button class="btn sm" data-hedit="' + h.id + '">Edit</button> ' +
       '<button class="btn sm bad" data-hdel="' + h.id + '">×</button></td>' : '<td></td>') + '</tr>').join('') +
       (most.length ? '<tr><td colspan="8" class="small muted" style="padding-top:12px">Most titles: ' +
@@ -9381,9 +9425,9 @@ function backup() {
   download('futsal-' + DB.season.name.replace(/\W+/g, '-') + '-' + todayISO() + '.json',
     JSON.stringify(out, null, 1), 'application/json');
 }
-$('btnBackup').onclick = backup; $('btnBackup2').onclick = backup;
+$('btnBackup2').onclick = backup;
 const restore = () => { if (requireMgr('Restoring a backup')) $('restoreInput').click(); };
-$('btnRestore').onclick = restore; $('btnRestore2').onclick = restore;
+$('btnRestore2').onclick = restore;
 $('restoreInput').onchange = e => {
   const f = e.target.files[0];
   e.target.value = '';                  // so the same file can be picked again after a Cancel
@@ -9629,7 +9673,7 @@ function exportExcel() {
   download('futsal-' + DB.season.name.replace(/\W+/g, '-') + '-' + todayISO() + '.xlsx', blob);
   toast('Excel workbook exported (' + sheets.length + ' sheets).', 'ok');
 }
-$('btnExcel').onclick = exportExcel; $('btnExcel2').onclick = exportExcel;
+$('btnExcel2').onclick = exportExcel;
 
 /* ══════════════ SIGN-UP FORM BUILDER ══════════════ */
 const FORMMAP = [['suTitle', 'title'], ['suIntro', 'intro'], ['stRegEndpoint', 'endpoint'],
@@ -13230,7 +13274,6 @@ function unlock(person) {
   $('btnLock').style.display = '';
   // a referee can save a backup — it is the safety net on match night — but
   // not restore one or export the player database
-  ['btnRestore', 'btnExcel'].forEach(id => $(id).style.display = isMgr() ? '' : 'none');
   paintLeagueBar();
   paintAccess();
   buildNav();
