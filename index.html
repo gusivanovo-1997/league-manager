@@ -1680,6 +1680,34 @@ tspan.gstar{fill:var(--gold)}
   #rail nav button[data-nav="live"]{margin-bottom:0;border:0;padding:8px 12px;background:none}
   #shell main{max-width:none;padding:14px 12px 50px}
 }
+/* ── a phone, held in one hand ───────────────────────────────────────────
+   Everything above is sized for a tablet propped on a table at arm's length:
+   the whole app runs at 1.12 zoom on 1.44 type, and the match screen at 1.73
+   — around nineteen pixels of body text, twenty-three on the live screen.
+   In a hand that is half as big again as it should be, which is why a phone
+   felt like too much of everything rather than too little room to put it in.
+   Nothing was overflowing; it was simply enormous.
+
+   So a phone reads at ordinary size, and the rail stops using a third of the
+   screen to announce itself before any football appears. Landscape is caught
+   by height, because a phone on its side is 800 points wide and would
+   otherwise be taken for a tablet. */
+@media (max-width:560px),(max-height:480px) and (orientation:landscape){
+  :root{--z:1;--fs:1.15}
+  .view[data-view="live"]{--fs:1.32}          /* still the largest type in the app */
+  #rail{gap:6px;padding:7px 9px}
+  #rail header{padding:0}
+  #rail .brand{gap:8px}
+  #rail .ballring{width:30px;height:30px}
+  #rail .brand .eyebrow{display:none}         /* the wordmark underneath says it */
+  #rail .title-wrap h1{font-size:calc(14px * var(--fs))}
+  #rail .toolbar{gap:5px}
+  #rail .toolbar .btn.ico{width:34px;height:34px}
+  #rail nav button{padding:7px 10px;font-size:calc(12.5px * var(--fs))}
+  #shell main{padding:10px 10px 44px}
+  .card{padding:11px}
+  .subtab{padding:7px 12px}
+}
 /* ── tabs inside a tab: the rail keeps one button per part of the job, the
    page carries the rest along its top ── */
 .subtabs{display:flex;gap:4px;margin:0 0 14px;padding:4px;width:max-content;max-width:100%;overflow-x:auto;scrollbar-width:none;
