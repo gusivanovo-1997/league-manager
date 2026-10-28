@@ -1734,7 +1734,13 @@ tspan.gstar{fill:var(--gold)}
 
      And everything you tap during a game gets a proper target: the squad
      rows, the attendance ticks and the clock's buttons. */
-  #rail{position:static}
+  /* relative, not static: the rail's paint is a layer of its own pinned to
+     the rail's box, and taking the rail out of the positioned world sends
+     that layer off to the page instead — the whole screen wearing the
+     rail's gradient with its ember glowing somewhere down by the standings.
+     It only has to stop being STICKY so it scrolls away; it still has to be
+     something the layer can hold on to. */
+  #rail{position:relative;top:auto}
   #liveBody:not(.bcast) .scoreboard{position:sticky;top:0;z-index:12;
     box-shadow:0 10px 22px -14px rgba(0,0,0,.85),var(--hair)}
   .view[data-view="live"].running #liveSel,
