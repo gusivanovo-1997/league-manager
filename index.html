@@ -11952,12 +11952,32 @@ function appsLiveScript(key) {
    A demo season is never published. */
 let pubTimer = 0, pubBusy = false, pubAgain = false;
 var pubKicked = false, PUB_READY;         // var: save() and render() may run before this line has, and must not trip on it
+/* The live page is built out of whatever THIS tablet is holding. On a league
+   that is shared, a tablet that has not caught up yet would publish a page
+   with the other one's results missing from it — and with two of them doing
+   that every few seconds, the page flips between two versions of the season.
+
+   So on a shared league the page is never published off the back of a save.
+   The save asks the sync to run; the sync pulls everything down, pushes
+   everything up, and only then is the page built — out of a copy that IS the
+   shared copy. Whichever tablet gets there first writes it, and because they
+   are all working from the same records by then, they all build the same
+   page: the second one to arrive finds nothing has changed and sends nothing. */
 function pubSoon(now) {
   if (!PUB_READY) return;
   const c = pubCfg();
   if (!role || DB.demo || !c.url || !c.key || (!c.auto && !now)) return;
+  if (typeof syncOn === 'function' && syncOn()) { syncSoon(!!now); return; }   // the page follows the sync
   clearTimeout(pubTimer);
   pubTimer = setTimeout(() => publishPage(false), now ? 30 : 4000);
+}
+// called at the end of a sync that went through: now this copy can be trusted
+function pubAfterSync() {
+  if (!PUB_READY || !role || DB.demo) return;
+  const c = pubCfg();
+  if (!c.url || !c.key || !c.auto) return;
+  clearTimeout(pubTimer);
+  pubTimer = setTimeout(() => publishPage(false), 700);
 }
 async function publishPage(force) {
   const c = pubCfg();
@@ -12181,6 +12201,9 @@ async function syncTick(force) {
     }
     if (!bad) { SY.state = 'ok'; SY.err = ''; SY.at = Date.now(); }
     syncStore();
+    // everything of ours is up and everything of theirs is down: the live page
+    // can be built now, and it will match whatever the other tablets build
+    if (!bad) pubAfterSync();
     if (changed) {
       syncQuiet = true;
       try { save(); } finally { syncQuiet = false; }
@@ -12414,6 +12437,9 @@ $('pubPreview').onclick = () => {
   if (!w) download('futsal-live-page-preview.html', html, 'text/html');
 };
 $('pubNow').onclick = async () => {
+  // on a shared league, bring this copy level with the others before building
+  // the page, or the button would publish whatever this tablet happens to hold
+  if (syncOn()) { toast('Syncing first…'); await syncTick(true); }
   const r = await publishPage(true);
   toast(r.ok ? 'Live page updated.' : 'Not updated: ' + r.err + '.', r.ok ? 'ok' : 'bad');
 };
