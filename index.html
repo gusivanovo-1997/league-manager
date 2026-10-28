@@ -174,6 +174,20 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .pulse{animation:pulseBtn 1.4s ease-in-out infinite}
 @keyframes pulseBtn{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 @media (prefers-reduced-motion:reduce){.pulse{animation:none}}
+/* the night's matches: a time, who is playing, and a way in */
+.nxm{display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:100%;margin-bottom:7px;
+  background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:10px 12px;
+  font:inherit;color:var(--text);text-align:left;cursor:pointer;
+  transition:border-color .16s var(--ease),transform .16s var(--ease),background .16s}
+.nxm:hover{border-color:rgba(255,138,61,.55);transform:translateX(2px)}
+.nxm:last-child{margin-bottom:0}
+.nxm .nxt{flex:0 0 auto;color:var(--dim);font-variant-numeric:tabular-nums;font-size:calc(12px * var(--fs))}
+.nxm .nxp{flex:1 1 180px;display:flex;align-items:center;gap:7px;min-width:0;font-weight:600}
+.nxm .nxs{display:flex;align-items:center;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nxm .nxs .crest{margin-top:0;margin-bottom:0}
+.nxm .nxv{flex:0 0 auto;font-style:normal;color:var(--dim);font-weight:400}
+.nxm .nxgo{flex:0 0 auto;margin-left:auto;color:var(--accent);font-weight:700;font-size:calc(12px * var(--fs))}
+.nxm .nxgo.pill{color:#fff}
 .plyrbtn{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--card);
   border:1px solid var(--line2);border-radius:7px;padding:7px 9px;margin-bottom:6px}
 .plyrbtn .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:calc(12.5px * var(--fs))}
@@ -1686,6 +1700,10 @@ tspan.gstar{fill:var(--gold)}
      strip takes the rule alone, tight against the foot of the tab. */
   #rail #navInk::before{display:none}
   #rail #navInk::after{left:8px;right:8px;bottom:2px}
+  /* The match screen is set 20% larger again than the rest of the app, for a
+     tablet standing on a table. Held in a hand it is simply shouting, and a
+     name, a card and a minute stop fitting on their line. */
+  .view[data-view="live"]{--fs:1.45}
   #shell main{max-width:none;padding:14px 12px 50px}
 }
 /* ── a phone, held in one hand ───────────────────────────────────────────
@@ -1702,7 +1720,9 @@ tspan.gstar{fill:var(--gold)}
    otherwise be taken for a tablet. */
 @media (max-width:560px),(max-height:480px) and (orientation:landscape){
   :root{--z:1;--fs:1.15}
-  .view[data-view="live"]{--fs:1.32}          /* still the largest type in the app */
+  .view[data-view="live"]{--fs:1.16}          /* still the largest type in the app */
+  .scoreboard .tm .sc{font-size:calc(40px * var(--fs))}
+  .scoreboard{padding:11px;gap:10px}
   #rail{gap:6px;padding:7px 9px}
   #rail header{padding:0}
   #rail .brand{gap:8px}
@@ -1743,6 +1763,12 @@ tspan.gstar{fill:var(--gold)}
      It only has to stop being STICKY so it scrolls away; it still has to be
      something the layer can hold on to. */
   #rail{position:relative;top:auto}
+  /* 100vh on a phone is the window with the address bar GONE — so the page
+     is always taller than what you can see, and every scroll fights the bar
+     sliding in and out. Full screen has no bar, which is why it felt fine
+     there and nowhere else. dvh is the height actually available now. */
+  #shell{min-height:calc(100dvh / var(--z))}
+  body{overscroll-behavior-y:none}
   #liveBody:not(.bcast) .scoreboard{position:sticky;top:0;z-index:12;
     box-shadow:0 10px 22px -14px rgba(0,0,0,.85),var(--hair)}
   .view[data-view="live"].running #liveSel,
@@ -7779,9 +7805,43 @@ function koBanner(f) {
     '<span class="rule"></span>' +
     '<div class="ks">' + esc(kicker + ' · ' + DB.season.name) + '</div></div>';
 }
+/* With nothing open the screen used to say "pick a fixture above", which
+   means going into a dropdown to find the match you are about to referee.
+   It shows the night instead: every match of the next round still to be
+   played, in the order they kick off, each one a button that opens it. */
+function drawNextUp() {
+  const left = DB.fixtures.filter(x => x.status !== 'final' && !isOff(x));
+  const when = x => (x.date || '9999-99-99') + ' ' + (x.time || '99:99');
+  left.sort((a, b) => when(a).localeCompare(when(b)) || String(a.id).localeCompare(String(b.id)));
+  if (!left.length) {
+    $('liveBody').innerHTML = '<div class="card"><div class="empty">' +
+      (DB.fixtures.length ? 'Every match has been played and confirmed.' : 'No fixtures yet — generate the draw first.') +
+      '</div></div>';
+    return;
+  }
+  // the next round, whole: the matches a referee is choosing between tonight
+  const k = roundKey(left[0]);
+  const night = left.filter(x => roundKey(x) === k);
+  const title = (k === 'SEMI' ? 'Semi-finals' : k === 'FINAL' ? 'Finals' : 'Round ' + k.slice(1)) +
+    (night[0].date ? '<span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0"> &mdash; ' +
+      esc(fmtDate(night[0].date)) + '</span>' : '');
+  const side = id => '<span class="nxs">' + crest(id, 'sm') + esc(teamName(id)) + '</span>';
+  $('liveBody').innerHTML = '<div class="card"><h3>' + title + '</h3>' +
+    '<div class="small muted" style="margin:-4px 0 11px">Tap the match you are refereeing.</div>' +
+    night.map(x => '<button class="nxm" data-open="' + x.id + '">' +
+      '<span class="nxt">' + esc(x.time || '—') + '</span>' +
+      '<span class="nxp">' + side(x.homeId) + '<i class="nxv">v</i>' + side(x.awayId) + '</span>' +
+      (x.status === 'live' ? '<span class="pill bad nxgo">live</span>'
+        : '<span class="nxgo">Open</span>') +
+    '</button>').join('') +
+    (left.length > night.length ? '<div class="small muted" style="margin-top:9px">' +
+      plural(left.length - night.length, 'later match', 'later matches') + ' — use the picker above.</div>' : '') +
+    '</div>';
+  $('liveBody').querySelectorAll('[data-open]').forEach(b => b.onclick = () => openLive(b.dataset.open));
+}
 function drawLive() {
   const f = DB.fixtures.find(x => x.id === live.id);
-  if (!f) { $('liveBody').innerHTML = '<div class="card"><div class="empty">Pick a fixture above and press <b>Open match</b>.</div></div>'; return; }
+  if (!f) { drawNextUp(); return; }
   // a confirmed result: a referee may look and tick attendance, only a manager may change it
   const locked = f.status === 'final' && !isMgr();
   const shown = shownScore(f);
