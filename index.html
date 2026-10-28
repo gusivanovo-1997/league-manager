@@ -52,7 +52,7 @@ header{display:flex;align-items:center;gap:14px;padding:10px 16px;background:lin
 /* The tools are five verbs that never change, so they are five icons. The
    label is still there — it waits for a deliberate hover rather than firing
    the moment the pointer crosses the row. */
-.toolrow{display:grid;grid-template-columns:repeat(3,34px);gap:6px;justify-content:center}
+.toolrow{display:grid;grid-template-columns:repeat(4,34px);gap:6px;justify-content:center}
 .btn svg{width:15px;height:15px;flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:1.8;
   stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 .btn.ico{width:34px;height:34px;padding:0;justify-content:center;flex:0 0 auto}
@@ -1019,7 +1019,7 @@ input.err,select.err{border-color:var(--bad);box-shadow:0 0 0 3px rgba(255,107,1
   padding-top:10px;border-top:1px solid var(--line)}
 #rail .toolbar .btn{width:100%;justify-content:center}
 #rail .toolbar .btn.ico{width:41px;height:41px}
-#rail .toolrow{grid-template-columns:repeat(3,41px);gap:7px}
+#rail .toolrow{grid-template-columns:repeat(4,41px);gap:6px}
 #rail .btn.ico svg{width:20px;height:20px}
 #rail .rolechip{justify-content:center;padding:6px 10px}
 /* margin:0 — the original rule centred main with auto margins, and an auto
@@ -1678,6 +1678,14 @@ tspan.gstar{fill:var(--gold)}
   #rail .toolrow{display:flex;flex-wrap:wrap;justify-content:flex-start}
   /* the strip reads better even: keep the colour, drop the raised box */
   #rail nav button[data-nav="live"]{margin-bottom:0;border:0;padding:8px 12px;background:none}
+  /* The mark under the open tab rises as a wash of its own colour, which is
+     right on the rail where each tab has the whole width to itself. Laid
+     flat the tabs sit shoulder to shoulder and that wash — brightest just
+     under the foot of the box — reads as a loose light sitting below the
+     strip rather than as the underline of the tab it belongs to. So the
+     strip takes the rule alone, tight against the foot of the tab. */
+  #rail #navInk::before{display:none}
+  #rail #navInk::after{left:8px;right:8px;bottom:2px}
   #shell main{max-width:none;padding:14px 12px 50px}
 }
 /* ── a phone, held in one hand ───────────────────────────────────────────
@@ -1872,10 +1880,10 @@ tspan.gstar{fill:var(--gold)}
          buttons nobody presses during a match next to three they do — they
          live in Settings → Data, where they already had a home. -->
     <div class="toolrow">
+      <button class="btn ico" id="btnTheme" data-tip="Light or dark"></button>
+      <button class="btn ico" id="btnLock" style="display:none" data-tip="Lock — hand the tablet over"></button>
       <button class="btn ico" id="btnAppFull" data-tip="Full screen — hide the browser and leave only the app"></button>
       <button class="btn ico" id="btnSettings" data-tip="Settings"></button>
-      <button class="btn ico" id="btnLock" style="display:none" data-tip="Lock — hand the tablet over"></button>
-      <button class="btn ico" id="btnTheme" data-tip="Light or dark"></button>
     </div>
   </div>
 </aside>
