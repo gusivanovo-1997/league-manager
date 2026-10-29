@@ -1726,14 +1726,17 @@ tspan.gstar{fill:var(--gold)}
      to be the whole screen. Nothing is pinned either — a referee scrolling
      for a name wants the squads and the log to come up, not to read them
      through a letterbox under a board that will not move. */
-  .view[data-view="live"]{--fs:1.05}
-  .scoreboard .tm .sc{font-size:calc(30px * var(--fs))}
-  .scoreboard .tm .nm{font-size:calc(13px * var(--fs));margin-bottom:3px}
-  .scoreboard{padding:10px;gap:8px}
-  .clock .t{font-size:calc(26px * var(--fs))}
-  #liveBody:not(.bcast) .scoreboard{position:static;box-shadow:var(--e1),var(--hair)}
+  .view[data-view="live"]{--fs:1}
+  .scoreboard .tm .sc{font-size:calc(28px * var(--fs))}
+  .scoreboard .tm .nm{font-size:calc(12.5px * var(--fs));margin-bottom:3px}
+  .scoreboard{padding:9px;gap:7px}
+  .clock .t{font-size:calc(23px * var(--fs))}
+  .clock .p{font-size:calc(10px * var(--fs))}
+  #liveBody .scoreboard{position:static;box-shadow:var(--e1),var(--hair)}
   /* and a name is worth two lines rather than an ellipsis */
-  .plyrbtn .nm{white-space:normal;overflow:visible;line-height:1.3}
+  .plyrbtn .nm{white-space:normal;overflow:visible;line-height:1.28;font-size:calc(12px * var(--fs))}
+  /* one column: two teams side by side on a phone means seeing one of them */
+  .squads{grid-template-columns:1fr}
   #rail{gap:6px;padding:7px 9px}
   #rail header{padding:0}
   #rail .brand{gap:8px}
@@ -1752,6 +1755,38 @@ tspan.gstar{fill:var(--gold)}
      has hidden its own three since the start. The rest still scroll
      sideways in their box, so nothing is lost, only put out of the way. */
   .hs{display:none}
+
+  /* ── full screen, on a phone ────────────────────────────────────────
+     Full screen was built for a projector: the board nailed to the top, the
+     squads in two columns, and every size clamped to a floor meant for a
+     wall — 70 points of score before it starts growing. In a hand that puts
+     the second team off the side of the glass and leaves a letterbox to
+     read the match through.
+
+     On a phone it means something else entirely: the browser's bars are
+     gone and the match has the whole screen. So it is the same screen,
+     scrolling the same way, only without the chrome. */
+  body.bcasting{overflow:auto}
+  #liveBody.bcast,#liveBody.bcast.pseudo{display:block;overflow:visible;height:auto;padding:0}
+  #liveBody.bcast #liveScroll{overflow:visible;padding-right:0}
+  #liveBody.bcast .squads{grid-template-columns:1fr}
+  #liveBody.bcast .scoreboard{position:static;padding:9px;gap:7px;margin-bottom:10px;border-radius:12px}
+  #liveBody.bcast .scoreboard .tm .nm{font-size:calc(12.5px * var(--fs));margin-bottom:3px}
+  #liveBody.bcast .scoreboard .tm .sc{font-size:calc(28px * var(--fs));letter-spacing:0}
+  #liveBody.bcast .scoreboard .tmbar{height:3px;width:34px;margin-bottom:6px}
+  #liveBody.bcast .clock .t{font-size:calc(23px * var(--fs))}
+  #liveBody.bcast .clock .p{font-size:calc(10px * var(--fs))}
+  #liveBody.bcast .per{font-size:calc(11px * var(--fs));padding:4px 10px;border-radius:7px}
+  #liveBody.bcast .card{padding:11px;border-radius:12px;margin-bottom:10px}
+  #liveBody.bcast .card h3{font-size:calc(13px * var(--fs))}
+  #liveBody.bcast .evrow{font-size:calc(11px * var(--fs));padding:3px 0;gap:6px}
+  #liveBody.bcast .evrow .min{width:auto;min-width:32px}
+  #liveBody.bcast .plyrbtn{padding:5px 7px;border-radius:8px;margin-bottom:4px;gap:6px}
+  #liveBody.bcast .plyrbtn .nm{font-size:calc(12px * var(--fs))}
+  #liveBody.bcast .btn{font-size:calc(11px * var(--fs));padding:4px 8px;border-radius:7px}
+  #liveBody.bcast .pill{font-size:calc(9.5px * var(--fs));padding:1px 6px;border-radius:999px}
+  #liveBody.bcast .att{width:auto;height:auto;min-width:30px;min-height:30px;border-radius:7px}
+  #liveBody.bcast .dot{width:9px;height:9px}
 
   /* ── a referee, one hand, at the side of the court ──────────────────
      The rail stops holding the top of the screen: on a phone it is a tall
@@ -1785,11 +1820,18 @@ tspan.gstar{fill:var(--gold)}
   .view[data-view="live"].running #btnLiveLoad,
   .view[data-view="live"].running #liveHint{display:none}
   .view[data-view="live"].running > .card:first-child{padding:8px 11px;margin-bottom:8px}
-  .plyrbtn{padding:10px 11px;margin-bottom:7px}
-  .plyrbtn .btn{min-height:44px}
-  .att{min-width:40px;min-height:40px}
-  .clock .row .btn,.scoreboard .btn,.per{min-height:40px}
-  .per{padding:6px 13px}
+  /* A squad is fourteen of these rows and the log is longer again, so the
+     room each one takes is the difference between seeing a team and
+     scrolling for it. Still a real target — 30 points is a thumb — but
+     nothing like the 44 I had given them. */
+  .plyrbtn{padding:5px 7px;margin-bottom:4px;gap:6px;border-radius:8px}
+  .plyrbtn .btn{min-height:30px;padding:4px 8px;font-size:calc(11px * var(--fs))}
+  .plyrbtn .pill{font-size:calc(9.5px * var(--fs));padding:1px 6px}
+  .att{min-width:30px;min-height:30px}
+  .evrow{font-size:calc(11px * var(--fs));padding:3px 0;gap:6px}
+  .evrow .min{min-width:32px}
+  .clock .row .btn,.scoreboard .btn{min-height:32px}
+  .per{min-height:30px;padding:4px 10px}
 }
 /* ── tabs inside a tab: the rail keeps one button per part of the job, the
    page carries the rest along its top ── */
