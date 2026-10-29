@@ -1704,6 +1704,8 @@ tspan.gstar{fill:var(--gold)}
      tablet standing on a table. Held in a hand it is simply shouting, and a
      name, a card and a minute stop fitting on their line. */
   .view[data-view="live"]{--fs:1.45}
+  /* a name is worth a second line rather than an ellipsis, on a tablet too */
+  .plyrbtn .nm{white-space:normal;overflow:visible;line-height:1.3}
   #shell main{max-width:none;padding:14px 12px 50px}
 }
 /* ── a phone, held in one hand ───────────────────────────────────────────
@@ -1720,9 +1722,18 @@ tspan.gstar{fill:var(--gold)}
    otherwise be taken for a tablet. */
 @media (max-width:560px),(max-height:480px) and (orientation:landscape){
   :root{--z:1;--fs:1.15}
-  .view[data-view="live"]{--fs:1.16}          /* still the largest type in the app */
-  .scoreboard .tm .sc{font-size:calc(40px * var(--fs))}
-  .scoreboard{padding:11px;gap:10px}
+  /* The match screen on a phone: the score says the score, it does not have
+     to be the whole screen. Nothing is pinned either — a referee scrolling
+     for a name wants the squads and the log to come up, not to read them
+     through a letterbox under a board that will not move. */
+  .view[data-view="live"]{--fs:1.05}
+  .scoreboard .tm .sc{font-size:calc(30px * var(--fs))}
+  .scoreboard .tm .nm{font-size:calc(13px * var(--fs));margin-bottom:3px}
+  .scoreboard{padding:10px;gap:8px}
+  .clock .t{font-size:calc(26px * var(--fs))}
+  #liveBody:not(.bcast) .scoreboard{position:static;box-shadow:var(--e1),var(--hair)}
+  /* and a name is worth two lines rather than an ellipsis */
+  .plyrbtn .nm{white-space:normal;overflow:visible;line-height:1.3}
   #rail{gap:6px;padding:7px 9px}
   #rail header{padding:0}
   #rail .brand{gap:8px}
@@ -1744,9 +1755,10 @@ tspan.gstar{fill:var(--gold)}
 
   /* ── a referee, one hand, at the side of the court ──────────────────
      The rail stops holding the top of the screen: on a phone it is a tall
-     block of tabs you are not using while a game is on, so it scrolls away
-     and the scoreboard takes its place, pinned, where a glance can find it
-     with both squads still scrolling underneath.
+     block of tabs you are not using while a game is on, so it scrolls away.
+     Nothing takes its place — a board pinned to the top of a phone turns
+     the squads and the log into a letterbox, and a referee scrolling for a
+     name wants the names, not the score they already know.
 
      Once a match is open the picker, Open match and the line explaining
      what the screen is have done their job and are put away — the match is
@@ -1769,8 +1781,6 @@ tspan.gstar{fill:var(--gold)}
      there and nowhere else. dvh is the height actually available now. */
   #shell{min-height:calc(100dvh / var(--z))}
   body{overscroll-behavior-y:none}
-  #liveBody:not(.bcast) .scoreboard{position:sticky;top:0;z-index:12;
-    box-shadow:0 10px 22px -14px rgba(0,0,0,.85),var(--hair)}
   .view[data-view="live"].running #liveSel,
   .view[data-view="live"].running #btnLiveLoad,
   .view[data-view="live"].running #liveHint{display:none}
@@ -7774,16 +7784,23 @@ function liveMinute() {
 /* On the match screen a player is his first name — unless somebody else in
    the two squads shares it, then the first letter of the surname (or the
    shirt number) tells them apart. */
+/* The name on the match screen. This used to be the first name alone, with
+   a last initial added only when two players in the match shared one — room
+   being tight and the type being large. The trouble with it is that the one
+   moment you most need to be sure you have the right player is the moment
+   you are pressing a card against his name, and "Cody" is not a person.
+
+   So it is the name, in full. The rows wrap to a second line where they
+   have to, which costs less than booking the wrong Cody. */
 function liveName(f, pid) {
   const p = person(pid);
   if (!p) return '—';
-  const first = (p.firstName || '').trim() || fullName(p);
-  const squad = [f.homeId, f.awayId].flatMap(tid => ((team(tid) || {}).players || []))
-    .concat(Object.keys(f.guestOf || {}).map(personId => ({ personId })));
-  const twins = squad.filter(x => x.personId !== pid && ((person(x.personId) || {}).firstName || '').trim().toLowerCase() === first.toLowerCase());
-  if (!twins.length) return first;
-  const last = (p.lastName || '').trim(), me = squad.find(x => x.personId === pid);
-  return first + ' ' + (last ? last[0].toUpperCase() + '.' : me && me.number ? '#' + me.number : '');
+  const full = fullName(p);
+  if (full && full !== '—') return full;
+  // nothing recorded but a shirt number: better than an em dash
+  const me = ((team(f.homeId) || {}).players || []).concat(((team(f.awayId) || {}).players || []))
+    .find(x => x.personId === pid);
+  return me && me.number ? '#' + me.number : '—';
 }
 let clockEdit = false;                // the referee is setting the clock to the court's
 /* The title over the scoreboard. A knockout match is announced in its metal
@@ -13127,7 +13144,22 @@ function moveInk(snap) {
   ink.style.width = btn.offsetWidth + 'px';
   ink.style.height = btn.offsetHeight + 'px';
   ink.style.transform = 'translate(' + btn.offsetLeft + 'px,' + btn.offsetTop + 'px)';
-  btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  /* Keep the open tab in view inside the rail's OWN scroller, by hand.
+     scrollIntoView does not stop at the rail: it scrolls whatever else it
+     must, the window included. On a phone the rail sits at the top of the
+     page, so every call hauled the reader back up to it — and because
+     hiding the address bar resizes the window, and a resize asks for the
+     ink again, that happened on the next touch after any scroll. Full
+     screen has no address bar, which is why it only misbehaved outside it. */
+  const sc = btn.parentElement;
+  if (sc) {
+    const l = btn.offsetLeft, r = l + btn.offsetWidth;
+    if (l < sc.scrollLeft) sc.scrollLeft = Math.max(0, l - 8);
+    else if (r > sc.scrollLeft + sc.clientWidth) sc.scrollLeft = r - sc.clientWidth + 8;
+    const t = btn.offsetTop, b = t + btn.offsetHeight;
+    if (t < sc.scrollTop) sc.scrollTop = Math.max(0, t - 8);
+    else if (b > sc.scrollTop + sc.clientHeight) sc.scrollTop = b - sc.clientHeight + 8;
+  }
   moveBall(snap);
 }
 /* a plain black-and-white ball, drawn once */
