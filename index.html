@@ -775,6 +775,8 @@ input.err,select.err{border-color:var(--bad);box-shadow:0 0 0 3px rgba(255,107,1
 }
 
 body.noboot .bootcard{display:none}
+/* a knockout cup has no table, so nothing that reads one is drawn */
+body.cupmode .leaguecard{display:none}
 /* the bracket on the dashboard: one row per tie */
 .kostrip{display:flex;flex-direction:column;gap:5px}
 .korow{display:grid;grid-template-columns:minmax(74px,auto) minmax(0,1fr) auto minmax(0,1fr) auto;gap:4px 8px;align-items:center;
@@ -2013,10 +2015,10 @@ tspan.gstar{fill:var(--gold)}
   <section class="view" data-view="dash">
     <div id="dashOff"></div>
     <div class="grid g4" id="dashStats" style="margin-bottom:14px"></div>
-    <div class="card"><h3>Title race <span class="muted" style="font-weight:400;text-transform:none;
+    <div class="card leaguecard"><h3>Title race <span class="muted" style="font-weight:400;text-transform:none;
       letter-spacing:0" id="raceNote"></span></h3><div id="dashRace"></div></div>
     <div class="grid g2">
-      <div class="card"><h3>Standings</h3><div id="dashTable"></div></div>
+      <div class="card leaguecard"><h3>Standings</h3><div id="dashTable"></div></div>
       <div class="card bootcard"><h3>Golden Boot</h3><div id="dashScorers"></div></div>
     </div>
     <div class="grid g2">
@@ -2154,7 +2156,8 @@ tspan.gstar{fill:var(--gold)}
         <div class="field"><label>Days between rounds</label><input type="number" id="fxGap" min="1" value="7"></div>
         <div class="field"><label>Format</label><select id="fxFormat">
           <option value="finals">League + finals (gold 1–4, silver 5–8)</option>
-          <option value="league">League only — pontos corridos, no finals</option></select></div>
+          <option value="league">League only — pontos corridos, no finals</option>
+          <option value="cup">Knockout cup — lose and you are out</option></select></div>
       </div>
       <div class="row">
         <button class="btn accent" id="btnGenFx">Generate fixtures</button>
@@ -2537,7 +2540,8 @@ tspan.gstar{fill:var(--gold)}
         <div class="field"><label>Match fee per player ($)</label><input type="number" id="stFee" min="0" step="0.5"></div>
         <div class="field"><label>Competition format</label><select id="stFormat">
           <option value="finals">League + finals (gold 1–4, silver 5–8)</option>
-          <option value="league">League only — pontos corridos, no finals</option></select></div>
+          <option value="league">League only — pontos corridos, no finals</option>
+          <option value="cup">Knockout cup — lose and you are out</option></select></div>
       </div>
       <!-- Some competitions do not count who scored: a social league where
            nobody wants a top-scorer table, or one where the goals are not
@@ -2790,6 +2794,7 @@ let storageOk = true, unsaved = false;
 let lastRaw = null;
 function save() {
   if (!storageOk) { unsaved = true; return; }
+  if (typeof cupAdvance === 'function') cupAdvance();   // a cup: the winners meet in the next round
   if (typeof autoFinals === 'function') autoFinals();   // the season is over: draw the semis
   syncFinals();                                   // a decided semi always has its final, in every save
   // not while the sync is writing: records that have just come down from the
@@ -4362,7 +4367,7 @@ function paintSubTabs() {
 }
 let currentView = 'dash';
 function buildNav() {
-  $('nav').innerHTML = VIEWS.filter(([k]) => allowedView(k)).map(([k, label]) =>
+  $('nav').innerHTML = VIEWS.filter(([k]) => allowedView(k) && !(isCup() && k === 'table')).map(([k, label]) =>
     '<button data-nav="' + k + '">' +
       (k === 'live' ? '<span class="livedot"></span>' : icon(k)) +
       (k === 'live' ? '<span class="nvlabel">' + label + '</span>' : label) +
@@ -4474,6 +4479,7 @@ function render() {
   if (seedCrests()) save();
   paintCrests();
   document.body.classList.toggle('noboot', !bootOn());
+  document.body.classList.toggle('cupmode', isCup());
   starsRefresh();
   paintFinalsTab();
   paintSubTabs();
@@ -4920,7 +4926,11 @@ function raceRun(id) {
    its trophies; a dashboard only needs to answer "who is left". */
 const KO_ORDER = ['SF1', 'SF2', 'F', 'P3', 'SV1', 'SV2', 'SVF', 'SV3'];
 function finalsStrip() {
-  const ko = KO_ORDER.map(s => DB.fixtures.find(f => f.stage === s)).filter(f => f && (f.homeId || f.awayId));
+  // a cup's bracket is its rounds; a league's is the four named ties
+  const ko = isCup()
+    ? DB.fixtures.filter(f => f.stage === 'regular').slice().sort((a, b) => a.round - b.round ||
+        String(a.time || '').localeCompare(String(b.time || '')))
+    : KO_ORDER.map(s => DB.fixtures.find(f => f.stage === s)).filter(f => f && (f.homeId || f.awayId));
   if (!ko.length) return '';
   const side = id => id ? crest(id, 'sm') + esc(teamName(id)) : '<span class="muted">to be decided</span>';
   return '<div class="kostrip">' + ko.map(f => {
@@ -4930,7 +4940,7 @@ function finalsStrip() {
           ? ' <span class="muted">(' + f.homePens + '&ndash;' + f.awayPens + 'p)</span>' : '') + '</b>'
       : '<span class="muted">' + (f.date ? esc(fmtDate(f.date)) + (f.time ? ' ' + esc(f.time) : '') : 'date to be set') + '</span>';
     return '<div class="korow' + (/^SV/.test(f.stage) ? ' sv' : '') + '">' +
-      '<span class="kost">' + esc(stageLabel(f.stage)) + '</span>' +
+      '<span class="kost">' + esc(isCup() ? cupRoundName(f.round) : stageLabel(f.stage)) + '</span>' +
       '<span class="kotm' + (w && w === f.homeId ? ' w' : '') + '">' + side(f.homeId) + '</span>' +
       '<i class="kov">v</i>' +
       '<span class="kotm' + (w && w === f.awayId ? ' w' : '') + '">' + side(f.awayId) + '</span>' +
@@ -5053,6 +5063,7 @@ function renderDash() {
     : '<div class="empty">Add teams to see the table.</div>';
 
   const strip = finalsStrip();
+  $('dashFinalsCard').querySelector('h3').textContent = isCup() ? 'The cup' : 'Finals';
   $('dashFinalsCard').style.display = strip ? '' : 'none';
   $('dashFinals').innerHTML = strip;
   const gls = st.map(r => Object.assign({}, r, playedAll(r.id))).sort((a, b) => b.GF - a.GF || a.name.localeCompare(b.name));
@@ -5156,6 +5167,29 @@ const cancelLine = x => x.off
 /* A season can be league only — "pontos corridos": everyone plays everyone,
    no finals, the table decides the champion. */
 const leagueOnly = () => DB.season.format === 'league';
+/* "Mata-mata": a knockout cup. Every tie is played once, the loser is out,
+   and the last team standing wins it — so there is no table and no bracket
+   locked off a table, only round after round of winners.
+
+   A cup rides the ordinary round machinery rather than the finals stages:
+   round 1, round 2, round 3 are just rounds, which means the draw, the
+   match screen, attendance, the bulletin and the live page all understand
+   it without being told. What makes it a cup is that the next round is
+   built from the winners of the last one. */
+const isCup = () => DB.season.format === 'cup';
+const cupRounds = () => [...new Set(DB.fixtures.filter(f => f.stage === 'regular').map(f => f.round))].sort((a, b) => a - b);
+/* What to call a round, counted back from the final rather than from the
+   number of ties in it: a first round with byes in it has fewer ties than
+   its place in the bracket deserves, and calling six teams' opening night
+   the semi-finals because two of them happen to be sitting it out is not
+   the sort of thing a cup should say. */
+function cupRoundName(round) {
+  let p = 1; while (p < Math.max(2, DB.teams.length)) p *= 2;
+  const total = Math.round(Math.log(p) / Math.LN2);           // how many rounds the bracket holds
+  const left = total - round + 1;                             // including this one
+  return left <= 1 ? 'Final' : left === 2 ? 'Semi-finals' : left === 3 ? 'Quarter-finals'
+    : 'Round of ' + Math.pow(2, left);
+}
 
 /* ══════════════ REGISTRATIONS ══════════════ */
 function matchExisting(sub) {
@@ -6807,6 +6841,34 @@ function generateFixtures(keepHistory) {
   const courts = Math.max(1, +$('fxCourts').value || 1);
   const gap = Math.max(1, +$('fxGap').value || 7);
 
+  /* A cup draws one round and no more: the rest are built as the winners
+     come out. With a team count that is not a power of two the top seeds
+     sit out the first round — six teams means two ties and two byes, and
+     round two is a clean four. */
+  if ($('fxFormat').value === 'cup') {
+    let p = 1; while (p < teams.length) p *= 2;
+    const byes = teams.slice(0, p - teams.length), playing = teams.slice(p - teams.length);
+    const pairs = [];
+    for (let i = 0; i < playing.length / 2; i++) pairs.push([playing[i], playing[playing.length - 1 - i]]);
+    const firstMin = toMins(startTime), onCourt = {};
+    const fx = pairs.map((pr, i) => {
+      const s = Math.floor(i / courts);
+      onCourt[s] = (onCourt[s] || 0) + 1;
+      return { id: uid(), stage: 'regular', round: 1, homeId: pr[0], awayId: pr[1], date: startDate,
+        time: fmtMins(firstMin + s * slot), court: courts > 1 ? String(onCourt[s]) : '', status: 'scheduled',
+        homeGoals: 0, awayGoals: 0, events: [] };
+    });
+    if (keepHistory !== false) archiveSeason();
+    DB.fixtures = fx;
+    DB.season.draw = uid(); DB.season.drawnAs = DB.season.name; DB.season.drawnFormat = DB.season.format;
+    DB.season.format = 'cup';
+    if (byes.length) DB.season.cupByes = byes; else delete DB.season.cupByes;
+    delete DB.season.noAutoFinals;
+    if (save() === false) return;
+    render(); liveTicker();
+    return toast('Cup drawn: ' + plural(fx.length, 'tie') +
+      (byes.length ? ' and ' + plural(byes.length, 'bye') : '') + '. The next round is drawn as the winners come out.', 'ok');
+  }
   // who plays whom, home and away alternating; then each night's kick-off times dealt out fairly
   const season = seasonPairs(teams, rounds);
   const pick = dealTimes(season, courts);
@@ -6830,7 +6892,7 @@ function generateFixtures(keepHistory) {
   else { const mine = recordsFor(DB.season.draw, new Set(DB.fixtures.map(f => f.id))); DB.archive = (DB.archive || []).filter(a => mine.indexOf(a) < 0); }
   DB.fixtures = fixtures;                // as the card promised: the old draw AND its finals go
   DB.season.draw = uid(); DB.season.drawnAs = DB.season.name; DB.season.drawnFormat = DB.season.format;
-  DB.season.format = $('fxFormat').value === 'league' ? 'league' : 'finals';
+  DB.season.format = $('fxFormat').value === 'league' ? 'league' : 'finals';   // a cup returns above
   DB.teams.forEach(t => { delete t.joinedRound; delete t.missedMatches; delete t.equivPoints; });
   DB.season.rounds = rounds;            // a team joining later needs to know this
   save(); render();
@@ -7788,7 +7850,7 @@ const PERIODS = ['H1', 'BRK', 'H2'];
 /* Extra time exists only in a knockout match (gold or silver semi or final,
    3rd place): two halves of DB.season.etMin minutes, after which a level
    match goes to the penalty shoot-out. */
-const isKO = f => !!f && f.stage !== 'regular';
+const isKO = f => !!f && (f.stage !== 'regular' || isCup());   // every cup tie needs a winner
 const periodsFor = f => isKO(f) ? ['H1', 'BRK', 'H2', 'ET1', 'ET2'] : PERIODS;
 const etMin = () => Math.max(1, +DB.season.etMin || 5);
 /* A knockout result told in its stages. A match that went to extra time
@@ -9093,7 +9155,7 @@ const blankKO = (stage, homeId, awayId, night, date) => ({ id: uid(), stage, rou
    them by hand says you did not want them, and they stay gone until you
    lock them yourself. */
 function autoFinals() {
-  if (leagueOnly() || DB.season.noAutoFinals) return false;
+  if (leagueOnly() || isCup() || DB.season.noAutoFinals) return false;
   if (DB.fixtures.some(f => f.stage !== 'regular')) return false;        // a bracket already exists
   const reg = DB.fixtures.filter(f => f.stage === 'regular');
   if (!reg.length || !reg.every(f => f.status === 'final' || isOff(f))) return false;
@@ -9106,6 +9168,34 @@ function autoFinals() {
     DB.fixtures.push(blankKO('SV1', st[4].id, st[7].id, night, when));   // silver: 5 v 8
     DB.fixtures.push(blankKO('SV2', st[5].id, st[6].id, night, when));   //         6 v 7
   }
+  return true;
+}
+/* The next round of a cup. It waits for every tie to be settled — a draw
+   with no shoot-out settles nothing, so the round stays open until the
+   referee records one — and then pairs the winners, with any byes from the
+   first round joining them. Same night of the week, a week on. */
+function cupAdvance() {
+  if (!isCup()) return false;
+  const reg = DB.fixtures.filter(f => f.stage === 'regular');
+  if (!reg.length) return false;
+  const rounds = [...new Set(reg.map(f => f.round))].sort((a, b) => a - b);
+  const last = rounds[rounds.length - 1];
+  const fx = reg.filter(f => f.round === last).sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+  const byes = (DB.season.cupByes || []).filter(id => team(id));
+  if (fx.length === 1 && !byes.length) return false;            // that was the final
+  if (!fx.every(f => f.status === 'final')) return false;
+  const winners = fx.map(winnerOf);
+  if (winners.some(w => !w)) return false;                      // still level: it needs a shoot-out
+  const pool = byes.concat(winners);
+  if (pool.length < 2) return false;
+  const night = { time: fx[0].time || '', court: fx[0].court || '' };
+  const when = fx[0].date ? addDays(fx[0].date, seasonStep()) : '';
+  for (let i = 0; i + 1 < pool.length; i += 2) {
+    DB.fixtures.push({ id: uid(), stage: 'regular', round: last + 1, homeId: pool[i], awayId: pool[i + 1],
+      date: when, time: night.time, court: night.court, status: 'scheduled',
+      homeGoals: 0, awayGoals: 0, events: [] });
+  }
+  delete DB.season.cupByes;                                     // they have joined the bracket now
   return true;
 }
 function winnerOf(f) {
@@ -9125,7 +9215,7 @@ function loserOf(f) { const w = winnerOf(f); return w ? (w === f.homeId ? f.away
    windows never bounce saves off each other, and it compares the PAIR of
    teams, so a deliberate home/away swap on the schedule is left alone. */
 function syncFinals() {
-  if (leagueOnly()) return false;
+  if (leagueOnly() || isCup()) return false;
   const get = s => DB.fixtures.find(f => f.stage === s);
   const sf1 = get('SF1'), sf2 = get('SF2');
   if (!sf1 || !sf2) return false;
@@ -11191,7 +11281,10 @@ function seasonPhase() {
   const nextRound = ahead.length ? Math.min.apply(null, ahead) : pending.length ? Math.min.apply(null, pending) : 0;
   const finals = DB.fixtures.filter(f => f.stage !== 'regular');
   const grand = finals.find(f => f.stage === 'F');
-  const champion = leagueOnly() ? (rounds.length && !pending.length ? (standings()[0] || {}).id || null : null)
+  const lastTies = maxRound ? reg.filter(f => f.round === maxRound) : [];
+  const champion = isCup()
+    ? (lastTies.length === 1 && lastTies[0].status === 'final' && !(DB.season.cupByes || []).length ? winnerOf(lastTies[0]) : null)
+    : leagueOnly() ? (rounds.length && !pending.length ? (standings()[0] || {}).id || null : null)
     : grand ? winnerOf(grand) : null;
   let mode = 'mid';
   if (champion) mode = 'wrap';
@@ -11613,7 +11706,7 @@ function emailHtmlRaw(d, ball, crests) {
     });
   }
 
-  if (d.opt.table && d.st.length) {
+  if (d.opt.table && d.st.length && !isCup()) {
     A.push(H2('Table'));
     A.push('<table role="presentation" cellpadding="0" cellspacing="0" border="0" ' +
       'style="width:100%;border-collapse:collapse;font-size:13px">' +
@@ -11759,7 +11852,7 @@ function emailText(d) {
       if (sc) L.push('    ' + sc);
     });
   }
-  if (d.opt.table && d.st.length) {
+  if (d.opt.table && d.st.length && !isCup()) {
     L.push('', 'TABLE', rule, pad('#', 3) + pad('Team', 20) + padL('P', 3) + padL('W', 3) + padL('D', 3) +
       padL('L', 3) + padL('GD', 4) + padL('Pts', 5));
     d.st.forEach(r => L.push(pad(r.pos, 3) + pad(r.name, 20) + padL(r.P, 3) + padL(r.W, 3) + padL(r.D, 3) +
@@ -11867,14 +11960,19 @@ function publicPageHtml() {
      missing. Both are built from classes the page already has, so nothing
      new has to be styled for them. */
   const koRows = () => {
-    const ko = ['SF1', 'SF2', 'F', 'P3', 'SV1', 'SV2', 'SVF', 'SV3']
-      .map(s => DB.fixtures.find(x => x.stage === s)).filter(x => x && (x.homeId || x.awayId));
+    // a cup's bracket is its rounds; a league's is the four named ties
+    const ko = isCup()
+      ? DB.fixtures.filter(x => x.stage === 'regular').slice()
+          .sort((a, b) => a.round - b.round || String(a.time || '').localeCompare(String(b.time || '')))
+      : ['SF1', 'SF2', 'F', 'P3', 'SV1', 'SV2', 'SVF', 'SV3']
+          .map(s => DB.fixtures.find(x => x.stage === s)).filter(x => x && (x.homeId || x.awayId));
     if (!ko.length) return '';
     const side = id => id ? dot(id) + esc(teamName(id)) : '<span class="dim">to be decided</span>';
-    return h2('Finals') + '<div class="tw"><table>' + ko.map(f => {
+    return h2(isCup() ? 'The cup' : 'Finals') + '<div class="tw"><table>' + ko.map(f => {
       const done = f.status === 'final', w = done ? winnerOf(f) : null;
       const bold = (id, s) => w && w === id ? '<b>' + s + '</b>' : s;
-      return '<tr style="--tc:' + tc(f.homeId) + '"><td class="sub dim">' + esc(stageLabel(f.stage)) + '</td>' +
+      return '<tr style="--tc:' + tc(f.homeId) + '"><td class="sub dim">' +
+        esc(isCup() ? cupRoundName(f.round) : stageLabel(f.stage)) + '</td>' +
         '<td class="tm">' + bold(f.homeId, side(f.homeId)) + '</td>' +
         '<td class="n dim">v</td><td>' + bold(f.awayId, side(f.awayId)) + '</td>' +
         '<td class="n">' + (done
@@ -11936,11 +12034,11 @@ function publicPageHtml() {
     (live.length ? h2('Live now', live) + grid(live) : '') +
     (d.nextFx.length ? h2(esc(d.nextTitle), d.nextFx) + grid(d.nextFx.slice().sort(order)) : '') +
     (d.lastFx.length ? h2(esc(d.lastTitle), d.lastFx) + grid(d.lastFx.slice().sort(order)) : '') +
-    '<div class="two"><div>' + h2('Table') + (st.length ? '<div class="tw"><table><tr><th class="n">#</th><th>Team</th>' +
+    '<div class="two">' + (isCup() ? '' : '<div>' + h2('Table') + (st.length ? '<div class="tw"><table><tr><th class="n">#</th><th>Team</th>' +
         '<th class="n">P</th><th class="n">GD</th><th class="n">Pts</th></tr>' +
         st.map(r => '<tr' + q(r) + ' style="--tc:' + tc(r.id) + '"><td class="n dim">' + r.pos + moveMark(mv, r.id) + '</td><td class="tm">' + dot(r.id) + esc(r.name) + '</td>' +
           '<td class="n">' + r.P + '</td><td class="n">' + gd(r) + '</td><td class="n"><b>' + r.Pts + '</b></td></tr>').join('') +
-        '</table></div>' : empty('No teams yet.')) + '</div>' +
+        '</table></div>' : empty('No teams yet.')) + '</div>') +
       (!bootOn() ? '' : '<div>' + h2('Golden Boot') + (scorers.length ? '<div class="tw"><table>' + scRows(scorers.slice(0, 10)) + '</table></div>'
         : empty('No goals logged yet.')) + '</div>') + '</div>' +
     koRows();
@@ -12036,7 +12134,9 @@ function publicPageHtml() {
           '<td class="sub">' + (x.topScorer ? BOOT_ICON + esc(x.topScorer) : '') + '</td><td class="sub hs">' + esc(x.notes || '') + '</td></tr>'; }).join('') +
       '</table></div>'
     : empty('No champions recorded yet.');
-  const tabs = [['dash', 'Dashboard'], ['table', 'Table'], ['matches', 'Fixtures & Results'], ['stats', 'Stats'], ['honours', 'Honours']];
+  // a cup has no table, so the page does not offer one
+  const tabs = [['dash', 'Dashboard'], ['table', 'Table'], ['matches', 'Fixtures & Results'], ['stats', 'Stats'], ['honours', 'Honours']]
+    .filter(([k]) => !(isCup() && k === 'table'));
   const ball = ballBare();
   const app = '<style>' + crestRules('.cr', 'data-c') + '</style>' + '<header><div class="wrap brand">' +
       (ball ? '<span class="ring"><img src="' + ball + '" alt=""></span>' : '') +
