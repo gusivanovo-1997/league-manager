@@ -12100,7 +12100,10 @@ function publicPageHtml() {
       '<b class="avl" style="bottom:' + pct(season) + '%"><span>' + season.toFixed(1) + '</span></b></div>' +
       '<div class="ravg-x">' + rs.map(r => '<span>' + esc(r.stage === 'SEMI' ? 'SF' : r.stage === 'FINAL' ? 'F' : r.short) + '</span>').join('') + '</div></div>';
   }
-  const stats = avg + goalShare() + (!bootOn() ? '' : h2('Golden Boot') + (scorers.length ? '<div class="tw"><table><tr><th class="n">#</th><th>Player</th><th></th>' +
+  /* The share of the goals leads: who is scoring them is the first thing
+     worth knowing. The round-by-round average is a season-shape chart, so
+     it goes to the foot of the page where you look for that sort of thing. */
+  const stats = goalShare() + (!bootOn() ? '' : h2('Golden Boot') + (scorers.length ? '<div class="tw"><table><tr><th class="n">#</th><th>Player</th><th></th>' +
       '<th class="n">Goals</th><th class="n pg">Per game</th></tr>' + scRows(scorers) + '</table></div>' : empty('No goals logged yet.'))) +
     h2('Teams') + (st.length ? '<div class="tw"><table><tr><th>Team</th><th class="n">P</th><th class="n">GF</th><th class="n">GA</th>' +
       '<th class="n">Per game</th><th class="n hs">Clean sheets</th></tr>' +
@@ -12112,7 +12115,8 @@ function publicPageHtml() {
     // cards only when the bulletin carries them: the same choice for the email and the page
     (d.opt.cards && d.cards.length ? h2('Discipline') + '<div class="tw"><table><tr><th>Player</th><th class="n">Yellow</th><th class="n">Red</th></tr>' +
       d.cards.map(r => '<tr><td>' + esc(r.name) + '<div class="sub">' + dot(r.teamId) + esc(teamName(r.teamId)) + '</div></td>' +
-        '<td class="n">' + r.y + '</td><td class="n">' + r.r + '</td></tr>').join('') + '</table></div>' : '');
+        '<td class="n">' + r.y + '</td><td class="n">' + r.r + '</td></tr>').join('') + '</table></div>' : '') +
+    avg;
 
   const hl = honoursSorted(), h0 = hl[0];
   const champOf = x => (x.championId ? team(x.championId) : teamForChampion(x.champion)) || null;
