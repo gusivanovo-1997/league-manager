@@ -2002,8 +2002,11 @@ tspan.gstar{fill:var(--gold)}
       <div class="card"><h3>Golden Boot</h3><div id="dashScorers"></div></div>
     </div>
     <div class="grid g2">
-      <div class="card"><h3>Next match night</h3><div id="dashNext"></div></div>
-      <div class="card"><h3>Last time out</h3><div id="dashLast"></div></div>
+      <!-- A crown says who has won the league before. On a fixture it says
+           nothing about the fixture, and a draw full of them is a draw you
+           have to read past, so these lists are left plain. -->
+      <div class="card"><h3>Next match night</h3><div id="dashNext" data-nostar></div></div>
+      <div class="card"><h3>Last time out</h3><div id="dashLast" data-nostar></div></div>
     </div>
     <div class="card"><h3>Average goals per round of all teams</h3><div id="dashGoals"></div></div>
     <div class="card"><h3>Season shape</h3><div id="dashShape"></div></div>
@@ -2139,7 +2142,7 @@ tspan.gstar{fill:var(--gold)}
         <select id="fxRoundFilter" style="max-width:190px"></select>
         <button class="btn sm" id="btnPrintFx">Print / PDF</button>
       </div>
-      <div id="fxList"></div>
+      <div id="fxList" data-nostar></div>
     </div>
   </section>
 
@@ -2147,7 +2150,7 @@ tspan.gstar{fill:var(--gold)}
   <section class="view" data-view="live">
     <div class="card">
       <div class="row">
-        <select id="liveSel" style="max-width:460px"></select>
+        <select id="liveSel" data-nostar style="max-width:460px"></select>
         <button class="btn accent" id="btnLiveLoad">Open match</button>
         <button class="btn" id="btnCloseTop" data-tip="Close the open match, or clear one left running">Close match</button>
         <button class="btn" id="btnFull" data-tip="Put the match on a TV or a projector">Full screen</button>
@@ -2162,7 +2165,7 @@ tspan.gstar{fill:var(--gold)}
   <section class="view" data-view="attend">
     <div class="card">
       <div class="row">
-        <select id="attSel" style="max-width:360px"></select>
+        <select id="attSel" data-nostar style="max-width:360px"></select>
         <button class="btn sm" id="attPrev" data-tip="Round before">&#8249;</button>
         <button class="btn sm" id="attNext" data-tip="Round after">&#8250;</button>
         <div class="spacer"></div>
@@ -2203,7 +2206,7 @@ tspan.gstar{fill:var(--gold)}
     </div>
     <div class="card"><h3>Form from past 5 matches</h3>
       <div id="resForm"></div></div>
-    <div id="resList"></div>
+    <div id="resList" data-nostar></div>
   </section>
 
   <!-- ══════════════ FINALS ══════════════ -->
@@ -2691,7 +2694,11 @@ function rootFrom(d) {
       bulletin: Object.assign(blankLeague().bulletin, l.bulletin || {}),
       archive: Array.isArray(l.archive) ? l.archive : []
     }));
-    if (!leagueById(r.active)) r.active = r.leagues[0].id;
+    // against THIS root's leagues, not the one still loaded: leagueById reads
+    // the global ROOT, which at this moment is the old copy (or a blank one),
+    // so the saved league never matched and every start fell back to the
+    // first one in the list
+    if (!r.leagues.some(l => l.id === r.active)) r.active = r.leagues[0].id;
     return seedStaff(splitPeople(r, d.people));
   }
   const l = Object.assign(blankLeague(), {}, {});
@@ -2749,6 +2756,7 @@ let storageOk = true, unsaved = false;
 let lastRaw = null;
 function save() {
   if (!storageOk) { unsaved = true; return; }
+  if (typeof autoFinals === 'function') autoFinals();   // the season is over: draw the semis
   syncFinals();                                   // a decided semi always has its final, in every save
   // not while the sync is writing: records that have just come down from the
   // shared copy are read, not corrected, or every tablet rewrites the others
@@ -4562,6 +4570,7 @@ function starOptions(root) {
   const opts = root.nodeName === 'OPTION' ? [root] : root.querySelectorAll ? root.querySelectorAll('option[value]') : [];
   Array.prototype.forEach.call(opts, o => {
     if (!o.hasAttribute('value')) return;              // an option with no value IS its text: leave it
+    if (o.closest('[data-nostar]')) return;            // a list of matches is long enough already
     starRe.lastIndex = 0;
     const t = o.textContent;
     const nt = t.replace(starRe, (nm, i) => t.slice(i + nm.length).startsWith(' ' + CROWN_TXT) ? nm : nm + ' ' + CROWN_TXT + starBy[nm].n);
@@ -4611,7 +4620,10 @@ function starHtml(html, plain) {
   const star = nm => plain
     ? '<span style="margin-left:4px;font-weight:700;color:#b8860b;white-space:nowrap">' + CROWN_TXT + starBy[nm].n + '</span>'
     : '<span class="gstar">' + CROWN_SVG + '<b>' + starBy[nm].n + '</b></span>';
-  return head + body.replace(/>([^<]+)</g, (m, txt) => {
+  return head + body.replace(/>([^<]+)</g, (m, txt, off) => {
+    // the tag this text sits in: marked data-nostar and it keeps its name plain
+    const open = body.lastIndexOf('<', off);
+    if (open >= 0 && body.slice(open, off + 1).indexOf('data-nostar') >= 0) return m;
     const tail = [];
     // a name joined to another with "/" takes its stars after the whole name
     const out = txt.replace(new RegExp(starRe.source, 'g'), (nm, i) =>
@@ -5932,7 +5944,7 @@ function seasonSnapshot(given) {
   // MVPs as Results awards them: the match, and the round (each knockout night is one)
   const fin = fx.filter(f => f.status === 'final'), rounds = {};
   fin.forEach(f => {
-    const m = roundTopScorer({ fx: [f] });
+    const m = matchMvp(f);
     if (m) m.ids.forEach(id => row(id).M++);
     (rounds[roundKey(f)] = rounds[roundKey(f)] || []).push(f);
   });
@@ -7901,7 +7913,7 @@ function drawNextUp() {
     (night[0].date ? '<span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0"> &mdash; ' +
       esc(fmtDate(night[0].date)) + '</span>' : '');
   const side = id => '<span class="nxs">' + crest(id, 'sm') + esc(teamName(id)) + '</span>';
-  $('liveBody').innerHTML = '<div class="card"><h3>' + title + '</h3>' +
+  $('liveBody').innerHTML = '<div class="card" data-nostar><h3>' + title + '</h3>' +
     '<div class="small muted" style="margin:-4px 0 11px">Tap the match you are refereeing.</div>' +
     night.map(x => '<button class="nxm" data-open="' + x.id + '">' +
       '<span class="nxt">' + esc(x.time || '—') + '</span>' +
@@ -8714,7 +8726,7 @@ function renderResults() {
           '<div class="revs"><div>' + resultLines(f, 'h') + '</div><div>' + resultLines(f, 'a') + '</div></div>' +
           // the most goals in the match makes the MVP; level tallies share it
           ((m => m ? '<div class="rmvp"><span class="mvp">MVP</span> <b>' + scorerLinks(m) + '</b> · ' + plural(m.goals, 'goal') + '</div>' : '')(
-            f.status === 'final' ? roundTopScorer({ fx: [f] }) : null)) + '</div>';
+            f.status === 'final' ? matchMvp(f) : null)) + '</div>';
       }).join('') + '</div></details>';
   }).join('');
   $('resList').querySelectorAll('[data-resedit]').forEach(b => b.onclick = () => editResult(b.dataset.resedit));
@@ -8955,10 +8967,10 @@ $('btnLockFinals').onclick = () => {
       ' a result, goals or attendance. Re-locking deletes ' + (played.length === 1 ? 'it' : 'them') + ' and starts the bracket again. Continue?')) return;
   if (DB.fixtures.some(f => f.stage !== 'regular' && f.id === live.id)) { clearInterval(liveTimer); live = { id: null, running: false, elapsed: 0, half: 1, period: 'H1', t0: 0 }; }
   DB.finals3rd = $('finals3rd').checked;
+  delete DB.season.noAutoFinals;        // locking by hand turns the automatic bracket back on
   DB.fixtures = DB.fixtures.filter(f => f.stage === 'regular');
-  const mk = (stage, homeId, awayId) => ({ id: uid(), stage, round: 0, homeId, awayId,
-    date: '', time: '', court: '', status: 'scheduled', homeGoals: 0, awayGoals: 0, events: [],
-    homePens: null, awayPens: null });
+  const night = lastRegularNight();
+  const mk = (stage, homeId, awayId) => blankKO(stage, homeId, awayId, night, night ? addDays(night.date, seasonStep()) : '');
   DB.fixtures.push(mk('SF1', st[0].id, st[3].id));   // gold: 1 v 4
   DB.fixtures.push(mk('SF2', st[1].id, st[2].id));   //       2 v 3
   const silver = st.length >= 8;
@@ -8976,8 +8988,54 @@ $('btnClearFinals').onclick = () => {
   if (!confirm('Remove all finals matches?' + (played.length ? '\n\n' + plural(played.length, 'of them has', 'of them have') +
       ' a result, goals or attendance — that goes too.' : ''))) return;
   if (DB.fixtures.some(f => f.stage !== 'regular' && f.id === live.id)) { clearInterval(liveTimer); live = { id: null, running: false, elapsed: 0, half: 1, period: 'H1', t0: 0 }; }
-  DB.fixtures = DB.fixtures.filter(f => f.stage === 'regular'); save(); render(); liveTicker();
+  DB.fixtures = DB.fixtures.filter(f => f.stage === 'regular');
+  DB.season.noAutoFinals = true;        // or the next save would put them straight back
+  save(); render(); liveTicker();
+  toast('Finals removed. Press Lock semi-finals when you want them back.');
 };
+/* A league keeps a rhythm: every Thursday, or every other Thursday. The
+   draw already says which — the gap between its last two match days — so
+   the finals keep the same night rather than asking for one. */
+function seasonStep() {
+  const dates = [...new Set(DB.fixtures.filter(f => f.stage === 'regular' && f.date).map(f => f.date))].sort();
+  if (dates.length < 2) return 7;
+  const a = Date.parse(dates[dates.length - 2] + 'T00:00:00'), b = Date.parse(dates[dates.length - 1] + 'T00:00:00');
+  const weeks = Math.round((b - a) / 86400e3 / 7);
+  return Math.min(4, Math.max(1, weeks || 1)) * 7;       // whole weeks, so the weekday never moves
+}
+// the last night the league played, and what time it kicked off
+function lastRegularNight() {
+  const reg = DB.fixtures.filter(f => f.stage === 'regular' && f.date);
+  if (!reg.length) return null;
+  const date = reg.map(f => f.date).sort().pop();
+  const on = reg.filter(f => f.date === date);
+  return { date, time: (on.find(f => f.time) || {}).time || '', court: (on.find(f => f.court) || {}).court || '' };
+}
+const blankKO = (stage, homeId, awayId, night, date) => ({ id: uid(), stage, round: 0, homeId, awayId,
+  date: date || '', time: (night && night.time) || '', court: (night && night.court) || '',
+  status: 'scheduled', homeGoals: 0, awayGoals: 0, events: [], homePens: null, awayPens: null });
+
+/* The bracket no longer waits to be pressed. Once every regular match is in
+   — played or called off — the top four are known and so are five to eight,
+   so the semi-finals are drawn and put on the league's next night. Clearing
+   them by hand says you did not want them, and they stay gone until you
+   lock them yourself. */
+function autoFinals() {
+  if (leagueOnly() || DB.season.noAutoFinals) return false;
+  if (DB.fixtures.some(f => f.stage !== 'regular')) return false;        // a bracket already exists
+  const reg = DB.fixtures.filter(f => f.stage === 'regular');
+  if (!reg.length || !reg.every(f => f.status === 'final' || isOff(f))) return false;
+  const st = standings();
+  if (st.length < 4) return false;
+  const night = lastRegularNight(), when = night ? addDays(night.date, seasonStep()) : '';
+  DB.fixtures.push(blankKO('SF1', st[0].id, st[3].id, night, when));     // gold: 1 v 4
+  DB.fixtures.push(blankKO('SF2', st[1].id, st[2].id, night, when));     //       2 v 3
+  if (st.length >= 8) {
+    DB.fixtures.push(blankKO('SV1', st[4].id, st[7].id, night, when));   // silver: 5 v 8
+    DB.fixtures.push(blankKO('SV2', st[5].id, st[6].id, night, when));   //         6 v 7
+  }
+  return true;
+}
 function winnerOf(f) {
   if (!f || f.status !== 'final') return null;
   if (f.homeGoals > f.awayGoals) return f.homeId;
@@ -9000,8 +9058,11 @@ function syncFinals() {
   const sf1 = get('SF1'), sf2 = get('SF2');
   if (!sf1 || !sf2) return false;
   const pair = (f, a, b) => (f.homeId === a && f.awayId === b) || (f.homeId === b && f.awayId === a);
-  const blank = (stage, homeId, awayId) => ({ id: uid(), stage, round: 0, homeId, awayId, date: '', time: '', court: '',
-    status: 'scheduled', homeGoals: 0, awayGoals: 0, events: [], homePens: null, awayPens: null });
+  // the night after the semis, by the same rhythm the season has been keeping
+  const sfNight = { time: sf1.time || sf2.time || '', court: sf1.court || sf2.court || '' };
+  const sfDate = sf1.date || sf2.date || '';
+  const finDate = sfDate ? addDays(sfDate, seasonStep()) : '';
+  const blank = (stage, homeId, awayId) => blankKO(stage, homeId, awayId, sfNight, finDate);
   const untouched = f => f.status === 'scheduled' && !(f.events || []).length && !attendedIn(f).length;
   let changed = false;
   const w1 = winnerOf(sf1), w2 = winnerOf(sf2);
@@ -9303,6 +9364,24 @@ function hatMap() {
   return m;
 }
 /* who scored the most in one game: ties share it, unnamed goals never win it */
+/* The man of the match, for ONE match. A round can be shared — three
+   players with a hat-trick each all had a round worth talking about — but a
+   match cannot: five players with a goal apiece is not five men of the
+   match, it is a game that needs somebody to pick one. So when a match is
+   level at the top, one of them gets it.
+
+   The draw is made from the fixture's own id, which means it is random to
+   look at and the same answer every time — on this tablet, on the next one
+   and on the live page, today and in March. A name that changed every time
+   the page was drawn would be worse than no name at all. */
+function matchMvp(f) {
+  const m = roundTopScorer({ fx: [f] });
+  if (!m || m.ids.length < 2) return m;
+  const ids = m.ids.slice().sort();                  // a fixed order to draw from
+  let x = 0x811c9dc5, seed = String(f.id) + '|mvp';
+  for (let i = 0; i < seed.length; i++) { x ^= seed.charCodeAt(i); x = Math.imul(x, 0x01000193) >>> 0; }
+  return { ids: [ids[x % ids.length]], goals: m.goals, drawn: true };
+}
 function roundTopScorer(r) {
   const n = {};
   const sides = [];
@@ -11277,7 +11356,7 @@ function emailHtmlRaw(d, ball, crests) {
       '<b style="font-size:13.5px;color:' + INK + '">' + esc(teamName(tid)) + '</b>'; };
   // the MVP: the most goals in the match (or the round), shared when level
   const MVP = '<span style="display:inline-block;background-color:#e9a100;color:#1a1613;font-size:9.5px;font-weight:800;letter-spacing:1px;padding:1px 7px;border-radius:9px">MVP</span>';
-  const mvpOf = f => { const m = roundTopScorer({ fx: [f] });
+  const mvpOf = f => { const m = matchMvp(f);
     return m ? '<div style="font-size:12px;margin-top:4px;color:' + INK + '">' + MVP + ' ' +
       m.ids.map(id => '<b style="white-space:nowrap">' + badge((personTeam(id) || {}).id, 18) + esc(personName(id)) + '</b>').join(', ') +
       ' &middot; ' + mvpGoals(m) + '</div>' : ''; };
@@ -11491,7 +11570,7 @@ function emailHtmlRaw(d, ball, crests) {
       '<td style="padding:6px 4px;border-bottom:1px solid ' + HAIR + ';color:' + (win ? ACC : DIM) + ';width:' + (win ? '40px' : '22px') +
         ';font-weight:' + (win ? '700' : '400') + '">' + (win ? (bootImg(36) || place[i]) : place[i]) + '</td>' +
       '<td style="padding:6px 4px;border-bottom:1px solid ' + HAIR + '">' + esc(r.name) + '</td>' +
-      '<td style="padding:6px 4px;border-bottom:1px solid ' + HAIR + ';color:' + DIM + ';font-size:12px">' +
+      '<td data-nostar style="padding:6px 4px;border-bottom:1px solid ' + HAIR + ';color:' + DIM + ';font-size:12px">' +
         dot(r.teamId) + esc(teamName(r.teamId)) + '</td>' +
       // a bar the width of the tally: the one chart an email can be trusted with
       '<td style="padding:6px 4px;border-bottom:1px solid ' + HAIR + ';width:88px">' +
@@ -11508,7 +11587,7 @@ function emailHtmlRaw(d, ball, crests) {
     A.push('<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;font-size:13px">');
     d.cards.slice(0, 10).forEach(r => A.push('<tr>' +
       '<td style="padding:6px 4px;border-bottom:1px solid ' + HAIR + '">' + esc(r.name) + '</td>' +
-      '<td style="padding:6px 4px;border-bottom:1px solid ' + HAIR + ';color:' + DIM + ';font-size:12px">' +
+      '<td data-nostar style="padding:6px 4px;border-bottom:1px solid ' + HAIR + ';color:' + DIM + ';font-size:12px">' +
         dot(r.teamId) + esc(teamName(r.teamId)) + '</td>' +
       '<td style="padding:6px 4px;border-bottom:1px solid ' + HAIR + ';text-align:right;color:#8a6200">' + r.y + 'Y</td>' +
       '<td style="padding:6px 4px;border-bottom:1px solid ' + HAIR + ';text-align:right;color:#b32d22;width:34px">' +
@@ -11665,7 +11744,7 @@ function grandWinners() {
   const out = [];
   [['F', 'Gold champions', 'gold'], ['SVF', 'Silver Cup winners', 'silver']].forEach(([stg, label, cls]) => {
     const f = DB.fixtures.find(x => x.stage === stg), w = winnerOf(f);
-    const m = w && roundTopScorer({ fx: [f] });
+    const m = w && matchMvp(f);
     if (w) out.push([label, teamName(w), 'beat ' + teamName(loserOf(f)) + ' ' + Math.max(f.homeGoals, f.awayGoals) + '–' + Math.min(f.homeGoals, f.awayGoals) +
       (f.homePens != null && f.homeGoals === f.awayGoals ? ' on penalties' : '') + (m ? ' · MVP ' + m.ids.map(personName).join(' & ') : ''), w, cls]);
   });
@@ -11703,7 +11782,7 @@ function publicPageHtml() {
         '<span class="t' + (w === f.awayId ? ' w' : '') + '">' + dot(f.awayId) + '<span class="nm">' + esc(teamName(f.awayId)) + '</span></span></div>' +
       (steps ? '<div class="kon">' + esc(steps).replace(/, /g, ' <i>›</i> ') + '</div>' : '') +
       (hs || as ? '<div class="evs"><span>' + hs + '</span><span>' + as + '</span></div>' : '') +
-      ((m => m ? '<div class="mvp"><span>MVP</span> ' + mvpNamed(m, dot, ' ') + ' &middot; ' + mvpGoals(m) + '</div>' : '')(done ? roundTopScorer({ fx: [f] }) : null)) +
+      ((m => m ? '<div class="mvp"><span>MVP</span> ' + mvpNamed(m, dot, ' ') + ' &middot; ' + mvpGoals(m) + '</div>' : '')(done ? matchMvp(f) : null)) +
       '<div class="meta">' + [on ? '<b class="lv">● LIVE</b>' : '', isWO(f) ? '<b class="wo">walkover</b>' : '',
         f.date ? esc(fmtDate(f.date)) + (isMoved(f) ? ' <b class="rsx">rescheduled</b>' : '') : s ? '' : 'date to be set',
         f.court ? 'Court ' + esc(f.court) : ''].filter(Boolean).join(' · ') + '</div></div>';
@@ -11722,7 +11801,7 @@ function publicPageHtml() {
   const scorers = scorerTable().filter(r => r.personId), best = bootTop(scorers);
   const scRows = list => { const place = bootPlaces(list); return list.map((r, i) => '<tr style="--tc:' + tc(r.teamId) + '"><td class="n dim">' +
     (bootHas(r, best) ? BOOT_ICON : place[i]) + '</td><td class="tm">' + esc(r.name) +
-    '<div class="sub">' + dot(r.teamId) + esc(teamName(r.teamId)) + '</div></td>' +
+    '<div class="sub" data-nostar>' + dot(r.teamId) + esc(teamName(r.teamId)) + '</div></td>' +
     '<td class="barc"><div class="bar"><i style="width:' + Math.round(best ? r.goals / best * 100 : 0) + '%;background:' + tc(r.teamId) + '"></i></div></td>' +
     '<td class="n"><b>' + r.goals + '</b></td><td class="n dim pg">' + perGame(r) + '</td></tr>').join(''); };
   const champ = ph.champion ? '<div class="champ"><span>Champions</span><b>🏆 ' + esc(teamName(ph.champion)) + '</b>' +
@@ -13431,7 +13510,6 @@ function unlock(person) {
   // stay where you were if you are allowed to be there, otherwise your first league
   if (!mine.some(l => l.id === ROOT.active)) { ROOT.active = mine[0].id; bindDB(); }
   role = roleIn(activeLeague());
-  try { sessionStorage.setItem(ROLE_KEY, me.id); } catch (e) {}
   $('gate').classList.remove('on');
   $('roleChip').style.display = '';
   $('roleChip').className = 'rolechip' + (isMgr() ? '' : ' ref');
@@ -13718,11 +13796,11 @@ $('fxStart').onblur = () => {
   if (currentView === 'fixtures') renderFixtures();
 };
 syncLoop();
-let resumed = null;
-try { resumed = sessionStorage.getItem(ROLE_KEY); } catch (e) {}
-const back = resumed && (ROOT.staff || []).find(s => s.id === resumed);
-if (back) unlock(back);
-else showGate();
+/* The PIN is asked for every time the page is opened. It used to remember
+   who you were for the life of the tab, so a refresh walked straight back
+   in — convenient on your own machine, wrong on a tablet that gets handed
+   round a court. */
+showGate();
 window.addEventListener('beforeunload', e => {
   save();
   if (unsaved && (DB.teams.length || DB.people.length)) { e.preventDefault(); e.returnValue = ''; }
