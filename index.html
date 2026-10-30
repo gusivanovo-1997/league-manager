@@ -774,6 +774,24 @@ input.err,select.err{border-color:var(--bad);box-shadow:0 0 0 3px rgba(255,107,1
   .viz-donut{width:92px;height:92px}
 }
 
+body.noboot .bootcard{display:none}
+/* the bracket on the dashboard: one row per tie */
+.kostrip{display:flex;flex-direction:column;gap:5px}
+.korow{display:grid;grid-template-columns:minmax(74px,auto) minmax(0,1fr) auto minmax(0,1fr) auto;gap:4px 8px;align-items:center;
+  padding:7px 9px;border-radius:9px;border:1px solid var(--line);border-left:3px solid var(--gold);background:var(--card);
+  font-size:calc(12.5px * var(--fs))}
+.korow.sv{border-left-color:var(--silver)}
+.korow .kost{color:var(--dim);font-size:calc(10.5px * var(--fs));letter-spacing:.6px;text-transform:uppercase}
+.korow .kotm{display:flex;align-items:center;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.korow .kotm.w{font-weight:800}
+.korow .kotm .crest{margin-top:0;margin-bottom:0}
+.korow .kov{font-style:normal;color:var(--dim)}
+.korow .kores{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+@media (max-width:560px){
+  .korow{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);row-gap:2px}
+  .korow .kost{grid-column:1/-1}
+  .korow .kores{grid-column:1/-1;text-align:left}
+}
 /* ---------- the dashboard ---------- */
 .viz-race{width:100%;height:330px;overflow:visible}
 .race-line{fill:none;stroke:var(--viz-draw);stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round;
@@ -1999,12 +2017,21 @@ tspan.gstar{fill:var(--gold)}
       letter-spacing:0" id="raceNote"></span></h3><div id="dashRace"></div></div>
     <div class="grid g2">
       <div class="card"><h3>Standings</h3><div id="dashTable"></div></div>
-      <div class="card"><h3>Golden Boot</h3><div id="dashScorers"></div></div>
+      <div class="card bootcard"><h3>Golden Boot</h3><div id="dashScorers"></div></div>
     </div>
     <div class="grid g2">
       <!-- A crown says who has won the league before. On a fixture it says
            nothing about the fixture, and a draw full of them is a draw you
            have to read past, so these lists are left plain. -->
+    </div>
+    <div class="grid g2">
+      <!-- Once the bracket is locked it is the thing everybody wants to see,
+           and it was only on the Finals tab. The share of the goals is the
+           other figure worth a glance: who is actually scoring them. -->
+      <div class="card" id="dashFinalsCard" style="display:none"><h3 class="goldtxt">Finals</h3><div id="dashFinals" data-nostar></div></div>
+      <div class="card"><h3>Goals scored, by team</h3><div id="dashGoals"></div></div>
+    </div>
+    <div class="grid g2">
       <div class="card"><h3>Next match night</h3><div id="dashNext" data-nostar></div></div>
       <div class="card"><h3>Last time out</h3><div id="dashLast" data-nostar></div></div>
     </div>
@@ -2229,7 +2256,7 @@ tspan.gstar{fill:var(--gold)}
   <section class="view" data-view="stats">
     <div class="card"><h3>Average goals per round of all teams</h3><div id="vizRoundAvg"></div></div>
     <div class="grid g2 wide">
-      <div class="card"><h3>Golden Boot <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— the top 10</span></h3>
+      <div class="card bootcard"><h3>Golden Boot <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— the top 10</span></h3>
         <div class="tbl-wrap"><table id="scorerTbl"></table></div></div>
     </div>
     <div class="card"><h3>Goals scored, by team</h3><div id="vizGoals"></div></div>
@@ -2512,6 +2539,13 @@ tspan.gstar{fill:var(--gold)}
           <option value="finals">League + finals (gold 1–4, silver 5–8)</option>
           <option value="league">League only — pontos corridos, no finals</option></select></div>
       </div>
+      <!-- Some competitions do not count who scored: a social league where
+           nobody wants a top-scorer table, or one where the goals are not
+           logged by name at all. Turning this off takes the Golden Boot and
+           every man of the match with it, here and in the bulletin and on
+           the live page — not hidden, not counted. -->
+      <label class="row small" style="gap:7px;margin:4px 0 12px"><input type="checkbox" id="stBoot">
+        <b>Count goalscorers</b> — the Golden Boot, the man of the match and the MVP of the round</label>
       <button class="btn accent" id="btnSaveSettings">Save season settings</button>
     </div>
 
@@ -3239,7 +3273,13 @@ function allEvents(every) {
   DB.fixtures.forEach(f => (f.events || []).forEach(e => { if (every || e.adj || countsMatch(f)) out.push(Object.assign({ fixture: f }, e)); }));
   return out;
 }
+/* Whether this competition counts who scored. Off, and there is no Golden
+   Boot and no man of the match anywhere — the two tables that feed them
+   come back empty, so every surface that reads them simply has nothing to
+   draw rather than each one needing to be told. */
+const bootOn = () => !DB.season.noBoot;
 function scorerTable() {
+  if (!bootOn()) return [];
   const m = {};
   allEvents().forEach(e => {
     if (e.type !== 'goal') return;                      // own goals excluded from scorers
@@ -4433,6 +4473,7 @@ function render() {
   if (syncFinals()) save();               // e.g. a file restored with both semis decided and no final yet
   if (seedCrests()) save();
   paintCrests();
+  document.body.classList.toggle('noboot', !bootOn());
   starsRefresh();
   paintFinalsTab();
   paintSubTabs();
@@ -4874,6 +4915,29 @@ function raceRun(id) {
   raceRaf = requestAnimationFrame(tick);
 }
 
+/* The bracket, as a line per tie: who plays who, and either the night it
+   happens or what it finished. The Finals tab draws the whole thing with
+   its trophies; a dashboard only needs to answer "who is left". */
+const KO_ORDER = ['SF1', 'SF2', 'F', 'P3', 'SV1', 'SV2', 'SVF', 'SV3'];
+function finalsStrip() {
+  const ko = KO_ORDER.map(s => DB.fixtures.find(f => f.stage === s)).filter(f => f && (f.homeId || f.awayId));
+  if (!ko.length) return '';
+  const side = id => id ? crest(id, 'sm') + esc(teamName(id)) : '<span class="muted">to be decided</span>';
+  return '<div class="kostrip">' + ko.map(f => {
+    const done = f.status === 'final', w = done ? winnerOf(f) : null;
+    const right = done
+      ? '<b>' + f.homeGoals + '&ndash;' + f.awayGoals + (f.homePens != null && f.homeGoals === f.awayGoals
+          ? ' <span class="muted">(' + f.homePens + '&ndash;' + f.awayPens + 'p)</span>' : '') + '</b>'
+      : '<span class="muted">' + (f.date ? esc(fmtDate(f.date)) + (f.time ? ' ' + esc(f.time) : '') : 'date to be set') + '</span>';
+    return '<div class="korow' + (/^SV/.test(f.stage) ? ' sv' : '') + '">' +
+      '<span class="kost">' + esc(stageLabel(f.stage)) + '</span>' +
+      '<span class="kotm' + (w && w === f.homeId ? ' w' : '') + '">' + side(f.homeId) + '</span>' +
+      '<i class="kov">v</i>' +
+      '<span class="kotm' + (w && w === f.awayId ? ' w' : '') + '">' + side(f.awayId) + '</span>' +
+      '<span class="kores">' + right + '</span></div>';
+  }).join('') + '</div>';
+}
+
 /* the standings, as a bar chart you can still read as a table */
 function dashLadder(st) {
   const max = Math.max(1, ...st.map(r => r.Pts));
@@ -4987,6 +5051,14 @@ function renderDash() {
   const st = standings();
   $('dashTable').innerHTML = st.length ? dashLadder(st)
     : '<div class="empty">Add teams to see the table.</div>';
+
+  const strip = finalsStrip();
+  $('dashFinalsCard').style.display = strip ? '' : 'none';
+  $('dashFinals').innerHTML = strip;
+  const gls = st.map(r => Object.assign({}, r, playedAll(r.id))).sort((a, b) => b.GF - a.GF || a.name.localeCompare(b.name));
+  $('dashGoals').innerHTML = st.length && gls[0].GF
+    ? vizShare(gls.map(r => ({ label: r.name, value: r.GF, tid: r.id, colour: (team(r.id) || {}).colour })))
+    : '<div class="empty">No goals yet.</div>';
 
   $('dashRace').innerHTML = vizRace();
   raceRun('dashRace');                                 // the season played through, heads and all
@@ -9383,6 +9455,7 @@ function matchMvp(f) {
   return { ids: [ids[x % ids.length]], goals: m.goals, drawn: true };
 }
 function roundTopScorer(r) {
+  if (!bootOn()) return null;
   const n = {};
   const sides = [];
   r.fx.forEach(f => {
@@ -9540,6 +9613,7 @@ const SETMAP = [['stName', 'name'], ['stYear', 'year'], ['stVenue', 'venue'], ['
   ['stYc', 'ycSuspend'], ['stAge', 'minAge'], ['stFee', 'fee'], ['stFormat', 'format']];
 function renderSettings() {
   SETMAP.forEach(([el, key]) => fill(el, DB.season[key]));
+  $('stBoot').checked = bootOn();
   paintAccess();
   let bytes = 0;
   try { bytes = (localStorage.getItem(KEY) || '').length; } catch (e) {}
@@ -9587,6 +9661,7 @@ $('btnSaveSettings').onclick = () => {
     return toast(lbl + ': ' + (num ? 'enter a number' + (e.min !== '' ? ' from ' + e.min + (e.max !== '' ? ' to ' + e.max : ' up') : '')
       : 'this cannot be blank') + '. Nothing was saved.', 'bad');
   }
+  if ($('stBoot').checked) delete DB.season.noBoot; else DB.season.noBoot = true;
   const old = DB.season.name, oldYear = DB.season.year, fmtWas = DB.season.format;
   const renaming = $('stName').value.trim() !== old;
   const correction = renaming && confirm('Rename "' + old + '" to "' + $('stName').value.trim() + '"?\n\n' +
@@ -11230,10 +11305,10 @@ function bulletinParts() {
       st.length && st[0].P ? st[0].id : null],
     // goals logged without a player still count for the team, but a row
     // called "Unattributed" must not be announced as the leading scorer
-    ['Golden Boot', boots.length ? boots.map(r => r.name).join(', ') : '—',
+    ...(!bootOn() ? [] : [['Golden Boot', boots.length ? boots.map(r => r.name).join(', ') : '—',
       boots.length > 1 ? plural(boots[0].goals, 'goal') + ' each — ' + boots.length + ' share it'
         : named ? plural(named.goals, 'goal') + ' for ' + teamName(named.teamId) + ' · ' + perGame(named) + ' a game'
-            : (scorers.length ? 'no goals logged against a named player yet' : '—'), named ? named.teamId : null],
+            : (scorers.length ? 'no goals logged against a named player yet' : '—'), named ? named.teamId : null]]),
     // the MVP of the round, and the match they did it in: a round, or which final
     ...((m => m ? [['MVP of the round', m.ids.map(personName).join(' & '), mvpGoals(m) + ' — ' +
       [...new Set(m.ids.map(id => { const f = lastFx.find(x => (x.events || []).some(e => !e.adj && e.type === 'goal' && e.personId === id));
@@ -11788,6 +11863,38 @@ function publicPageHtml() {
         f.court ? 'Court ' + esc(f.court) : ''].filter(Boolean).join(' · ') + '</div></div>';
   };
   const grid = list => '<div class="grid">' + list.map(card).join('') + '</div>';
+  /* The bracket, and who is scoring the goals — the two things the page was
+     missing. Both are built from classes the page already has, so nothing
+     new has to be styled for them. */
+  const koRows = () => {
+    const ko = ['SF1', 'SF2', 'F', 'P3', 'SV1', 'SV2', 'SVF', 'SV3']
+      .map(s => DB.fixtures.find(x => x.stage === s)).filter(x => x && (x.homeId || x.awayId));
+    if (!ko.length) return '';
+    const side = id => id ? dot(id) + esc(teamName(id)) : '<span class="dim">to be decided</span>';
+    return h2('Finals') + '<div class="tw"><table>' + ko.map(f => {
+      const done = f.status === 'final', w = done ? winnerOf(f) : null;
+      const bold = (id, s) => w && w === id ? '<b>' + s + '</b>' : s;
+      return '<tr style="--tc:' + tc(f.homeId) + '"><td class="sub dim">' + esc(stageLabel(f.stage)) + '</td>' +
+        '<td class="tm">' + bold(f.homeId, side(f.homeId)) + '</td>' +
+        '<td class="n dim">v</td><td>' + bold(f.awayId, side(f.awayId)) + '</td>' +
+        '<td class="n">' + (done
+          ? '<b>' + f.homeGoals + '&ndash;' + f.awayGoals + '</b>' +
+            (f.homePens != null && f.homeGoals === f.awayGoals ? ' <span class="dim">(' + f.homePens + '&ndash;' + f.awayPens + 'p)</span>' : '')
+          : '<span class="dim">' + (f.date ? esc(fmtDate(f.date)) : 'to be set') + '</span>') + '</td></tr>';
+    }).join('') + '</table></div>';
+  };
+  const goalShare = () => {
+    const rows = st.map(r => Object.assign({}, r, playedAll(r.id))).filter(r => r.GF > 0)
+      .sort((a, b) => b.GF - a.GF || a.name.localeCompare(b.name));
+    const tot = rows.reduce((t, r) => t + r.GF, 0);
+    if (!tot) return '';
+    const top = rows[0].GF;
+    return h2('Goals scored, by team') + '<div class="tw"><table>' + rows.map(r =>
+      '<tr style="--tc:' + tc(r.id) + '"><td class="tm">' + dot(r.id) + esc(r.name) + '</td>' +
+      '<td class="barc"><div class="bar"><i style="width:' + Math.round(r.GF / top * 100) + '%;background:' + tc(r.id) + '"></i></div></td>' +
+      '<td class="n"><b>' + r.GF + '</b></td>' +
+      '<td class="n dim pg">' + (r.GF / tot * 100).toFixed(1) + '%</td></tr>').join('') + '</table></div>';
+  };
   const h2 = (t, list) => {
     const k = (list || []).filter(f => f.stage !== 'regular');
     return '<h2' + (k.length ? (k.some(f => !/^SV/.test(f.stage)) ? ' class="g"' : ' class="s"') : '') + '>' + t + '</h2>';
@@ -11834,8 +11941,9 @@ function publicPageHtml() {
         st.map(r => '<tr' + q(r) + ' style="--tc:' + tc(r.id) + '"><td class="n dim">' + r.pos + moveMark(mv, r.id) + '</td><td class="tm">' + dot(r.id) + esc(r.name) + '</td>' +
           '<td class="n">' + r.P + '</td><td class="n">' + gd(r) + '</td><td class="n"><b>' + r.Pts + '</b></td></tr>').join('') +
         '</table></div>' : empty('No teams yet.')) + '</div>' +
-      '<div>' + h2('Golden Boot') + (scorers.length ? '<div class="tw"><table>' + scRows(scorers.slice(0, 10)) + '</table></div>'
-        : empty('No goals logged yet.')) + '</div></div>';
+      (!bootOn() ? '' : '<div>' + h2('Golden Boot') + (scorers.length ? '<div class="tw"><table>' + scRows(scorers.slice(0, 10)) + '</table></div>'
+        : empty('No goals logged yet.')) + '</div>') + '</div>' +
+    koRows();
 
   /* ── the full table, with form ── */
   const formOf = id => '<span class="fm">' + teamForm(id, 5, true).map(x => '<a href="#m' + esc(x.id) + '" class="' + x.r + '" data-go="' + esc(x.id) + '" title="' + esc(x.t) + '">' + x.r + '</a>').join('') + '</span>';
@@ -11894,8 +12002,8 @@ function publicPageHtml() {
       '<b class="avl" style="bottom:' + pct(season) + '%"><span>' + season.toFixed(1) + '</span></b></div>' +
       '<div class="ravg-x">' + rs.map(r => '<span>' + esc(r.stage === 'SEMI' ? 'SF' : r.stage === 'FINAL' ? 'F' : r.short) + '</span>').join('') + '</div></div>';
   }
-  const stats = avg + h2('Golden Boot') + (scorers.length ? '<div class="tw"><table><tr><th class="n">#</th><th>Player</th><th></th>' +
-      '<th class="n">Goals</th><th class="n pg">Per game</th></tr>' + scRows(scorers) + '</table></div>' : empty('No goals logged yet.')) +
+  const stats = avg + goalShare() + (!bootOn() ? '' : h2('Golden Boot') + (scorers.length ? '<div class="tw"><table><tr><th class="n">#</th><th>Player</th><th></th>' +
+      '<th class="n">Goals</th><th class="n pg">Per game</th></tr>' + scRows(scorers) + '</table></div>' : empty('No goals logged yet.'))) +
     h2('Teams') + (st.length ? '<div class="tw"><table><tr><th>Team</th><th class="n">P</th><th class="n">GF</th><th class="n">GA</th>' +
       '<th class="n">Per game</th><th class="n hs">Clean sheets</th></tr>' +
       st.map(r0 => {
