@@ -2298,7 +2298,7 @@ tspan.gstar{fill:var(--gold)}
       <div class="row">
         <h3 style="margin:0">Match fees</h3>
         <div class="spacer"></div>
-        <button class="btn accent sm" id="btnFinReport">Attendance summary report</button>
+        <button class="btn accent sm" id="btnFinReport">Fee summary report</button>
       </div>
       <div class="small muted" style="margin-top:8px">A dated record of what every team paid on every
         night, and what the season has taken by the moment you press it. Choose <b>Save as PDF</b> in
@@ -3789,7 +3789,7 @@ function renderFinance() {
   $('finBody').querySelectorAll('[data-fingo]').forEach(tr => tr.onclick = () => { attKey = tr.dataset.fingo; go('attend'); });
 }
 
-/* ── the attendance summary report ───────────────────────────
+/* ── the fee summary report ─────────────────────────────────
    The money as a document rather than a screen: what each team paid on each
    night from the players who actually turned up, what the night came to, and
    what the season has taken by the moment the button was pressed.
@@ -3801,7 +3801,7 @@ function renderFinance() {
    hidden frame, the way the draw is printed: "Save as PDF" in the print
    window is the file. */
 function printFinance() {
-  if (!requireMgr('The attendance summary report')) return;
+  if (!requireMgr('The fee summary report')) return;
   const rs = attendRounds(), fee = feeOf();
   if (!rs.length) return toast('No fixtures yet — there is nothing to report on.', 'bad');
   const $$ = n => '$' + money(n * fee);
@@ -3935,12 +3935,12 @@ function printFinance() {
     'footer .v{color:#d7d4d1;font-size:11.5px;margin-top:2px}';
 
   const doc = '<!doctype html><html><head><meta charset="utf-8"><title>' +
-    esc(comp + ' — attendance summary') + '</title><style>' + css + '</style></head><body><div class="wrap">' +
+    esc(comp + ' — fee summary') + '</title><style>' + css + '</style></head><body><div class="wrap">' +
     '<header>' + (ball ? '<img src="' + ball + '" alt="">' : '') +
       '<div><h1><span class="lg">League</span> Manager</h1></div>' +
       '<div class="v"><b>' + esc(client) + '</b>' + (under ? '<span class="c">' + esc(under) + '</span>' : '') +
         (DB.season.venue ? '<span class="c">' + esc(DB.season.venue) + '</span>' : '') + '</div></header>' +
-    '<div class="ttl"><h2>Attendance Summary Report</h2><div class="u"></div>' +
+    '<div class="ttl"><h2>Fee Summary Report</h2><div class="u"></div>' +
       '<p>Match fees by round and by team, counted on the players who turned up on the night.</p></div>' +
     tiles +
     '<h4>Takings by round</h4>' + roundTbl +
