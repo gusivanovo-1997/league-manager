@@ -1898,6 +1898,10 @@ tspan.gstar{fill:var(--gold)}
   background:linear-gradient(90deg,color-mix(in srgb,var(--tc) 22%,transparent),transparent)}
 .pltbl tr[data-pl]:hover td{background-color:rgba(255,138,61,.07)}
 .plhero .plname{margin:0;font-size:calc(20px * var(--fs));line-height:1.15;overflow-wrap:anywhere}
+/* the boots a player holds, said beside the name the way the titles are */
+.gboots{display:inline-flex;align-items:center;gap:1px;margin-left:6px;vertical-align:-2px;white-space:nowrap}
+.gboots b{font-size:.62em;font-weight:800;color:#e9a100}
+.gboots .gboot{margin-right:0}
 .plhero .pill.pltm{border-color:var(--tc);background:color-mix(in srgb,var(--tc) 18%,transparent);color:var(--text);font-weight:700}
 .pltms{white-space:nowrap}
 .pltms .dot{width:12px;height:12px}
@@ -6264,6 +6268,24 @@ document.addEventListener('click', e => {
   showPlayer(el.dataset.pl);
 });
 
+/* The Golden Boots a player has won, read off the roll of honour. The
+   record keeps them as a line of text — "Ethan Patel (12)", or two names
+   joined when a season was shared — because that is what a roll of honour
+   is, so the names are taken back out of it rather than kept twice and
+   allowed to disagree. A shared boot counts for everyone who shared it. */
+function bootsOf(pid) {
+  const p = person(pid);
+  const me = p ? fullName(p).trim().toLowerCase() : '';
+  if (!me) return 0;
+  return (DB.honours || []).filter(hh => String(hh.topScorer || '')
+    .replace(/\s*\(\s*\d+\s*\)\s*$/, '')            // the tally at the end is not a name
+    .split(/\s*&\s*|\s*,\s*/)
+    .some(nm => nm.trim().toLowerCase() === me)).length;
+}
+const bootMark = pid => { const n = bootsOf(pid);
+  return n ? '<span class="gboots" data-nostar data-tip="' + plural(n, 'Golden Boot') + '">' + BOOT_ICON +
+    (n > 1 ? '<b>' + n + '</b>' : '') + '</span>' : ''; };
+
 function renderPlayers() {
   const data = careers();
   if (plSel && !data.by[plSel]) plSel = null;
@@ -6351,14 +6373,15 @@ function renderPlayer(data, c) {
   const pl = c.now ? c.now.players.find(x => x.personId === c.pid) : null;
   const per = c.P ? (c.G / c.P).toFixed(2).replace(/0$/, '') : '—';
   const tile = (k, v, s) => '<div class="stat"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div></div>';
-  let html = '<div class="row" style="margin-bottom:12px"><button class="btn sm" id="plBack">← All players</button></div>' +
+  let html = '<div class="row" style="margin-bottom:12px"><button class="btn sm" id="plBack">← All players</button>' +
+      (mgr ? '<div class="spacer"></div><button class="btn sm accent" id="plEdit">Edit player</button>' : '') + '</div>' +
     '<div class="card tcard plhero" style="--tc:' + esc(tNow.colour) + '"><div class="row" style="gap:16px">' +
       '<div class="plavwrap">' + (mgr
         ? '<button class="plavbtn" id="plPhotoBtn" data-tip="' + (photoOf(c.pid) ? 'Change the photo' : 'Add a photo') + '" aria-label="Photo">' + avatar(c, 'big') +
             '<i class="plcam" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M2.5 5.5h2.2l1.1-1.6h4.4l1.1 1.6h2.2v7H2.5Z"/><circle cx="8" cy="8.8" r="2.3"/></svg></i></button>' +
           (photoOf(c.pid) ? '<button class="btn sm" id="plPhotoDel">Remove photo</button>' : '')
         : avatar(c, 'big')) + '</div>' +
-      '<div style="flex:1 1 220px;min-width:0"><h2 class="plname">' + esc(c.n) + titleStars(c) + '</h2>' +
+      '<div style="flex:1 1 220px;min-width:0"><h2 class="plname">' + esc(c.n) + titleStars(c) + bootMark(c.pid) + '</h2>' +
         '<div class="row" style="gap:6px;margin-top:6px">' +
           (c.now ? '<span class="pill pltm">' + crest(c.now.id, 'sm') + esc(c.now.name) + champMark(c.now.id) + '</span>' : '<span class="pill">not in a team</span>') +
           (pl && pl.number ? '<span class="pill">#' + esc(pl.number) + '</span>' : '') +
@@ -6373,6 +6396,8 @@ function renderPlayer(data, c) {
       tile('MVP', c.M, c.RM ? plural(c.RM, 'round') + ' as MVP of the round' : 'match MVP awards') +
       tile('Cards', c.Y + ' / ' + c.R, 'yellow / red') +
       tile('Titles', c.C, c.S ? plural(c.S, 'Silver Cup') : c.C ? 'championships' : 'no title yet') +
+      ((n) => tile('Golden Boots', (n ? BOOT_ICON : '') + n,
+        n ? 'top scorer of ' + plural(n, 'season') : 'never the top scorer'))(bootsOf(c.pid)) +
       ((now, before) => tile('Earlier comps', before, plural(before, 'game') + ' before this season') +
         (isMgr() ? tile('Paid this season', '$' + money(now * feeOf()), plural(now, 'game') + ' × $' + money(feeOf())) : ''))(
         attendCount(c.pid), c.P - (+((c.rows.find(x => x.s.live) || {}).r || {}).P || 0)) +
@@ -6422,6 +6447,7 @@ function renderPlayer(data, c) {
   $('plList').innerHTML = html;
   $('plSeasons').style.display = 'none';
   $('plBack').onclick = () => { plSel = null; freshView = true; render(); window.scrollTo(0, 0); };
+  if ($('plEdit')) $('plEdit').onclick = () => editPerson(c.pid);
   if (mgr) {
     $('plPhotoBtn').onclick = () => { plPhotoFor = c.pid; $('plPhoto').click(); };
     if ($('plPhotoDel')) $('plPhotoDel').onclick = () => { const pp = person(c.pid); if (!pp || !ask('Remove ' + fullName(pp) + '\'s photo?')) return; delete pp.photo; save(); render(); };
