@@ -1059,6 +1059,8 @@ body.cupmode .leaguecard{display:none}
 #rail .toolbar{flex:0 0 auto;margin:0;flex-direction:column;align-items:stretch;gap:6px;
   padding-top:10px;border-top:1px solid var(--line)}
 #rail .toolbar .btn{width:100%;justify-content:center}
+/* a pill round one small sign sizes to the sign, not to the rail */
+#rail .toolbar .syncchip{align-self:center}
 #rail .toolbar .btn.ico{width:41px;height:41px}
 #rail .toolrow{grid-template-columns:repeat(4,41px);gap:6px}
 #rail .btn.ico svg{width:20px;height:20px}
@@ -1082,13 +1084,21 @@ body.cupmode .leaguecard{display:none}
   border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.022);
   transition:background .25s var(--ease),border-color .25s var(--ease),box-shadow .25s var(--ease)}
 /* whether this tablet is in step with the shared copy */
-.syncchip{display:inline-flex;align-items:center;gap:6px;margin-top:6px;padding:3px 9px;border-radius:999px;
+.syncchip{display:inline-flex;align-items:center;justify-content:center;gap:4px;margin-top:6px;
+  padding:4px 8px;border-radius:999px;
   border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--dim);
   font:700 calc(10.5px * var(--fs))/1.5 inherit;letter-spacing:.3px;white-space:nowrap}
-.syncchip .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:0 0 auto}
+/* A sign, not a sentence: the two arrows while it is talking to the shared
+   copy, the tick when this tablet is level with it. The words it used to
+   carry are on the chip's title, for anyone who wants them. */
+.syncchip svg{width:calc(14px * var(--fs));height:calc(14px * var(--fs));display:block;flex:0 0 auto;
+  fill:none;stroke:currentColor;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round}
+.syncchip b{font-weight:800;font-variant-numeric:tabular-nums}
 .syncchip.good{color:#6fd39b;border-color:rgba(111,211,155,.4)}
 .syncchip.work{color:#8ec5ff;border-color:rgba(142,197,255,.4)}
-.syncchip.work .dot{animation:pulse 1.4s infinite}
+.syncchip.work svg{animation:syncTurn 1.5s linear infinite;transform-origin:50% 50%}
+@keyframes syncTurn{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.syncchip.work svg{animation:none}}
 .syncchip.off{color:var(--dim)}
 .syncchip.bad{color:#ffb0b0;border-color:rgba(255,95,95,.45)}
 /* which league you are in, and the way to the others */
@@ -1755,7 +1765,13 @@ tspan.gstar{fill:var(--gold)}
      pushes every view into a horizontal scroll */
   #rail nav{flex-direction:row;overflow-x:auto;overflow-y:hidden;gap:2px;min-width:0;max-width:100%}
   #rail nav button{width:auto;padding:8px 12px}
-  #rail .toolbar{flex-direction:row;flex-wrap:wrap;border-top:0;padding-top:0}
+  /* The status sits to the RIGHT of the buttons on a strip: it changes
+     width as it changes state, and leading the row it shoved all four
+     buttons sideways every time it did. Following them, only its own edge
+     moves. */
+  #rail .toolbar{flex-direction:row;flex-wrap:wrap;border-top:0;padding-top:0;align-items:center}
+  #rail .toolbar .toolrow{order:1}
+  #rail .toolbar .syncchip{order:2;margin-top:0;margin-left:2px}
   #rail .toolbar .btn{width:auto}
   #rail .toolrow{display:flex;flex-wrap:wrap;justify-content:flex-start}
   /* the strip reads better even: keep the colour, drop the raised box */
@@ -13323,20 +13339,44 @@ function syncLoop() {
 function syncSwitch() { clearInterval(SY.pull); syncLoad(); paintSync(); syncLoop(); }
 addEventListener('online', () => { pubSoon(true); syncSoon(true); });
 
+/* Four signs for four states. Two arrows going round mean this tablet is
+   talking to the shared copy, or has something still to say to it; the tick
+   means it has nothing left to send. A struck-through cloud is no line out,
+   and the triangle is a line that is there and not working. */
+const SYNC_SVG = {
+  turn: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.3 9.2A8.4 8.4 0 0 0 6.1 6.4L3.3 8.9"/>' +
+    '<path d="M3.7 14.8A8.4 8.4 0 0 0 17.9 17.6l2.8-2.5"/>' +
+    '<path d="M3.3 4.3v4.6h4.6"/><path d="M20.7 19.7v-4.6h-4.6"/></svg>',
+  tick: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.6 12.7l4.9 4.8L19.6 6.9"/></svg>',
+  out:  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3.2l17.9 17.6"/>' +
+    '<path d="M7.6 7.9a5.4 5.4 0 0 0-.9 10.7h9.6a4.3 4.3 0 0 0 2.9-1.2"/>' +
+    '<path d="M9.3 4.9a6.5 6.5 0 0 1 9.2 5.3 4.4 4.4 0 0 1 2.1 1.4"/></svg>',
+  bang: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 4L2.7 17.3a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 4a2 2 0 0 0-3.4 0z"/>' +
+    '<path d="M12 9.3v4.4"/><path d="M12 17.1v.1"/></svg>'
+};
 function paintSync() {
   const el = $('syncChip');
   if (!el) return;
   if (!syncOn() || !role) { el.hidden = true; return; }
   const q = syncCount(syncDiff());
   const st = SY.state;
-  el.hidden = false;
-  el.className = 'syncchip ' + (st === 'ok' && !q ? 'good' : st === 'busy' ? 'work' : st === 'off' ? 'off' : 'bad');
-  el.innerHTML = '<span class="dot"></span>' + esc(
-    st === 'busy' ? 'Syncing…'
+  // what the chip used to say, kept for the hover and for a screen reader
+  const said = st === 'busy' ? 'Syncing…'
     : st === 'off' ? (q ? plural(q, 'change') + ' waiting' : 'Offline')
     : st === 'err' ? (q ? plural(q, 'change') + ' waiting' : 'Not syncing')
-    : q ? plural(q, 'change') + ' going up' : 'Shared');
-  el.title = SY.err || (SY.at ? 'Last shared ' + new Date(SY.at).toLocaleTimeString() : 'Sharing this league');
+    : q ? plural(q, 'change') + ' going up' : 'Shared';
+  el.hidden = false;
+  /* A line that works with something still to send is working, not broken:
+     it was painted the same red as a line that is down, which is how a
+     tablet mid-send looked like a tablet in trouble. */
+  el.className = 'syncchip ' + (st === 'busy' || (st === 'ok' && q) ? 'work'
+    : st === 'ok' ? 'good' : st === 'off' ? 'off' : 'bad');
+  el.innerHTML = (st === 'off' ? SYNC_SVG.out : st === 'err' ? SYNC_SVG.bang
+    : st === 'ok' && !q ? SYNC_SVG.tick : SYNC_SVG.turn) +
+    (q ? '<b>' + q + '</b>' : '');                    // what is still to go up, if anything
+  el.title = said + (SY.err ? ' — ' + SY.err
+    : SY.at ? ' — last shared ' + new Date(SY.at).toLocaleTimeString() : '');
+  el.setAttribute('aria-label', said);
   if (typeof paintShare === 'function') paintShare();
 }
 
