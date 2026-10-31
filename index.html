@@ -2284,6 +2284,16 @@ tspan.gstar{fill:var(--gold)}
       <div class="small muted" style="margin-top:8px">A dated record of what every team paid on every
         night, and what the season has taken by the moment you press it. Choose <b>Save as PDF</b> in
         the print window to keep the file.</div>
+      <!-- What the corner of the first page says. Two lines, because one
+           client may run several competitions and the report has to name
+           both. They are the report's own words, not the season's: changing
+           them here renames nothing and moves nobody's history. -->
+      <div class="grid g2" style="margin-top:12px">
+        <div class="field"><label>Report heading — top line, the client</label>
+          <input id="finClient" maxlength="60"></div>
+        <div class="field"><label>Report heading — the line under it</label>
+          <input id="finSub" maxlength="60"></div>
+      </div>
     </div>
     <div id="finBody"></div>
   </section>
@@ -2617,10 +2627,6 @@ tspan.gstar{fill:var(--gold)}
       <h3>Season</h3>
       <div class="grid g4">
         <div class="field"><label>Season name</label><input id="stName"></div>
-        <!-- Who the competition is run for. It heads the reports, with the
-             season's own name on the line under it, so one client can have
-             several competitions and each still says whose it is. -->
-        <div class="field"><label>Client — top line of reports</label><input id="stClient"></div>
         <div class="field"><label>Year</label><input type="number" id="stYear" min="2000" max="2100"></div>
         <div class="field"><label>Venue</label><input id="stVenue"></div>
         <div class="field"><label>Max squad size</label><input type="number" id="stSquad" min="5" max="20"></div>
@@ -2762,7 +2768,7 @@ function blankLeague() {
     id: uid(),
     name: '',          // what to call it in the switcher; blank falls back to the season name
     season: { name: 'Season ' + new Date().getFullYear(), year: new Date().getFullYear(), venue: '',
-      client: '', squadMax: 12, pointsWin: 3, pointsDraw: 1, pointsLoss: 0, halfMin: 20, breakMin: 2, ycSuspend: 3, minAge: 16, fee: 15, format: 'finals', etMin: 5 },
+      client: '', reportSub: '', squadMax: 12, pointsWin: 3, pointsDraw: 1, pointsLoss: 0, halfMin: 20, breakMin: 2, ycSuspend: 3, minAge: 16, fee: 15, format: 'finals', etMin: 5 },
     form: { title: '', intro: 'Complete this form to register for the season.', endpoint: '',
       email: '', hashes: true, terms: '', waiver: '' },
     people: [],        // the player database: this league's own, nobody else's
@@ -3693,7 +3699,30 @@ function renderAttend() {
    the season so far; this is the whole of it — the season's totals, round by
    round, match by match, by team and by player. Manager only, like every
    other money figure. */
+/* What the report's corner says, and the two boxes that set it. Left blank
+   they fall back to the competition's own names, so a report always heads
+   itself with something. */
+const repClient = () => (DB.season.client || '').trim() || leagueName(activeLeague());
+function repSub() {
+  const own = (DB.season.reportSub || '').trim();
+  if (own) return own;
+  const top = repClient(), season = DB.season.name || '', comp = leagueName(activeLeague());
+  return season && season !== top ? season : (comp !== top ? comp : '');
+}
+function paintRepHead() {
+  const c = $('finClient'), s = $('finSub');
+  if (!c || !s) return;
+  fill(c, DB.season.client || '');
+  fill(s, DB.season.reportSub || '');
+  c.placeholder = leagueName(activeLeague());
+  s.placeholder = DB.season.name || '';
+  c.onchange = () => { if (!requireMgr('The report heading')) { fill(c, DB.season.client || ''); return; }
+    DB.season.client = c.value.trim(); if (save() !== false) toast('Saved — the next report says so.', 'ok'); };
+  s.onchange = () => { if (!requireMgr('The report heading')) { fill(s, DB.season.reportSub || ''); return; }
+    DB.season.reportSub = s.value.trim(); if (save() !== false) toast('Saved — the next report says so.', 'ok'); };
+}
 function renderFinance() {
+  paintRepHead();
   const rs = attendRounds(), fee = feeOf();
   if (!rs.length) { $('finBody').innerHTML = '<div class="card"><div class="empty">No fixtures yet — make the draw in Fixtures and the takings appear here round by round.</div></div>'; return; }
   const $$ = v => '$' + money(v * fee);
@@ -3852,13 +3881,10 @@ function printFinance() {
       paid.length ? Math.round(tp / paid.length) + ' players a night' : 'no nights yet') +
     tile('Match fee', '$' + money(fee), 'per player, per game') + '</div>';
 
-  /* The heading is whose competition it is, then which competition. The
-     client is set in the season settings and falls back to the league's own
-     name, so a report never heads itself with nothing; the line under it is
-     the season, left out when it would only say the same thing twice. */
+  /* The heading is whose competition it is, then which competition — both
+     set in the two boxes beside the button that makes this. */
   const comp = leagueName(activeLeague()), season2 = DB.season.name || '';
-  const client = (DB.season.client || '').trim() || comp;
-  const under = season2 && season2 !== client ? season2 : (comp !== client ? comp : '');
+  const client = repClient(), under = repSub();
   const now = new Date(), two = n => String(n).padStart(2, '0');
   const stamp = fmtDate(todayISO()) + ' at ' + two(now.getHours()) + ':' + two(now.getMinutes());
   const whoName = (me && me.name) || 'Unknown';
@@ -10094,14 +10120,12 @@ function renderHonours() {
 }
 
 /* ══════════════ SETTINGS ══════════════ */
-const SETMAP = [['stName', 'name'], ['stClient', 'client'], ['stYear', 'year'], ['stVenue', 'venue'], ['stSquad', 'squadMax'],
+const SETMAP = [['stName', 'name'], ['stYear', 'year'], ['stVenue', 'venue'], ['stSquad', 'squadMax'],
   ['stWin', 'pointsWin'], ['stDraw', 'pointsDraw'], ['stLoss', 'pointsLoss'], ['stHalf', 'halfMin'],
   ['stBreak', 'breakMin'], ['stEt', 'etMin'],
   ['stYc', 'ycSuspend'], ['stAge', 'minAge'], ['stFee', 'fee'], ['stFormat', 'format']];
 function renderSettings() {
   SETMAP.forEach(([el, key]) => fill(el, DB.season[key]));
-  // left blank, the reports head themselves with the competition's own name
-  $('stClient').placeholder = leagueName(activeLeague());
   $('stBoot').checked = bootOn();
   paintAccess();
   let bytes = 0;
