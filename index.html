@@ -2015,11 +2015,16 @@ tspan.gstar{fill:var(--gold)}
   <!-- ══════════════ DASHBOARD ══════════════ -->
   <section class="view" data-view="dash">
     <div id="dashOff"></div>
-    <div class="grid g4" id="dashStats" style="margin-bottom:14px"></div>
+    <!-- The race opens Home: it is the one picture that says where the
+         season is. Its own copy, with its own ids, because Stats keeps one
+         too and two elements cannot share a name. -->
+    <div class="card leaguecard"><h3>Title race <span class="muted" style="font-weight:400;text-transform:none;
+      letter-spacing:0" id="homeRaceNote"></span></h3><div id="homeRace"></div></div>
     <div class="grid g2">
       <div class="card leaguecard"><h3>Standings</h3><div id="dashTable"></div></div>
       <div class="card bootcard"><h3>Golden Boot</h3><div id="dashScorers"></div></div>
     </div>
+    <div class="card"><h3>Goals scored, by team</h3><div id="homeGoals"></div></div>
     <div class="grid g2">
       <!-- A crown says who has won the league before. On a fixture it says
            nothing about the fixture, and a draw full of them is a draw you
@@ -2047,6 +2052,8 @@ tspan.gstar{fill:var(--gold)}
         <li>After the last round the semi-finals draw themselves; follow them in <b>Competition &rarr; Finals</b>. The winner goes to <b>Stats &amp; records &rarr; Honours</b>.</li>
       </ol>
     </div>
+    <!-- the six figures are a summary, and a summary reads last -->
+    <div class="grid g4" id="dashStats" style="margin:14px 0 0"></div>
   </section>
 
   <!-- ══════════════ REGISTRATIONS ══════════════ -->
@@ -5039,6 +5046,17 @@ function renderDash() {
   const st = standings();
   $('dashTable').innerHTML = st.length ? dashLadder(st)
     : '<div class="empty">Add teams to see the table.</div>';
+
+  $('homeRace').innerHTML = vizRace();
+  raceRun('homeRace');                                 // Home's copy of the season, played through
+  const lead = st.length > 1 ? st[0].Pts - st[1].Pts : 0;
+  $('homeRaceNote').textContent = st.length > 1 && st[0].P
+    ? (lead === 0 ? '— level at the top' : '— ' + esc(st[0].name) + ' by ' + plural(lead, 'point'))
+    : '';
+  const hg = st.map(r => Object.assign({}, r, playedAll(r.id))).sort((a, b) => b.GF - a.GF || a.name.localeCompare(b.name));
+  $('homeGoals').innerHTML = st.length && hg[0].GF
+    ? vizShare(hg.map(r => ({ label: r.name, value: r.GF, tid: r.id, colour: (team(r.id) || {}).colour })))
+    : '<div class="empty">No goals yet.</div>';
 
   const strip = finalsStrip();
   $('dashFinalsCard').querySelector('h3').textContent = isCup() ? 'The cup' : 'Finals';
@@ -11860,6 +11878,58 @@ function emailText(d) {
   return L.join('\r\n');
 }
 
+/* The title race on the live page is the same chart, not a copy of it.
+   The drawing comes from vizRace and the movement from raceFrame — the
+   very functions the tool runs — written into the page as source, so the
+   two cannot drift apart: change the chart here and the page changes with
+   it. What it needs that the tool gets from the app is its own styling
+   (the page has its own palette) and something to start it, which is the
+   first time the reader actually scrolls it into view. */
+const PUB_RACE_CSS =
+  '.viz-race{width:100%;height:330px;overflow:visible}' +
+  '.race-line{fill:none;stroke:#6b6c75;stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round;opacity:.5}' +
+  '.race-g.lead .race-line{stroke:var(--acc);stroke-width:3.4;opacity:1}' +
+  '.race-tie{fill:none;stroke:var(--line);stroke-width:1;opacity:0}' +
+  '.race-head{stroke:var(--card);stroke-width:1.4}' +
+  '.race-mark{filter:drop-shadow(0 1px 3px rgba(0,0,0,.5))}' +
+  '.race-mark image{pointer-events:none}' +
+  '.race-lbl{fill:var(--ink);font:800 19px "Segoe UI",system-ui,sans-serif;font-variant-numeric:tabular-nums}' +
+  '.race-g.lead .race-pts{fill:var(--acc)}' +
+  '.race-ax{fill:var(--dim);font:11.5px "Segoe UI",system-ui,sans-serif}' +
+  '.viz-grid{stroke:var(--line);stroke-width:1}';
+function pubRaceBlock(h2) {
+  const svg = vizRace();
+  if (svg.indexOf('<svg') < 0 || !raceModel) return '';          // not enough played to say anything
+  const m = raceModel;
+  const model = { n: m.n, R: m.R, lo: m.lo, hi: m.hi, series: m.series.map(s => ({ path: s.path })) };
+  return h2('Title race') +
+    '<style>' + PUB_RACE_CSS + '</style>' +
+    '<div class="tw pad" id="pubRace">' + svg + '</div>' +
+    '<scr' + 'ipt>(function(){' +
+      'var RACE=' + JSON.stringify(RACE) + ',raceModel=' + JSON.stringify(model) + ',raceEls=null;' +
+      'var raceFrame=' + raceFrame.toString() + ';' +
+      'var raceBind=' + raceBind.toString() + ';' +
+      'var raceGlide=' + raceGlide.toString() + ';' +
+      'function start(){' +
+        'var host=document.getElementById("pubRace");' +
+        'if(!host||!host.querySelector(".race-g"))return;' +
+        'raceBind(host);' +
+        'var last=raceModel.n-1,raf=0,t0=0;' +
+        'if(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches){raceFrame(host,last);return;}' +
+        'var MS=Math.max(4000,Math.min(12000,RACE.STEPMS*last));' +
+        'function tick(now){if(!t0)t0=now;var t=Math.min(1,(now-t0)/MS);raceFrame(host,raceGlide(t)*last);if(t<1)raf=requestAnimationFrame(tick);}' +
+        'function play(){cancelAnimationFrame(raf);t0=0;raceFrame(host,0);raf=requestAnimationFrame(tick);}' +
+        'raceFrame(host,last);' +
+        'if(!window.IntersectionObserver){return;}' +
+        'var seen=false;' +
+        'new IntersectionObserver(function(es){es.forEach(function(e){' +
+          'if(e.isIntersecting){if(!seen){seen=true;play();}}else{seen=false;}' +
+        '});},{threshold:.35}).observe(host);' +
+      '}' +
+      'if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start);else start();' +
+    '})();</scr' + 'ipt>';
+}
+
 /* ══════════════ THE LIVE LEAGUE PAGE ══════════════
    An email is a photograph: once sent it cannot change. So the bulletin's
    "See more" button opens a page that can — the dashboard, the table, every
@@ -12085,8 +12155,10 @@ function publicPageHtml() {
   /* The share of the goals leads: who is scoring them is the first thing
      worth knowing. The round-by-round average is a season-shape chart, so
      it goes to the foot of the page where you look for that sort of thing. */
-  const stats = goalShare() + (!bootOn() ? '' : h2('Golden Boot') + (scorers.length ? '<div class="tw"><table><tr><th class="n">#</th><th>Player</th><th></th>' +
-      '<th class="n">Goals</th><th class="n pg">Per game</th></tr>' + scRows(scorers) + '</table></div>' : empty('No goals logged yet.'))) +
+  /* The race first — where the season has got to — then the teams, then
+     who is scoring, then the share of the goals, and the season's shape
+     last. */
+  const stats = pubRaceBlock(h2) +
     h2('Teams') + (st.length ? '<div class="tw"><table><tr><th>Team</th><th class="n">P</th><th class="n">GF</th><th class="n">GA</th>' +
       '<th class="n">Per game</th><th class="n hs">Clean sheets</th></tr>' +
       st.map(r0 => {
@@ -12094,6 +12166,9 @@ function publicPageHtml() {
         return '<tr style="--tc:' + tc(r.id) + '"><td class="tm">' + dot(r.id) + esc(r.name) + '</td><td class="n">' + r.P + '</td><td class="n">' + r.GF + '</td>' +
           '<td class="n">' + r.GA + '</td><td class="n">' + (r.P ? (r.GF / r.P).toFixed(1) : '—') + '</td><td class="n hs">' + cs + '</td></tr>';
       }).join('') + '</table></div>' : empty('No teams yet.')) +
+    (!bootOn() ? '' : h2('Golden Boot') + (scorers.length ? '<div class="tw"><table><tr><th class="n">#</th><th>Player</th><th></th>' +
+      '<th class="n">Goals</th><th class="n pg">Per game</th></tr>' + scRows(scorers) + '</table></div>' : empty('No goals logged yet.'))) +
+    goalShare() +
     // cards only when the bulletin carries them: the same choice for the email and the page
     (d.opt.cards && d.cards.length ? h2('Discipline') + '<div class="tw"><table><tr><th>Player</th><th class="n">Yellow</th><th class="n">Red</th></tr>' +
       d.cards.map(r => '<tr><td>' + esc(r.name) + '<div class="sub">' + dot(r.teamId) + esc(teamName(r.teamId)) + '</div></td>' +
