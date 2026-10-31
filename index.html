@@ -1078,7 +1078,7 @@ body.cupmode .leaguecard{display:none}
 #rail .toolbar .btn.ico{width:41px;height:41px}
 #rail .toolrow{grid-template-columns:repeat(4,41px);gap:6px}
 #rail .btn.ico svg{width:20px;height:20px}
-#rail .rolechip{justify-content:center;padding:6px 10px;align-self:center}
+#rail .rolechip{justify-content:center;padding:6px 10px;align-self:center;margin-top:2px}
 /* margin:0 — the original rule centred main with auto margins, and an auto
    margin on the cross axis stops a flex item stretching, so main sized itself
    to its widest table and dragged the page sideways on a phone */
@@ -2074,10 +2074,6 @@ tspan.gstar{fill:var(--gold)}
   <nav id="nav"><i id="navInk"></i></nav>
 
   <div class="toolbar">
-    <!-- Who is holding the tablet, beside the buttons they would reach for.
-         On a phone, where the rail lies down as a strip, it goes to the top
-         right corner of the screen instead — see the media query. -->
-    <span class="rolechip" id="roleChip" style="display:none"><span class="dot"></span><b id="roleName"></b></span>
     <span class="syncchip" id="syncChip" hidden></span>
     <!-- Four things you reach for while the league is running. Backing up,
          restoring and the Excel workbook were here too, which put three
@@ -2089,6 +2085,12 @@ tspan.gstar{fill:var(--gold)}
       <button class="btn ico" id="btnTheme" data-tip="Light or dark"></button>
       <button class="btn ico" id="btnLock" style="display:none" data-tip="Lock — hand the tablet over"></button>
     </div>
+    <!-- Who is holding the tablet, under everything else: the signs above it
+         are about the league, this one is about the person, and it reads as
+         the line the corner finishes on. On a phone, where the rail lies
+         down as a strip and there is no room beside the buttons for a name,
+         it takes the top right corner of the screen — see the media query. -->
+    <span class="rolechip" id="roleChip" style="display:none"><span class="dot"></span><b id="roleName"></b></span>
   </div>
 </aside>
 
