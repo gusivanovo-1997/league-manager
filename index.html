@@ -2016,8 +2016,6 @@ tspan.gstar{fill:var(--gold)}
   <section class="view" data-view="dash">
     <div id="dashOff"></div>
     <div class="grid g4" id="dashStats" style="margin-bottom:14px"></div>
-    <div class="card leaguecard"><h3>Title race <span class="muted" style="font-weight:400;text-transform:none;
-      letter-spacing:0" id="raceNote"></span></h3><div id="dashRace"></div></div>
     <div class="grid g2">
       <div class="card leaguecard"><h3>Standings</h3><div id="dashTable"></div></div>
       <div class="card bootcard"><h3>Golden Boot</h3><div id="dashScorers"></div></div>
@@ -2032,23 +2030,21 @@ tspan.gstar{fill:var(--gold)}
            and it was only on the Finals tab. The share of the goals is the
            other figure worth a glance: who is actually scoring them. -->
       <div class="card" id="dashFinalsCard" style="display:none"><h3 class="goldtxt">Finals</h3><div id="dashFinals" data-nostar></div></div>
-      <div class="card"><h3>Goals scored, by team</h3><div id="dashGoals"></div></div>
     </div>
     <div class="grid g2">
       <div class="card"><h3>Next match night</h3><div id="dashNext" data-nostar></div></div>
       <div class="card"><h3>Last time out</h3><div id="dashLast" data-nostar></div></div>
     </div>
-    <div class="card"><h3>Average goals per round of all teams</h3><div id="dashGoals"></div></div>
     <div class="card"><h3>Season shape</h3><div id="dashShape"></div></div>
     <div class="card" id="dashStart">
       <h3>Getting started</h3>
       <ol class="small muted" style="line-height:1.9;margin:0;padding-left:18px">
-        <li>Set the season in <b>Settings → Season settings</b>; paste your Terms &amp; Conditions and Waiver in <b>Settings → Sign-up link</b>.</li>
-        <li>Add your teams in <b>Teams</b> (8 teams for the standard format).</li>
-        <li>In <b>Settings → Sign-up link</b>, set where registrations land, deploy the script and press <b>Put the form on the link</b>. That link is the form.</li>
-        <li>Approve them in <b>Settings → Registrations</b> — or import a returned code or file there by hand.</li>
-        <li><b>Fixtures</b> → generate the double round-robin, then run each game from <b>Live match</b>.</li>
-        <li>After the last round, <b>Fixtures → Finals</b> locks 1v4 / 2v3, then the final. Winner goes to <b>Honours</b>.</li>
+        <li>Set the season up in <b>Setup &rarr; Season</b>, and paste your Terms &amp; Conditions and Waiver in <b>Communication &rarr; Sign-up form</b>.</li>
+        <li>Add your teams in <b>Teams &amp; players &rarr; Teams</b> (eight for the standard format).</li>
+        <li>In <b>Communication &rarr; Sign-up form</b>, say where registrations land, deploy the script and press <b>Put the form on the link</b>. That link is what you send the players.</li>
+        <li>Approve them in <b>Teams &amp; players &rarr; Registrations</b> — or import a returned code or file there by hand.</li>
+        <li><b>Setup &rarr; Draw</b> generates the season, then run each game from <b>Match night &rarr; Live match</b>.</li>
+        <li>After the last round the semi-finals draw themselves; follow them in <b>Competition &rarr; Finals</b>. The winner goes to <b>Stats &amp; records &rarr; Honours</b>.</li>
       </ol>
     </div>
   </section>
@@ -2258,6 +2254,8 @@ tspan.gstar{fill:var(--gold)}
 
   <!-- ══════════════ STATS ══════════════ -->
   <section class="view" data-view="stats">
+    <div class="card leaguecard"><h3>Title race <span class="muted" style="font-weight:400;text-transform:none;
+      letter-spacing:0" id="raceNote"></span></h3><div id="dashRace"></div></div>
     <div class="card"><h3>Average goals per round of all teams</h3><div id="vizRoundAvg"></div></div>
     <div class="grid g2 wide">
       <div class="card bootcard"><h3>Golden Boot <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— the top 10</span></h3>
@@ -2521,6 +2519,13 @@ tspan.gstar{fill:var(--gold)}
     </div>
   </section>
 
+  <!-- The draw lives under Setup rather than beside the fixture list: it is
+       something you do once when the season starts, not something you read.
+       Both of these are filled at start-up by moving the cards that were
+       already written, so there is one copy of each, not two. -->
+  <section class="view" data-view="draw"></section>
+  <section class="view" data-view="access"></section>
+
   <!-- ══════════════ SETTINGS ══════════════ -->
   <section class="view" data-view="settings">
     <div class="card">
@@ -2591,7 +2596,7 @@ tspan.gstar{fill:var(--gold)}
         </div>
       </details>
     </div>
-    <div class="card">
+    <div class="card" id="cardData">
       <h3>Data</h3>
       <div class="small muted" style="margin-bottom:11px;line-height:1.75">
         Everything is held in this browser on this machine. <b>Take a .json backup regularly</b> — clearing
@@ -2611,7 +2616,7 @@ tspan.gstar{fill:var(--gold)}
           <button class="btn" id="btnExcel2">Export Excel workbook</button></div>
       </div>
     </div>
-    <div class="card danger">
+    <div class="card danger" id="cardReset">
       <h3>Starting again</h3>
       <div class="small muted" style="margin-bottom:11px;line-height:1.75">
         Both of these <b>erase the competition you have open</b> — its teams, its draw, every result and
@@ -4236,6 +4241,8 @@ const ICON = {
     '<path d="M4.4 6.8h1.2V5.6M11.6 6.8h-1.2V5.6M11.6 7.6h-1.2v1.2M4.4 7.6h1.2v1.2"/>' +
     '<path d="M6 14h4"/>'
 };
+ICON.draw = ICON.fixtures;                 // the draw is a calendar being filled in
+ICON.access = ICON.lock;                   // who may sign in, and what is kept
 const icon = k => '<svg viewBox="0 0 16 16" aria-hidden="true">' + (ICON[k] || '') + '</svg>';
 // an icon-only button still has to say what it is, to a screen reader now
 // and to a hovering pointer in a moment
@@ -4283,9 +4290,14 @@ const TIP_DELAY = 1100;
   addEventListener('blur', hide);
 })();
 // the match is what the tool is for on a Thursday night, so it leads
+/* Seven buttons, one per part of the job, with everything that belongs to
+   a job sitting under it as tabs along the top. The rail used to hold nine
+   buttons that were a mixture of places and things — Fixtures beside Table
+   beside Attendance — and you had to know which was which. */
 const VIEWS = [
-  ['dash', 'Dashboard'], ['fixtures', 'Fixtures'], ['bulletin', 'Bulletin'], ['live', 'Live match'], ['table', 'Table'],
-  ['teams', 'Teams'], ['stats', 'Stats'], ['attend', 'Attendance'], ['honours', 'Honours']
+  ['dash', 'Home'], ['live', 'Match night'], ['table', 'Competition'],
+  ['teams', 'Teams & players'], ['stats', 'Stats & records'],
+  ['bulletin', 'Communication'], ['settings', 'Setup']
 ];
 /* Settings is not a part of the job like Fixtures or the Table — it is where
    you go to set the thing up — so it is a gear beside Full screen rather
@@ -4295,14 +4307,14 @@ const VIEWS = [
    own view and key — so "open this in Results" still lands — and the rail
    lights its parent. */
 const SUBTABS = {
-  fixtures: [['fixtures', 'Fixtures'], ['results', 'Results'], ['finals', 'Finals']],
-  teams: [['teams', 'Teams'], ['players', 'Players']],
-  attend: [['attend', 'Attendance'], ['finance', 'Finance']],
-  /* Taking players on is one job with three faces: how the season is set up,
-     who has asked to join, and the link you hand them. They sit together
-     under Settings rather than as a tab of their own on the rail. */
-  settings: [['settings', 'Season settings'], ['share', 'Share & sync'], ['signup', 'Sign-up link'],
-    ['regs', 'Registrations']]
+  live: [['live', 'Live match'], ['attend', 'Attendance'], ['finance', 'Fees']],
+  table: [['table', 'Table'], ['fixtures', 'Fixtures'], ['results', 'Results'], ['finals', 'Finals']],
+  teams: [['teams', 'Teams'], ['players', 'Players'], ['regs', 'Registrations']],
+  stats: [['stats', 'Stats'], ['honours', 'Honours']],
+  bulletin: [['bulletin', 'Bulletin'], ['share', 'Public page'], ['signup', 'Sign-up form']],
+  /* Setup is where a season is set up and then left alone: its rules, the
+     draw that comes out of them, and who may sign in. */
+  settings: [['settings', 'Season'], ['draw', 'Draw'], ['access', 'Access & data']]
 };
 const parentOf = v => Object.keys(SUBTABS).find(k => SUBTABS[k].some(s => s[0] === v)) || v;
 function paintSubTabs() {
@@ -4442,6 +4454,7 @@ function render() {
   ({ dash: renderDash, regs: renderRegs, teams: renderTeams, fixtures: renderFixtures, live: renderLive, attend: renderAttend, finance: renderFinance,
      table: renderTable, results: renderResults, finals: renderFinals, stats: renderStats, honours: renderHonours,
      bulletin: renderBulletin, signup: renderSignup, settings: renderSettings, players: renderPlayers,
+     draw: renderFixtures, access: renderSettings,
      share: renderPublish }[currentView] || (() => {}))();
   paintSections();
   syncShine();
@@ -5031,17 +5044,6 @@ function renderDash() {
   $('dashFinalsCard').querySelector('h3').textContent = isCup() ? 'The cup' : 'Finals';
   $('dashFinalsCard').style.display = strip ? '' : 'none';
   $('dashFinals').innerHTML = strip;
-  const gls = st.map(r => Object.assign({}, r, playedAll(r.id))).sort((a, b) => b.GF - a.GF || a.name.localeCompare(b.name));
-  $('dashGoals').innerHTML = st.length && gls[0].GF
-    ? vizShare(gls.map(r => ({ label: r.name, value: r.GF, tid: r.id, colour: (team(r.id) || {}).colour })))
-    : '<div class="empty">No goals yet.</div>';
-
-  $('dashRace').innerHTML = vizRace();
-  raceRun('dashRace');                                 // the season played through, heads and all
-  const gap = st.length > 1 ? st[0].Pts - st[1].Pts : 0;
-  $('raceNote').textContent = st.length > 1 && st[0].P
-    ? (gap === 0 ? '— level at the top' : '— ' + esc(st[0].name) + ' by ' + plural(gap, 'point'))
-    : '';
 
   // a goal nobody was named for counts for the team, but it is not a scorer
   const sc = scorerTable().filter(r => r.personId).slice(0, 10);
@@ -5054,7 +5056,6 @@ function renderDash() {
     : '<div class="empty">No goals logged yet. Tap a player on the live match screen as they score.</div>';
 
   // the same round-by-round columns as Stats: one chart, one way of reading it
-  $('dashGoals').innerHTML = vizRoundAvg();
 
   $('dashShape').innerHTML = seasonShape();
 
@@ -9539,8 +9540,20 @@ const mvpGoals = m => plural(m.goals, 'goal') + (m.ids.length > 1 ? ' each' : ''
 const mvpNamed = (m, mark, join) => m.ids.map(id =>
   (mark ? mark((personTeam(id) || {}).id) : '') + esc(personName(id))).join(join || ', ');
 function renderStatCharts() {
+  /* The title race moved here from the dashboard: Home answers what happens
+     next, Stats answers how the season has gone, and a chart of fourteen
+     rounds is plainly the second kind. The share of the goals was on the
+     dashboard too, under a heading that said one thing while a second card
+     with the same id quietly overwrote it with another — both cards have
+     gone, and Stats had its own of each all along. */
+  $('dashRace').innerHTML = vizRace();
+  raceRun('dashRace');                                 // the season played through, heads and all
   $('vizRoundAvg').innerHTML = vizRoundAvg();
   const st = standings();
+  const gap = st.length > 1 ? st[0].Pts - st[1].Pts : 0;
+  $('raceNote').textContent = st.length > 1 && st[0].P
+    ? (gap === 0 ? '— level at the top' : '— ' + esc(st[0].name) + ' by ' + plural(gap, 'point'))
+    : '';
   const goals = st.map(r => Object.assign({}, r, playedAll(r.id))).sort((a, b) => b.GF - a.GF || a.name.localeCompare(b.name));
   $('vizGoals').innerHTML = st.length && goals[0].GF
     ? vizShare(goals.map(r => ({ label: r.name, value: r.GF, tid: r.id, colour: (team(r.id) || {}).colour })))
@@ -13981,6 +13994,19 @@ syncLoop();
    who you were for the life of the tab, so a refresh walked straight back
    in — convenient on your own machine, wrong on a tablet that gets handed
    round a court. */
+/* The draw, who may sign in, and what is kept were written where they were
+   first needed — inside Fixtures and inside Settings. Rather than copy them
+   into their new rooms and have two of each to keep in step, the one copy
+   is moved there as the page comes up. */
+(function regroup() {
+  const into = (viewName, ids) => {
+    const host = document.querySelector('.view[data-view="' + viewName + '"]');
+    if (!host) return;
+    ids.forEach(id => { const el = document.getElementById(id); if (el) host.appendChild(el); });
+  };
+  into('draw', ['fxGenCard']);
+  into('access', ['cardStaff', 'cardData', 'cardReset']);
+})();
 showGate();
 window.addEventListener('beforeunload', e => {
   save();
