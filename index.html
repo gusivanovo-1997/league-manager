@@ -2418,7 +2418,7 @@ tspan.gstar{fill:var(--gold)}
 
   <!-- ══════════════ SHARE & SYNC ══════════════ -->
   <section class="view" data-view="share">
-    <div class="card">
+    <div class="card" id="cardWebApp">
       <h3>1 · The web app</h3>
       <div class="small muted" style="line-height:1.8;margin-bottom:11px">
         One Google Apps Script does both jobs for this competition: it <b>holds the live page</b> players
@@ -2453,6 +2453,9 @@ tspan.gstar{fill:var(--gold)}
         The page players and parents watch: the table, the fixtures, the results and the stats, at the same
         address all season. It is read-only — nobody can change anything from there.
       </div>
+      <div class="note" id="pubOwnerNote" hidden style="margin:0 0 11px">The address this league publishes to,
+        and the code that puts it on another tablet, are the owner's to set. You can publish to it whenever
+        you like.</div>
       <label class="row small" style="gap:6px;margin:2px 0 11px"><input type="checkbox" id="pubAuto" checked>
         update it automatically, a few seconds after every goal or result is saved</label>
       <div class="row">
@@ -2464,7 +2467,7 @@ tspan.gstar{fill:var(--gold)}
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="cardTablets">
       <h3>3 · Share this league between tablets</h3>
       <label class="row small" style="gap:7px;margin:0 0 10px"><input type="checkbox" id="pubShare">
         <b>share this league</b> — every tablet reads and writes the same copy through the web app</label>
@@ -2639,8 +2642,17 @@ tspan.gstar{fill:var(--gold)}
           Each person gets their own PIN of four to eight digits, and no two may share one. Open the
           arrow beside a name to give them a league. A <b>referee</b> can start a match, run the clock
           and log goals and cards; they cannot touch the draw, teams, registrations, exports or these
-          settings, and they do not see players' contact details. A <b>manager</b> runs their league in
-          full. The <b>owner</b> sees every league and is the only one who can add leagues or people.
+          settings, and they do not see players' contact details. A <b>manager</b> runs their own
+          leagues in full — the teams, the players, the draw, the money and who else may sign in to
+          them. The <b>owner</b> sees every league, and alone creates and erases a competition, sets
+          the web app up and hands out the join code.
+          <span id="stfHowOwn" hidden><br><b>You are the owner.</b> You see everybody here, you can read
+          a PIN back, and you can put a person on any league.</span>
+          <span id="stfHowMgr" hidden><br><b>You are a manager.</b> You see the people who are on your
+          leagues and nowhere else, and you can give them the referee's or the manager's job on those
+          leagues. You cannot read a PIN back — the one you are given when you add somebody is said
+          once, and after that you replace it rather than look it up. Somebody who also works on another
+          competition is the owner's to change.</span>
           <br><b>This is role separation, not security.</b> The PINs and every league are held in this
           browser, so anyone who opens the developer tools can read or change them. Use it to keep
           match-day duties separate — not as a lock on personal data. Once the leagues are shared from
@@ -9956,7 +9968,7 @@ $('btnSaveSettings').onclick = () => {
   render(); toast('Season settings saved.' + note, note ? 'bad' : 'ok');
 };
 $('btnWipe').onclick = () => {
-  if (!requireMgr('Erasing the league')) return;
+  if (!requireOwner('Erasing the competition')) return;
   if (!confirm('Erase every team, fixture and record in ' + leagueName(activeLeague()) + '?')) return;
   if (!ask('This cannot be undone. Have you taken a .json backup?')) return;
   // where registrations are delivered and the T&C/waiver text belong to this machine, not the season
@@ -13217,12 +13229,19 @@ function paintPub() {
 }
 function renderPublish() {
   const c = pubCfg();
+  /* The address and the key are the login to this league's own corner of
+     the owner's Drive, and the join code hands a whole league to another
+     tablet. A manager publishes to them; only the owner sets them. */
+  const own = isOwner();
+  $('cardWebApp').hidden = !own;
+  $('cardTablets').hidden = !own;
+  $('pubOwnerNote').hidden = own;
   fill('pubUrl', c.url);
   $('pubAuto').checked = c.auto;
   paintPub();
 }
 $('pubUrl').onchange = () => {
-  if (!requireMgr('Setting up the live page')) return;
+  if (!requireOwner('The web app address')) { $('pubUrl').value = pubCfg().url || ''; return; }
   const v = $('pubUrl').value.trim().replace(/[?#].*$/, '');
   if (v && !pubUrlOk(v)) {
     toast('That is not a web app address — it starts https://script.google.com/ and ends in /exec.', 'bad');
@@ -13241,7 +13260,7 @@ $('pubAuto').onchange = () => {
   if (DB.publish.auto) pubSoon(true);
 };
 $('pubScript').onclick = async () => {
-  if (!requireMgr('Setting up the live page')) return;
+  if (!requireOwner('The setup script')) return;
   if (!pubCfg().key) { DB.publish = Object.assign(pubCfg(), { key: pubKeyNew() }); if (save() === false) return; }
   const src = appsLiveScript(pubCfg().key);
   if (await copyPlain(src)) toast('Setup script copied — paste it into a new project at script.google.com.', 'ok');
@@ -13261,7 +13280,7 @@ $('pubNow').onclick = async () => {
 };
 $('pubOpen').onclick = () => { const c = pubCfg(); if (c.url) window.open(c.url, '_blank', 'noopener'); };
 $('pubShare').onchange = () => {
-  if (!requireMgr('Sharing the league')) { $('pubShare').checked = pubCfg().share; return; }
+  if (!requireOwner('Sharing the league')) { $('pubShare').checked = pubCfg().share; return; }
   const on = $('pubShare').checked;
   const c = pubCfg();
   if (on && (!c.url || !c.key)) { $('pubShare').checked = false; return toast('Set the web app up first — the address above.', 'bad'); }
@@ -13274,7 +13293,7 @@ $('pubShare').onchange = () => {
 /* A join code is the address and the key in one string: everything another
    tablet needs to pick the league up, and nothing else. */
 $('shareCode').onclick = () => {
-  if (!requireMgr('The join code')) return;
+  if (!requireOwner('The join code')) return;
   const c = pubCfg();
   if (!c.url || !c.key) return toast('Set the web app up first.', 'bad');
   if (!c.share) return toast('Tick "share this league" first.', 'bad');
@@ -13745,7 +13764,7 @@ $('blRefresh').onclick = () => { grabBulletin(); save(); renderBulletin(); toast
 
 /* ══════════════ DEMO DATA ══════════════ */
 $('btnDemo').onclick = () => {
-  if (!requireMgr('Loading demo data')) return;
+  if (!requireOwner('Loading the demo season')) return;
   if (!ask('Load the demo season? This erases the current league.')) return;
   resetLeague({ name: DB.name, form: Object.assign({}, DB.form), publish: DB.publish });
   dropStaleLive();
@@ -14015,6 +14034,25 @@ function requireMgr(what) {
   toast((what || 'That') + ' needs the manager PIN.', 'bad');
   return false;
 }
+/* The leagues this person runs: all of them for the owner, otherwise the
+   ones they are named manager of. It is the edge of a manager's authority
+   over access — whose names they see, and which leagues they may put
+   somebody in. A manager of the Thursday league has nothing to say about
+   who referees on Tuesday. */
+const mgrLeagues = () => !me ? [] : isOwner() ? ROOT.leagues.slice()
+  : ROOT.leagues.filter(l => rolesOf(me)[l.id] === 'manager');
+/* Somebody a manager may look after: not the owner, not themselves, and
+   named on no league but the ones this manager runs. The referee who also
+   manages another competition belongs to the owner, not to this manager:
+   showing them here would let one league's manager take away access in
+   another. */
+function canTouch(s) {
+  if (!s || s.owner) return false;
+  if (isOwner()) return true;
+  if (!isMgr() || (me && s.id === me.id)) return false;
+  const mine = mgrLeagues().map(l => l.id), on = Object.keys(rolesOf(s));
+  return on.length > 0 && on.every(id => mine.indexOf(id) >= 0);
+}
 const REF_VIEWS = ['dash', 'teams', 'players', 'fixtures', 'live', 'attend', 'table', 'results', 'finals', 'stats', 'honours'];
 const allowedView = v => isMgr() || REF_VIEWS.indexOf(v) >= 0;
 const pinOf = k => String((DB.access && DB.access[k]) || blankDB().access[k]);
@@ -14152,13 +14190,19 @@ $('gatePin').onkeydown = e => { if (e.key === 'Enter') tryPin($('gatePin').value
 $('gatePin').oninput = () => { $('gateMsg').textContent = ''; };
 $('btnLock').onclick = lock;
 
-/* The owner's two panels: the leagues that exist, and who may open them. */
+/* Two panels: the leagues that exist, which is the owner's alone, and who
+   may open them, which a manager runs for their own leagues. Starting a
+   competition again is destructive and irreversible, so it keeps the owner
+   company. */
 function paintAccess() {
   const own = isOwner();
   $('cardLeagues').hidden = !own;
-  $('cardStaff').hidden = !own;
-  if (!own) return;
-  $('lgList').innerHTML = '<div class="tbl-wrap"><table><tr><th>League</th><th>Season</th><th class="num">Teams</th><th></th></tr>' +
+  $('cardReset').hidden = !own;
+  $('cardStaff').hidden = !isMgr();
+  if (!isMgr()) return;
+  $('stfHowOwn').hidden = !own;
+  $('stfHowMgr').hidden = own;
+  if (own) $('lgList').innerHTML = '<div class="tbl-wrap"><table><tr><th>League</th><th>Season</th><th class="num">Teams</th><th></th></tr>' +
     ROOT.leagues.map(l => '<tr><td><input data-lgname="' + esc(l.id) + '" value="' + esc(l.name || '') +
         '" placeholder="' + esc(l.season.name) + '" style="width:100%"></td>' +
       '<td class="small muted">' + esc(l.season.name) + '</td>' +
@@ -14168,14 +14212,14 @@ function paintAccess() {
         : '<button class="btn sm" data-lgopen="' + esc(l.id) + '">Open</button> ' +
           '<button class="btn sm bad" data-lgdel="' + esc(l.id) + '">\u00d7</button>') + '</td></tr>').join('') +
     '</table></div>';
-  $('lgList').querySelectorAll('[data-lgname]').forEach(i => i.onchange = () => {
+  if (own) $('lgList').querySelectorAll('[data-lgname]').forEach(i => i.onchange = () => {
     const l = leagueById(i.dataset.lgname); if (!l) return;
     l.name = i.value.trim();
     if (save() === false) return;
     paintLeagueBar(); paintAccess(); toast('Renamed.', 'ok');
   });
-  $('lgList').querySelectorAll('[data-lgopen]').forEach(b => b.onclick = () => switchLeague(b.dataset.lgopen));
-  $('lgList').querySelectorAll('[data-lgdel]').forEach(b => b.onclick = () => {
+  if (own) $('lgList').querySelectorAll('[data-lgopen]').forEach(b => b.onclick = () => switchLeague(b.dataset.lgopen));
+  if (own) $('lgList').querySelectorAll('[data-lgdel]').forEach(b => b.onclick = () => {
     const l = leagueById(b.dataset.lgdel); if (!l) return;
     if (ROOT.leagues.length < 2) return toast('There has to be one league.', 'bad');
     if (!confirm('Delete ' + leagueName(l) + ' and everything in it?')) return;
@@ -14189,14 +14233,14 @@ function paintAccess() {
 
   const sel = $('stfLg');
   sel.innerHTML = '<option value="">Everyone</option>' +
-    ROOT.leagues.map(l => '<option value="' + esc(l.id) + '">in ' + esc(leagueName(l)) + '</option>').join('');
+    mgrLeagues().map(l => '<option value="' + esc(l.id) + '">in ' + esc(leagueName(l)) + '</option>').join('');
   sel.value = stfLg;
   if (sel.value !== stfLg) stfLg = sel.value = '';       // the league they were filtering by has gone
   sel.onchange = () => { stfLg = sel.value; paintStaff(); };
   $('stfQ').oninput = () => { stfQ = $('stfQ').value; paintStaff(); };
   $('stfQ').value = stfQ;
   // the search is clutter of its own until there is enough to search
-  $('stfFind').hidden = (ROOT.staff || []).length < 5 && ROOT.leagues.length < 3;
+  $('stfFind').hidden = (ROOT.staff || []).length < 5 && mgrLeagues().length < 3;
   paintStaff();
 }
 const ROLES = [['', 'no access'], ['ref', 'referee'], ['manager', 'manager']];
@@ -14215,7 +14259,11 @@ const CHEV = '<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>';
 const EYE = '<svg viewBox="0 0 24 24"><path d="M1.6 12S5.6 5.2 12 5.2 22.4 12 22.4 12 18.4 18.8 12 18.8 1.6 12 1.6 12z"/><circle cx="12" cy="12" r="3.1"/></svg>';
 function paintStaff() {
   const q = stfQ.trim().toLowerCase();
-  const list = (ROOT.staff || []).filter(s => (!q || (s.name || '').toLowerCase().indexOf(q) >= 0) &&
+  const own = isOwner();
+  /* The owner sees everybody. A manager sees the people who are on their
+     leagues and nowhere else — and never the owner. */
+  const list = (ROOT.staff || []).filter(s => (own || canTouch(s)) &&
+    (!q || (s.name || '').toLowerCase().indexOf(q) >= 0) &&
     (!stfLg || s.owner || rolesOf(s)[stfLg]));
   $('stfList').innerHTML = list.length ? list.map(s => {
     const open = !!stfOpen[s.id];
@@ -14225,14 +14273,21 @@ function paintStaff() {
           : '<button class="stf-ex" data-sfx="' + esc(s.id) + '" title="Which leagues">' + CHEV + '</button>') +
         '<div class="stf-who"><input data-sfn="' + esc(s.id) + '" value="' + esc(s.name || '') + '">' +
           '<div class="small muted stf-sum">' + esc(roleSummary(s)) + '</div></div>' +
-        '<div class="stf-pin"><input data-sfp="' + esc(s.id) + '" type="password" value="' + esc(s.pin || '') +
-          '" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="PIN">' +
-          '<button class="btn ico stf-eye" data-sfeye="' + esc(s.id) + '" title="Show this PIN">' + EYE + '</button></div>' +
+        /* The owner holds the PINs and may read one back. A manager gives
+           access without ever seeing a PIN: the one made with the person is
+           said once, and a forgotten one is replaced rather than revealed.
+           The digits are not put on the page at all for them to find. */
+        '<div class="stf-pin">' + (own
+          ? '<input data-sfp="' + esc(s.id) + '" type="password" value="' + esc(s.pin || '') +
+            '" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="PIN">' +
+            '<button class="btn ico stf-eye" data-sfeye="' + esc(s.id) + '" title="Show this PIN">' + EYE + '</button>'
+          : '<input value="••••" disabled aria-label="PIN">' +
+            '<button class="btn ico" data-sfnew="' + esc(s.id) + '" title="Give them a new PIN">↻</button>') + '</div>' +
         (s.owner ? '<span class="pill acc">owner</span>'
           : '<button class="btn sm bad" data-sfdel="' + esc(s.id) + '" title="Remove">\u00d7</button>') +
       '</div>' +
       (s.owner ? '' : '<div class="stf-roles"' + (open ? '' : ' hidden') + '>' +
-        ROOT.leagues.map(l => '<label class="stf-rl"><span>' + esc(leagueName(l)) + '</span>' +
+        mgrLeagues().map(l => '<label class="stf-rl"><span>' + esc(leagueName(l)) + '</span>' +
           '<select data-sfr="' + esc(s.id) + '" data-lg="' + esc(l.id) + '">' + ROLES.map(([v, t]) =>
             '<option value="' + v + '"' + (rolesOf(s)[l.id] === v || (!rolesOf(s)[l.id] && !v) ? ' selected' : '') +
             '>' + t + '</option>').join('') + '</select></label>').join('') +
@@ -14253,6 +14308,14 @@ function paintStaff() {
     b.classList.toggle('on', show);
     b.title = show ? 'Hide this PIN' : 'Show this PIN';
   });
+  $('stfList').querySelectorAll('[data-sfnew]').forEach(b => b.onclick = () => {
+    const s = find(b.dataset.sfnew); if (!s || !canTouch(s)) return;
+    if (!confirm('Give ' + (s.name || 'this person') + ' a new PIN? The old one stops working.')) return;
+    const pin = freshPin();
+    if (!pin) return toast('Could not find a free PIN.', 'bad');
+    s.pin = pin;
+    keep((s.name || 'They') + ' now signs in with ' + pin + '.');
+  });
   $('stfList').querySelectorAll('[data-sfn]').forEach(i => i.onchange = () => {
     const s = find(i.dataset.sfn); if (!s) return;
     s.name = i.value.trim() || s.name;
@@ -14268,34 +14331,53 @@ function paintStaff() {
   });
   $('stfList').querySelectorAll('[data-sfr]').forEach(sel => sel.onchange = () => {
     const s = find(sel.dataset.sfr); if (!s) return;
+    if (!isOwner() && !canTouch(s)) return;
     s.roles = s.roles || {};
     if (sel.value) s.roles[sel.dataset.lg] = sel.value; else delete s.roles[sel.dataset.lg];
+    /* A manager only ever sees people who are on their leagues alone, so
+       taking the last one away would leave somebody with a PIN and nowhere
+       to use it, and nobody but the owner able to see them. They go. */
+    if (!isOwner() && !Object.keys(s.roles).length) {
+      delete stfOpen[s.id];
+      ROOT.staff = ROOT.staff.filter(x => x !== s);
+      return keep((s.name || 'They') + ' no longer has access.');
+    }
     keep('Saved.');
   });
   $('stfList').querySelectorAll('[data-sfdel]').forEach(b => b.onclick = () => {
     const s = find(b.dataset.sfdel); if (!s) return;
     if (me && me.id === s.id) return toast('You cannot remove yourself.', 'bad');
+    if (!isOwner() && !canTouch(s)) return toast('They are on another league too — that is the owner\'s to undo.', 'bad');
     if (!confirm('Remove ' + (s.name || 'this person') + '?')) return;
     delete stfOpen[s.id];
     ROOT.staff = ROOT.staff.filter(x => x !== s); keep('Removed.');
   });
 }
 $('btnNewLeague').onclick = () => newLeague();
+/* a PIN nobody else has, or nothing */
+function freshPin() {
+  for (let i = 0; i < 400; i++) {
+    const t = String(1000 + Math.floor(Math.random() * 9000));
+    if (!staffByPin(t)) return t;
+  }
+  return '';
+}
 $('btnNewStaff').onclick = () => {
-  if (!requireOwner('Adding a person')) return;
+  if (!requireMgr('Adding a person')) return;
   const nm = prompt('Who is it?', '');
   if (nm === null) return;
-  let pin = '';
-  for (let i = 0; i < 400 && !pin; i++) {
-    const t = String(1000 + Math.floor(Math.random() * 9000));
-    if (!staffByPin(t)) pin = t;
-  }
+  const pin = freshPin();
   const s = { id: uid(), name: String(nm).trim() || 'New person', pin, owner: false, roles: {} };
+  /* The owner puts them where they like. A manager may only hand out their
+     own leagues, so the person lands in the one that is open, as a referee,
+     and the manager moves them up from there if that is what they meant. */
+  if (!isOwner()) s.roles[ROOT.active] = 'ref';
   ROOT.staff.push(s);
   stfQ = ''; stfLg = ''; stfOpen[s.id] = true;
   if (save() === false) return;
   paintAccess();
-  toast('Added with PIN ' + pin + ' — now give them a league.', 'ok');
+  toast(isOwner() ? 'Added with PIN ' + pin + ' — now give them a league.'
+    : 'Added with PIN ' + pin + ' — referee in ' + leagueName(activeLeague()) + '. Write it down: it is not shown again.', 'ok');
 };
 
 /* ══════════════ BOOT ══════════════ */
