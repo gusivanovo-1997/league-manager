@@ -2713,8 +2713,9 @@ tspan.gstar{fill:var(--gold)}
           change, and does not appear here.</span>
           <br>Once a league is shared between tablets, <b>the people named on it travel with it</b>: a
           referee signed up on one tablet turns up on the others, and on the owner's, within a few
-          seconds. Nobody else's leagues travel with it, and the owner's own PIN never leaves the
-          machine it was typed on.
+          seconds. The owner travels too, so one owner PIN works on every machine that has the
+          league. Nobody else's leagues travel with it — a machine only ever has the competitions it
+          has joined.
           <br><b>This is role separation, not security.</b> The PINs and every league are held in this
           browser, so anyone who opens the developer tools can read or change them. Use it to keep
           match-day duties separate — not as a lock on personal data. Once the leagues are shared from
@@ -2825,7 +2826,11 @@ function seedStaff(r) {
   if (a.refPin && r.leagues[0]) r.staff.push({ id: uid(), name: 'Referee', pin: String(a.refPin), owner: false, roles: { [r.leagues[0].id]: 'ref' } });
   return r;
 }
-const staffByPin = p => (ROOT.staff || []).find(s => String(s.pin) === String(p));
+/* The owner is tried first: two machines can be given the same PIN for two
+   different people without ever meeting, and the owner must not be the one
+   who finds themselves locked out of their own tool by the coincidence. */
+const staffByPin = p => (ROOT.staff || []).find(s => s.owner && String(s.pin) === String(p))
+  || (ROOT.staff || []).find(s => String(s.pin) === String(p));
 const rolesOf = s => (s && s.roles) || {};
 const activeLeague = () => leagueById(ROOT.active) || ROOT.leagues[0];
 const leagueName = l => (l && (l.name || (l.season && l.season.name))) || 'League';
@@ -13106,8 +13111,10 @@ const SYNCKEY = 'futsal.sync.v1';
    so a referee a manager signs up on their tablet reaches the owner's, and a
    PIN set in one place works in all of them. Only the people named on THIS
    league go, and only their name, their PIN and their job here: a tablet
-   joined to one competition has no business knowing who referees another, and
-   the owner's own PIN never leaves the machine it was typed on.
+   joined to one competition has no business knowing who referees another.
+   The owner goes too, so one PIN set once is the owner's PIN on every
+   machine the league is on — which does mean it sits in the shared copy in
+   the owner's own Drive, beside the manager PINs that were already there.
 
    It rides with the meta rather than as a list of its own because the web app
    merges the lists by name — it knows fixtures, teams and people and nothing
@@ -13119,15 +13126,29 @@ const SYNC_ROOT = { staff: 1 };
 const metaOf = k => SYNC_ROOT[k] ? staffDoc() : DB[k];
 function staffDoc() {
   const lg = ROOT.active;
-  return (ROOT.staff || []).filter(s => s && !s.owner && rolesOf(s)[lg])
-    .sort((a, b) => String(a.id).localeCompare(String(b.id)))      // one order, so the hash is steady
+  const out = (ROOT.staff || []).filter(s => s && !s.owner && rolesOf(s)[lg])
     .map(s => ({ id: s.id, name: s.name || '', pin: String(s.pin || ''), role: rolesOf(s)[lg] }));
+  const own = (ROOT.staff || []).find(s => s && s.owner);
+  if (own) out.push({ id: own.id, name: own.name || 'Owner', pin: String(own.pin || ''), role: 'owner' });
+  return out.sort((a, b) => String(a.id).localeCompare(String(b.id)));   // one order, so the hash is steady
 }
 function staffPut(rec) {
   if (!rec || !rec.id) return;
   const lg = ROOT.active;
+  /* A machine has one owner, and it is meant to be the same person on every
+     machine the league is on: the name and the PIN come down with the league,
+     so an owner PIN set once is the owner's PIN everywhere. Never while they
+     are the one signed in here — that would change the PIN under them; it
+     lands the moment they lock. */
+  if (rec.role === 'owner') {
+    const own = (ROOT.staff || []).find(x => x && x.owner);
+    if (own && me && own.id === me.id) return;
+    if (own) { own.id = rec.id; own.name = rec.name || own.name; if (rec.pin) own.pin = String(rec.pin); }
+    else ROOT.staff.push({ id: rec.id, name: rec.name || 'Owner', pin: String(rec.pin || ''), owner: true, roles: {} });
+    return;
+  }
   let s = (ROOT.staff || []).find(x => x && x.id === rec.id);
-  if (s && s.owner) return;                        // the owner is nobody else's to re-job
+  if (s && s.owner) return;                        // an owner is not demoted to a referee by a stale list
   if (!s) { s = { id: rec.id, name: '', pin: '', owner: false, roles: {} }; ROOT.staff.push(s); }
   s.name = rec.name || s.name;
   if (rec.pin) s.pin = String(rec.pin);
