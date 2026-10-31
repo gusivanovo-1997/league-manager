@@ -4618,15 +4618,29 @@ function starHtml(html, plain) {
   const star = nm => plain
     ? '<span style="margin-left:4px;font-weight:700;color:#b8860b;white-space:nowrap">' + CROWN_TXT + starBy[nm].n + '</span>'
     : '<span class="gstar">' + CROWN_SVG + '<b>' + starBy[nm].n + '</b></span>';
-  return head + body.replace(/>([^<]+)</g, (m, txt, off) => {
-    // the tag this text sits in: marked data-nostar and it keeps its name plain
-    const open = body.lastIndexOf('<', off);
-    if (open >= 0 && body.slice(open, off + 1).indexOf('data-nostar') >= 0) return m;
+  const mark = txt => {
     const tail = [];
     // a name joined to another with "/" takes its stars after the whole name
     const out = txt.replace(new RegExp(starRe.source, 'g'), (nm, i) =>
       txt[i + nm.length] === '/' || txt[i - 1] === '/' ? (tail.push(star(nm)), nm) : nm + star(nm));
-    return '>' + out + tail.join('') + '<';
+    return out + tail.join('');
+  };
+  /* A name anywhere inside something marked data-nostar is left plain — and
+     "inside" has to mean anywhere under it, not merely straight after its
+     opening tag. A team name almost always follows its own colour dot, so
+     the tag immediately before the text is the dot's, not the cell's, which
+     is why marking the cell did nothing. The tags are walked instead and the
+     depth kept, so a marked cell covers everything in it. Style and script
+     are treated the same way: whatever is in them is not prose. */
+  const open = [];
+  let quiet = 0;
+  return head + body.replace(/<\/?([A-Za-z][\w-]*)[^>]*>|[^<]+/g, (tok, tag) => {
+    if (tok[0] !== '<') return quiet ? tok : mark(tok);
+    if (tok[1] === '/') { if (open.length && open.pop()) quiet--; return tok; }
+    if (/\/>$/.test(tok) || /^(?:br|img|input|hr|meta|link|source|col|area|base|embed|param|track|wbr)$/i.test(tag)) return tok;
+    const off = tok.indexOf('data-nostar') >= 0 || /^(?:style|script)$/i.test(tag);
+    open.push(off); if (off) quiet++;
+    return tok;
   });
 }
 
@@ -11472,7 +11486,7 @@ function emailHtmlRaw(d, ball, crests) {
   // a big badge over the name: how the next games are billed, readable at a glance
   const stack = (tid, px) => { const b = badge(tid, px);
     return (b ? b.replace('margin:0 6px 0 0', 'margin:0 auto 5px;display:block') : dot(tid)) +
-      '<b style="font-size:13.5px;color:' + INK + '">' + esc(teamName(tid)) + '</b>'; };
+      '<b data-nostar style="font-size:13.5px;color:' + INK + '">' + esc(teamName(tid)) + '</b>'; };
   // the MVP: the most goals in the match (or the round), shared when level
   const MVP = '<span style="display:inline-block;background-color:#e9a100;color:#1a1613;font-size:9.5px;font-weight:800;letter-spacing:1px;padding:1px 7px;border-radius:9px">MVP</span>';
   const mvpOf = f => { const m = matchMvp(f);
@@ -11558,7 +11572,10 @@ function emailHtmlRaw(d, ball, crests) {
   // the grand final leads, then the gold semis, the 3rd-place match, and the silver bracket
   const KO_RANK = { F: 0, P3: 1, SVF: 2, SV3: 3, SF1: 4, SF2: 5, SV1: 6, SV2: 7 };   // the finals, then the semis below them
   const koSort = (a, b) => (KO_RANK[a.stage] || 0) - (KO_RANK[b.stage] || 0);
-  const nm = (f, tid) => winnerOf(f) === tid ? '<b>' + esc(teamName(tid)) + '</b>' : esc(teamName(tid));
+  // data-nostar: a crown belongs on the table and in the top ten, not on
+  // every team named in a result or a fixture — the mail is long enough
+  const nm = (f, tid) => '<span data-nostar>' + (winnerOf(f) === tid
+    ? '<b>' + esc(teamName(tid)) + '</b>' : esc(teamName(tid))) + '</span>';
 
   /* ── the podiums, once every final in both brackets has been played ── */
   const pods = podiumsDone();
@@ -11638,8 +11655,9 @@ function emailHtmlRaw(d, ball, crests) {
       reg.forEach(f => {
         const sc = matchScorers(f);
         A.push('<tr><td style="padding:9px 0;border-bottom:1px solid ' + HAIR + ';font-size:13.5px">' +
-          dot(f.homeId) + esc(teamName(f.homeId)) +
-          ' <b style="color:' + ACC + '">' + f.homeGoals + ' &ndash; ' + f.awayGoals + '</b> ' + dot(f.awayId) + esc(teamName(f.awayId)) +
+          dot(f.homeId) + '<span data-nostar>' + esc(teamName(f.homeId)) + '</span>' +
+          ' <b style="color:' + ACC + '">' + f.homeGoals + ' &ndash; ' + f.awayGoals + '</b> ' +
+          dot(f.awayId) + '<span data-nostar>' + esc(teamName(f.awayId)) + '</span>' +
           (sc ? '<div style="color:' + DIM + ';font-size:12px;margin-top:3px">' + esc(sc) + '</div>' : '') + mvpOf(f) +
           '</td></tr>');
       });
