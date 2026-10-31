@@ -2977,6 +2977,14 @@ function reconcileLive(prev) {
 }
 /* After the league is replaced wholesale (restore, erase, demo, a conflict
    reload), a match this window had open may not exist any more. */
+/* The match open on this tablet has been finished on another one: the clock
+   stops and the screen lets go of it. Without this it keeps ticking against a
+   game that is over. */
+function liveFinishedElsewhere() {
+  clearInterval(liveTimer);
+  live = { id: null, running: false, elapsed: 0, half: 1, period: 'H1', t0: 0 };
+  toast('That match was finished on another tablet \u2014 it is closed here too.');
+}
 function dropStaleLive() {
   const lf = live.id && DB.fixtures.find(f => f.id === live.id);
   if (live.id && (!lf || (lf.status !== 'live' && lf.status !== 'final'))) {
@@ -11648,9 +11656,9 @@ function emailImages() {
   if (ball) out.futsalmark = ball.slice(ball.indexOf(',') + 1);
   DB.teams.forEach(t => { const c = emailCrests[t.id]; if (c) out['c' + t.id] = c.src.slice(c.src.indexOf(',') + 1); });
   if (emailShield && DB.teams.some(t => !emailCrests[t.id])) out.cshield = emailShield.slice(emailShield.indexOf(',') + 1);
-  // the Golden Boot and the holders' badge travel the same way as the crests
+  // the Golden Boot and the champions' badge travel the same way as the crests
   out.gboot = BOOT_PNG.slice(BOOT_PNG.indexOf(',') + 1);
-  if (currentChamp()) out.champ = CHAMP_PNG.slice(CHAMP_PNG.indexOf(',') + 1);
+  out.champ = CHAMP_PNG.slice(CHAMP_PNG.indexOf(',') + 1);
   return out;
 }
 
@@ -11890,19 +11898,23 @@ function emailHtmlRaw(d, ball, crests) {
     /* The holders wear their badge in the table and nowhere else in the
        email: it is the one place a reader is looking down a list of teams
        and wondering who holds the thing. */
+    /* The badge goes to the champions this table is about: the team that has
+       won this season once it is decided, and until then the team that holds
+       the title from the last one. One badge a row, never two.
+
+       No alt text and nothing below the baseline, so a picture a client has
+       not loaded yet leaves the row exactly the height it already is. */
     const held = currentChamp();
-    /* No alt text and nothing below the baseline: a picture a client has not
-       loaded yet must leave the row exactly the height it already is, and the
-       crest beside it is the taller of the two either way. */
-    const holder = tid => held && held.id === tid
+    const champs = d.ph.champion || (held && held.id) || null;
+    const holder = tid => champs && champs === tid
       ? '<img src="' + esc((crests && crests.champ) || CHAMP_PNG) + '" width="14" height="14" alt="" ' +
-        'title="Current champions" style="display:inline-block;vertical-align:middle;border:0;outline:none;margin:0 0 0 5px">' : '';
+        'title="Champions" style="display:inline-block;vertical-align:middle;border:0;outline:none;margin:0 0 0 5px">' : '';
     d.st.forEach(r => {
       const q = r.pos <= cut;
       A.push('<tr' + (q ? ' style="background:' + GLOW + '"' : '') + '>' +
         '<td style="padding:7px 4px;border-bottom:1px solid ' + HAIR + ';color:' + (q ? ACC : DIM) + ';font-weight:' + (q ? '700' : '400') + '">' + r.pos + '</td>' +
         '<td style="padding:7px 4px;border-bottom:1px solid ' + HAIR + '">' + dot(r.id) +
-          (d.ph.champion === r.id ? '<b>' + esc(r.name) + '</b> &#127942;' : esc(r.name)) + holder(r.id) + '</td>' +
+          (d.ph.champion === r.id ? '<b>' + esc(r.name) + '</b>' : esc(r.name)) + holder(r.id) + '</td>' +
         [r.P, r.W, r.D, r.L, (r.GD > 0 ? '+' : '') + r.GD].map(v =>
           '<td style="padding:7px 4px;border-bottom:1px solid ' + HAIR + ';text-align:right;color:' + DIM + '">' + v + '</td>').join('') +
         '<td style="padding:7px 4px;border-bottom:1px solid ' + HAIR + ';text-align:right"><b>' + r.Pts + '</b></td></tr>');
@@ -12885,18 +12897,29 @@ function shadowApply(p, kept) {
 }
 /* Apply what came down, but never over the top of something this tablet
    has changed and not yet sent — those are ours until they go up. */
+/* What this tablet has not sent yet wins over what comes down — that is how
+   two people can score two courts at once. A result is the exception. A match
+   finished somewhere else is finished: an open clock is not a decision, and
+   holding one here would push the match back open everywhere on the next
+   send, which is how a game that had been played and closed turned up open
+   again on the other tablet. */
 function docApply(p, keep) {
-  const held = (n, id) => keep && (keep.set || {})[n] && (keep.set || {})[n][id] !== undefined;
+  const held = (n, id, coming) => {
+    const ours = keep && (keep.set || {})[n] && (keep.set || {})[n][id];
+    if (ours === undefined) return false;
+    if (n === 'fixtures' && coming && coming.status === 'final' && (!ours || ours.status !== 'final')) return false;
+    return true;
+  };
   SYNC_LISTS.forEach(n => {
     if (!Array.isArray(DB[n])) DB[n] = [];
     const s = (p.set || {})[n];
     if (s) Object.keys(s).forEach(id => {
-      if (held(n, id)) return;
+      if (held(n, id, s[id])) return;
       const i = DB[n].findIndex(x => x && x.id === id);
       if (i < 0) DB[n].push(s[id]); else DB[n][i] = s[id];
     });
     const d = (p.del || {})[n];
-    if (d && d.length) DB[n] = DB[n].filter(x => !x || d.indexOf(x.id) < 0 || held(n, x.id));
+    if (d && d.length) DB[n] = DB[n].filter(x => !x || d.indexOf(x.id) < 0 || held(n, x.id));   // a delete keeps whatever is unsent here
   });
   if (p.meta) Object.keys(p.meta).forEach(k => {
     if (keep && keep.meta && keep.meta[k] !== undefined) return;
@@ -12941,6 +12964,7 @@ async function syncTick(force) {
   const lg = ROOT.active;
   try {
     const mine = syncDiff();
+    const openHere = live.id && (DB.fixtures.find(f => f.id === live.id) || {}).status !== 'final' ? live.id : null;
     let bad = false;
     const r = await syncPost({ action: 'pull', rev: SY.rev });
     if (lg !== ROOT.active) return;
@@ -12967,6 +12991,11 @@ async function syncTick(force) {
       // with content here and no shadow, nothing comes down: the next push sends this copy up
     } else if (r.steps && r.steps.length) {
       r.steps.forEach(st => { shadowApply(st); docApply(st, mine); });
+      changed = true;
+    }
+    // the match this tablet has open, if it was still being played a moment ago
+    if (openHere && (DB.fixtures.find(f => f.id === openHere) || {}).status === 'final' && live.id === openHere) {
+      liveFinishedElsewhere();
       changed = true;
     }
     SY.rev = r.rev || SY.rev;
