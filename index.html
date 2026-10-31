@@ -110,6 +110,12 @@ h2.sec span{color:var(--dim);font-weight:400;margin-left:8px;font-size:calc(11.5
 .spacer{flex:1}
 
 .field{margin-bottom:10px}
+/* In a grid of fields the labels are not all one line long — "extra time,
+   each half (min) — finals only" takes two where "year" takes one — and a
+   taller label used to push its own box below the boxes beside it. The boxes
+   sit on the floor of the row instead, so a row of them reads as a row. */
+.grid>.field{display:flex;flex-direction:column;margin-bottom:0}
+.grid>.field>input,.grid>.field>select,.grid>.field>textarea{margin-top:auto}
 .field label{display:block;font-size:calc(10.5px * var(--fs));letter-spacing:.5px;color:var(--dim);text-transform:uppercase;margin-bottom:4px}
 input,select,textarea{width:100%;background:var(--card);border:1px solid var(--line2);color:var(--text);
   border-radius:5px;padding:7px 8px;font-size:calc(13px * var(--fs));font-family:inherit}
@@ -972,6 +978,14 @@ body.cupmode .leaguecard{display:none}
     linear-gradient(180deg,#0a0807 0%,#100a07 42%,#24120a 100%);
   box-shadow:inset -2px 0 0 rgba(255,138,61,.75)}
 @media print{#rail::before{display:none}}
+/* 100vh is what the window would be with the browser's own bars hidden, so
+   on a tablet the foot of the rail — the tools, the sync sign, who is signed
+   in — sat underneath them until you scrolled. 100dvh is the height the
+   screen actually has at this moment, bars and all, so the bottom row stays
+   on the screen. The vh rule above stands for anything that cannot do it. */
+@supports (height:100dvh){
+  #rail{height:calc((100dvh - var(--banner,0px)) / var(--z))}
+}
 :root[data-theme="light"] #rail{border-right:0;box-shadow:none}
 :root[data-theme="light"] #rail::before{
   background:
@@ -1064,7 +1078,7 @@ body.cupmode .leaguecard{display:none}
 #rail .toolbar .btn.ico{width:41px;height:41px}
 #rail .toolrow{grid-template-columns:repeat(4,41px);gap:6px}
 #rail .btn.ico svg{width:20px;height:20px}
-#roleChip{position:fixed;top:7px;right:9px;z-index:40;max-width:46vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#rail .rolechip{justify-content:center;padding:6px 10px;align-self:center}
 /* margin:0 — the original rule centred main with auto margins, and an auto
    margin on the cross axis stops a flex item stretching, so main sized itself
    to its widest table and dragged the page sideways on a phone */
@@ -1772,6 +1786,10 @@ tspan.gstar{fill:var(--gold)}
   #rail .toolbar{flex-direction:row;flex-wrap:wrap;border-top:0;padding-top:0;align-items:center}
   #rail .toolbar .toolrow{order:1}
   #rail .toolbar .syncchip{order:2;margin-top:0;margin-left:2px}
+  /* laid flat there is no room beside the buttons for a name, so it takes
+     the corner of the screen instead */
+  #roleChip{position:fixed;top:7px;right:9px;z-index:40;max-width:46vw;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #rail .toolbar .btn{width:auto}
   #rail .toolrow{display:flex;flex-wrap:wrap;justify-content:flex-start}
   /* the strip reads better even: keep the colour, drop the raised box */
@@ -2025,11 +2043,6 @@ tspan.gstar{fill:var(--gold)}
 
 <div id="bg" aria-hidden="true"></div>
 
-<!-- Who is holding the tablet is the one thing on the page that is about the
-     person rather than the league, so it sits at the corner of the screen and
-     stays there — outside the shell, which scales itself, and above it. -->
-<span class="rolechip" id="roleChip" style="display:none"><span class="dot"></span><b id="roleName"></b></span>
-
 <div id="gate">
   <div class="gate-box">
     <div class="brand stack">
@@ -2061,6 +2074,10 @@ tspan.gstar{fill:var(--gold)}
   <nav id="nav"><i id="navInk"></i></nav>
 
   <div class="toolbar">
+    <!-- Who is holding the tablet, beside the buttons they would reach for.
+         On a phone, where the rail lies down as a strip, it goes to the top
+         right corner of the screen instead — see the media query. -->
+    <span class="rolechip" id="roleChip" style="display:none"><span class="dot"></span><b id="roleName"></b></span>
     <span class="syncchip" id="syncChip" hidden></span>
     <!-- Four things you reach for while the league is running. Backing up,
          restoring and the Excel workbook were here too, which put three
@@ -2284,16 +2301,6 @@ tspan.gstar{fill:var(--gold)}
       <div class="small muted" style="margin-top:8px">A dated record of what every team paid on every
         night, and what the season has taken by the moment you press it. Choose <b>Save as PDF</b> in
         the print window to keep the file.</div>
-      <!-- What the corner of the first page says. Two lines, because one
-           client may run several competitions and the report has to name
-           both. They are the report's own words, not the season's: changing
-           them here renames nothing and moves nobody's history. -->
-      <div class="grid g2" style="margin-top:12px">
-        <div class="field"><label>Report heading — top line, the client</label>
-          <input id="finClient" maxlength="60"></div>
-        <div class="field"><label>Report heading — the line under it</label>
-          <input id="finSub" maxlength="60"></div>
-      </div>
     </div>
     <div id="finBody"></div>
   </section>
@@ -2627,6 +2634,11 @@ tspan.gstar{fill:var(--gold)}
       <h3>Season</h3>
       <div class="grid g4">
         <div class="field"><label>Season name</label><input id="stName"></div>
+        <!-- The two lines in the corner of a report. One client may run
+             several competitions, so the report names both. They are the
+             report's own words: changing them renames nothing. -->
+        <div class="field"><label>Reports — client</label><input id="stClient" maxlength="60"></div>
+        <div class="field"><label>Reports — line under it</label><input id="stReportSub" maxlength="60"></div>
         <div class="field"><label>Year</label><input type="number" id="stYear" min="2000" max="2100"></div>
         <div class="field"><label>Venue</label><input id="stVenue"></div>
         <div class="field"><label>Max squad size</label><input type="number" id="stSquad" min="5" max="20"></div>
@@ -3699,7 +3711,7 @@ function renderAttend() {
    the season so far; this is the whole of it — the season's totals, round by
    round, match by match, by team and by player. Manager only, like every
    other money figure. */
-/* What the report's corner says, and the two boxes that set it. Left blank
+/* What the report's corner says. Set in the season's settings; left blank
    they fall back to the competition's own names, so a report always heads
    itself with something. */
 const repClient = () => (DB.season.client || '').trim() || leagueName(activeLeague());
@@ -3709,20 +3721,7 @@ function repSub() {
   const top = repClient(), season = DB.season.name || '', comp = leagueName(activeLeague());
   return season && season !== top ? season : (comp !== top ? comp : '');
 }
-function paintRepHead() {
-  const c = $('finClient'), s = $('finSub');
-  if (!c || !s) return;
-  fill(c, DB.season.client || '');
-  fill(s, DB.season.reportSub || '');
-  c.placeholder = leagueName(activeLeague());
-  s.placeholder = DB.season.name || '';
-  c.onchange = () => { if (!requireMgr('The report heading')) { fill(c, DB.season.client || ''); return; }
-    DB.season.client = c.value.trim(); if (save() !== false) toast('Saved — the next report says so.', 'ok'); };
-  s.onchange = () => { if (!requireMgr('The report heading')) { fill(s, DB.season.reportSub || ''); return; }
-    DB.season.reportSub = s.value.trim(); if (save() !== false) toast('Saved — the next report says so.', 'ok'); };
-}
 function renderFinance() {
-  paintRepHead();
   const rs = attendRounds(), fee = feeOf();
   if (!rs.length) { $('finBody').innerHTML = '<div class="card"><div class="empty">No fixtures yet — make the draw in Fixtures and the takings appear here round by round.</div></div>'; return; }
   const $$ = v => '$' + money(v * fee);
@@ -10120,12 +10119,15 @@ function renderHonours() {
 }
 
 /* ══════════════ SETTINGS ══════════════ */
-const SETMAP = [['stName', 'name'], ['stYear', 'year'], ['stVenue', 'venue'], ['stSquad', 'squadMax'],
+const SETMAP = [['stName', 'name'], ['stClient', 'client'], ['stReportSub', 'reportSub'], ['stYear', 'year'], ['stVenue', 'venue'], ['stSquad', 'squadMax'],
   ['stWin', 'pointsWin'], ['stDraw', 'pointsDraw'], ['stLoss', 'pointsLoss'], ['stHalf', 'halfMin'],
   ['stBreak', 'breakMin'], ['stEt', 'etMin'],
   ['stYc', 'ycSuspend'], ['stAge', 'minAge'], ['stFee', 'fee'], ['stFormat', 'format']];
 function renderSettings() {
   SETMAP.forEach(([el, key]) => fill(el, DB.season[key]));
+  // left blank, a report heads itself with the competition's own names
+  $('stClient').placeholder = leagueName(activeLeague());
+  $('stReportSub').placeholder = DB.season.name || '';
   $('stBoot').checked = bootOn();
   paintAccess();
   let bytes = 0;
