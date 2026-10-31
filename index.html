@@ -778,7 +778,7 @@ body.noboot .bootcard{display:none}
 /* a knockout cup has no table, so nothing that reads one is drawn */
 body.cupmode .leaguecard{display:none}
 /* the bracket on the dashboard: one row per tie */
-.kostrip{display:flex;flex-direction:column;gap:5px}
+.kolist{display:flex;flex-direction:column;gap:5px}
 .korow{display:grid;grid-template-columns:minmax(74px,auto) minmax(0,1fr) auto minmax(0,1fr) auto;gap:4px 8px;align-items:center;
   padding:7px 9px;border-radius:9px;border:1px solid var(--line);border-left:3px solid var(--gold);background:var(--card);
   font-size:calc(12.5px * var(--fs))}
@@ -1200,6 +1200,31 @@ details.hint .small{margin-top:8px}
 .bx.places .pl{display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:calc(12.5px * var(--fs))}
 .bx.places .pl i{font-style:normal;width:1.5em;text-align:center}
 .bx.places .pl .muted{min-width:2.2em}
+/* A tie's box: what it is, then how it finished, then the two teams with
+   their scores on one right edge. Everything that can grow — a long name,
+   the chip saying a winner is through, the three chips of a match that went
+   to extra time and then penalties — grows on its own line instead of
+   shoving the score out of its column. */
+.bx .st{display:flex;flex-direction:column;gap:5px}
+.bx .st .stp{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.bx .sd{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:3px 10px}
+.bx .sd .sdt{display:flex;flex-wrap:wrap;align-items:center;gap:4px;min-width:0}
+.bx .sd .sdt .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bx .sd .sdt .crest{flex:0 0 auto;margin:0}
+.bx .sd .sdg{display:inline-flex;align-items:baseline;justify-content:flex-end;gap:4px;min-width:3em;
+  white-space:nowrap;font-weight:700;font-variant-numeric:tabular-nums}
+.bx .sd .sdg em{font-style:normal;font-weight:600;font-size:.82em;color:var(--dim)}
+.bx .bxko{margin-top:7px;display:flex;justify-content:center}
+.bx .thru{margin-left:0}
+/* Home's copy of the bracket: the same picture, read rather than worked */
+.brk.mini{--fs:1.02;font-size:calc(13px * var(--fs))}
+.brk.mini .fsec{padding:9px 11px;margin-bottom:10px}
+.brk.mini .fsec:last-child{margin-bottom:0}
+@media (min-width:701px){.brk.mini .bracket{gap:10px;grid-template-columns:repeat(3,minmax(140px,1fr))}}
+.brk.mini .bracket{gap:10px}
+.brk.mini .bx{padding:8px;margin:6px 0}
+.brk.mini .bx.crown{padding:12px}
+.brk.mini .bx:hover{transform:none}
 .hmed{margin-right:5px}
 /* sections that take turns in colour, so a long list reads as blocks */
 .card.sec,.tbl-wrap.sec,.rnd.sec{border-radius:14px;padding:12px 14px;margin-bottom:14px}
@@ -1434,6 +1459,21 @@ button.tsph:hover{transform:scale(1.14)}
 /* the dashboard's next match night: what each game is, the gold grand final shining */
 #dashNext .evrow{align-items:flex-start;padding:7px 0}
 #dashNext .evrow .min{padding-top:2px}
+/* a match read as a row: the label over it, the teams either side of one centre */
+.mrow{align-items:flex-start;padding:7px 0}
+.mrow>.min{padding-top:3px}
+.mrow .mw{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px}
+.mrow .mtag{display:block;text-align:center}
+.mrow .mg{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:4px 8px;width:100%}
+.mrow .ms{display:flex;align-items:center;gap:6px;min-width:0;font-weight:600}
+.mrow .ms.h{justify-content:flex-end}
+.mrow .ms .nm{min-width:0;overflow-wrap:break-word}   /* a name breaks at its space, not inside a word */
+.mrow .ms .crest{flex:0 0 auto;margin:0}
+.mrow .mv{font-style:normal;color:var(--dim);font-weight:400}
+.mrow .msc{font-variant-numeric:tabular-nums;white-space:nowrap;font-size:calc(14px * var(--fs))}
+.mrow .mko{max-width:100%}
+.kostrip.sm{justify-content:center;font-size:calc(9.5px * var(--fs));gap:3px}
+.kostrip.sm .kseg{padding:1px 7px;gap:4px}
 .nxm .nxt{display:block;margin-top:4px}
 .nxtag{display:inline-block;white-space:nowrap;font-size:calc(10.5px * var(--fs));font-weight:800;letter-spacing:.4px;text-transform:uppercase;
   padding:2px 9px;border-radius:999px;border:1px solid rgba(255,138,61,.45);background:rgba(255,138,61,.12);color:#ffb27a}
@@ -1747,6 +1787,7 @@ tspan.gstar{fill:var(--gold)}
    otherwise be taken for a tablet. */
 @media (max-width:560px),(max-height:480px) and (orientation:landscape){
   :root{--z:1;--fs:1.15}
+  .brk.mini{--fs:.95}
   /* The match screen on a phone: the score says the score, it does not have
      to be the whole screen. Nothing is pinned either — a referee scrolling
      for a name wants the squads and the log to come up, not to read them
@@ -4927,7 +4968,7 @@ function finalsStrip() {
     : KO_ORDER.map(s => DB.fixtures.find(f => f.stage === s)).filter(f => f && (f.homeId || f.awayId));
   if (!ko.length) return '';
   const side = id => id ? crest(id, 'sm') + esc(teamName(id)) : '<span class="muted">to be decided</span>';
-  return '<div class="kostrip">' + ko.map(f => {
+  return '<div class="kolist">' + ko.map(f => {
     const done = f.status === 'final', w = done ? winnerOf(f) : null;
     const right = done
       ? '<b>' + f.homeGoals + '&ndash;' + f.awayGoals + (f.homePens != null && f.homeGoals === f.awayGoals
@@ -5021,13 +5062,20 @@ function renderDash() {
       SV1: 'Silver semi-final 1', SV2: 'Silver semi-final 2', SVF: 'Silver grand final', SV3: 'Silver 3rd place' }[f.stage] || stageLabel(f.stage);
     return '<span class="nxtag ' + metal + '">' + (f.stage === 'F' ? '<b class="goldtxt">★ ' + esc(lbl) + ' ★</b>' : esc(lbl)) + '</span>';
   };
+  /* What each match is sits above it, and the two teams sit either side of
+     the middle — home to the right of its own column, away to the left of
+     its — so every row in the card lines up on one centre, whatever the
+     names are. The same shape reads the results below. */
+  const mrow = (tag, f, mid, extra, after) => '<div class="evrow mrow' + (extra || '') + '"' + resAttr(f) + '>' +
+    '<span class="min">' + esc(f.time || '') + '</span>' +
+    '<span class="mw">' + (tag ? '<span class="mtag">' + tag + '</span>' : '') +
+      '<span class="mg"><span class="ms h">' + crest(f.homeId) + '<span class="nm">' + esc(teamName(f.homeId)) + '</span></span>' +
+        mid + '<span class="ms a">' + crest(f.awayId) + '<span class="nm">' + esc(teamName(f.awayId)) + '</span></span></span>' +
+      (koStrip(f, true) ? '<span class="mko">' + koStrip(f, true) + '</span>' : '') +
+    '</span>' + (after || '') + '</div>';
   $('dashNext').innerHTML = next.length ? next.map(f =>
-    '<div class="evrow' + (f.stage === 'F' ? ' nxgf' : '') + '"><span class="min">' + esc(f.time || '') + '</span>' +
-    // the label heads the game, so the two names keep the whole width
-    '<span class="nxm" style="flex:1">' + what(f) + '<span class="nxt">' +
-      crest(f.homeId) + esc(teamName(f.homeId)) + ' <span class="muted">v</span> ' +
-      crest(f.awayId) + esc(teamName(f.awayId)) + '</span></span>' +
-    (f.status === 'live' ? '<span class="pill bad">live</span>' : '') + '</div>'
+    mrow(what(f), f, '<i class="mv">v</i>', f.stage === 'F' ? ' nxgf' : '',
+      f.status === 'live' ? '<span class="pill bad">live</span>' : '')
   ).join('') + '<div class="small muted" style="margin-top:8px">' + fmtDate(night) +
     (next.some(isMoved) ? ' ' + RSX : '') +
     (DB.season.venue ? ' · ' + esc(DB.season.venue) : '') + '</div>'
@@ -5042,12 +5090,9 @@ function renderDash() {
   const last = lastRound ? DB.fixtures.filter(f => f.status === 'final' && same(f))
     .sort((a, b) => (a.time || '').localeCompare(b.time || '')) : [];
   $('dashLast').innerHTML = last.length ? last.map(f =>
-    '<div class="evrow"' + resAttr(f) + '><span style="flex:1">' +
-      '' + crest(f.homeId) + '' +
-      esc(teamName(f.homeId)) + ' <b>' + f.homeGoals + '–' + f.awayGoals + '</b> ' +
-      '' + crest(f.awayId) + '' +
-      esc(teamName(f.awayId)) + (koStrip(f) ? '<div style="margin-top:4px">' + koStrip(f) + '</div>' : '') + '</span>' +
-    '<span class="muted small">' + (f.stage === 'regular' ? 'R' + f.round : stageLabel(f.stage)) + '</span></div>'
+    mrow('<span class="nxtag' + (f.stage === 'regular' ? '' : /^SV/.test(f.stage) ? ' silver' : ' gold') + '">' +
+      esc(f.stage === 'regular' ? 'Round ' + f.round : stageLabel(f.stage)) + '</span>', f,
+      '<b class="msc">' + f.homeGoals + '–' + f.awayGoals + '</b>')
   ).join('') + '<div class="small muted" style="margin-top:8px">' +
     (lastRound.stage === 'regular' || lastRound.date ? fmtDate(lastRound.date) : stageLabel(lastRound.stage)) + '</div>'
     : '<div class="empty">No results yet.</div>';
@@ -5067,10 +5112,15 @@ function renderDash() {
     ? vizShare(hg.map(r => ({ label: r.name, value: r.GF, tid: r.id, colour: (team(r.id) || {}).colour })))
     : '<div class="empty">No goals yet.</div>';
 
-  const strip = finalsStrip();
+  /* A cup is a list of ties, and a league-only season has no bracket at
+     all; but once the finals exist Home shows the bracket itself rather
+     than a list of the same eight matches — the same picture as the Finals
+     tab, smaller, with nothing to press. */
+  const brk = !isCup() && !leagueOnly() && DB.fixtures.some(f => f.stage !== 'regular') ? bracketHtml(true) : '';
+  const strip = brk ? '' : finalsStrip();
   $('dashFinalsCard').querySelector('h3').textContent = isCup() ? 'The cup' : 'Finals';
-  $('dashFinalsCard').style.display = strip ? '' : 'none';
-  $('dashFinals').innerHTML = strip;
+  $('dashFinalsCard').style.display = brk || strip ? '' : 'none';
+  $('dashFinals').innerHTML = brk || strip;
 
   // a goal nobody was named for counts for the team, but it is not a scorer
   const sc = scorerTable().filter(r => r.personId).slice(0, 10);
@@ -7902,13 +7952,16 @@ function koNote(f, short, firstTid) {
   return koSteps(f, firstTid).map(([l, p]) => (short ? ab[l] : l) + ' ' + koPair(p)).join(short ? ' · ' : ', ');
 }
 /* the same, as a strip of labelled chips — extra time in amber, penalties in gold */
-function koStripOf(steps) {
+function koStripOf(steps, small) {
   if (!steps.length) return '';
   const cls = { 'Normal time': 'nt', 'Full time': 'nt', 'Extra time': 'et', 'Penalties': 'pk' };
-  return '<span class="kostrip">' + steps.map(([l, p]) => '<span class="kseg ' + cls[l] + '"><i>' + l + '</i><b>' + koPair(p) + '</b></span>')
+  // in a bracket box or a dashboard row there is no room for the words
+  const ab = { 'Normal time': 'NT', 'Full time': 'FT', 'Extra time': 'ET', 'Penalties': 'Pens' };
+  return '<span class="kostrip' + (small ? ' sm' : '') + '">' + steps.map(([l, p]) =>
+    '<span class="kseg ' + cls[l] + '"><i>' + (small ? ab[l] : l) + '</i><b>' + koPair(p) + '</b></span>')
     .join('<span class="karr">›</span>') + '</span>';
 }
-const koStrip = f => koStripOf(koSteps(f));
+const koStrip = (f, small) => koStripOf(koSteps(f), small);
 const periodLen = p => (p === 'ET1' || p === 'ET2') ? 60 * etMin() : 60 * (p === 'BRK' ? (DB.season.breakMin == null ? 2 : DB.season.breakMin)
                                          : (DB.season.halfMin || 20));
 const periodName = p => p === 'BRK' ? 'Half-time break' : p === 'H2' ? 'Second half' : p === 'ET1' ? 'Extra time — first half'
@@ -9160,9 +9213,55 @@ function lastRegularNight() {
   const on = reg.filter(f => f.date === date);
   return { date, time: (on.find(f => f.time) || {}).time || '', court: (on.find(f => f.court) || {}).court || '' };
 }
+/* A finals night has a running order, and it builds: the Silver Cup opens
+   the night and the gold grand final closes it, with each bracket's
+   third-place play-off immediately before its own final. Semi-final night
+   follows the same idea — both silver semis, then both gold.
+
+     silver 3rd place · silver grand final · gold 3rd place · GOLD FINAL
+
+   Only the matches the season actually has are counted, so a league with
+   no Silver Cup does not leave two empty slots before its first kick-off. */
+const KO_NIGHT = [['SV1', 'SV2', 'SF1', 'SF2'], ['SV3', 'SVF', 'P3', 'F']];
+function koRunOrder(stage) {
+  const silver = DB.teams.length >= 8 || DB.fixtures.some(f => /^SV/.test(f.stage));
+  const night = KO_NIGHT[KO_NIGHT[0].indexOf(stage) >= 0 ? 0 : 1];
+  const has = s => (/^SV/.test(s) ? silver : true) && (s === 'SV3' || s === 'P3' ? !!DB.finals3rd : true);
+  return Math.max(0, night.filter(has).indexOf(stage));
+}
+/* how far apart the league puts its own kick-offs, read off its last night */
+function koSlot() {
+  const reg = DB.fixtures.filter(f => f.stage === 'regular' && f.date && f.time);
+  if (!reg.length) return 45;
+  const last = reg.map(f => f.date).sort().pop();
+  const ts = [...new Set(reg.filter(f => f.date === last).map(f => toMins(f.time)))].sort((a, b) => a - b);
+  for (let i = 1; i < ts.length; i++) if (ts[i] > ts[i - 1]) return ts[i] - ts[i - 1];
+  return 45;
+}
 const blankKO = (stage, homeId, awayId, night, date) => ({ id: uid(), stage, round: 0, homeId, awayId,
-  date: date || '', time: (night && night.time) || '', court: (night && night.court) || '',
+  date: date || '',
+  time: night && night.time ? fmtMins(toMins(night.time) + koRunOrder(stage) * koSlot()) : '',
+  court: (night && night.court) || '',
   status: 'scheduled', homeGoals: 0, awayGoals: 0, events: [], homePens: null, awayPens: null });
+/* A bracket drawn before there was a running order has every match at the
+   same kick-off: it is put in order once. Times that already differ were
+   set on purpose — by this, or by hand on the Schedule button — and are
+   left exactly as they are. */
+function spreadKO() {
+  let changed = false;
+  const ko = DB.fixtures.filter(f => f.stage !== 'regular' && f.date && f.time);
+  [...new Set(ko.map(f => f.date))].forEach(d => {
+    const on = ko.filter(f => f.date === d);
+    if (on.length < 2 || [...new Set(on.map(f => f.time))].length > 1) return;
+    const base = toMins(on[0].time), step = koSlot();
+    on.forEach(f => {
+      if (f.status !== 'scheduled') return;              // it has been played; it kicked off when it kicked off
+      const t = fmtMins(base + koRunOrder(f.stage) * step);
+      if (t !== f.time) { f.time = t; changed = true; }
+    });
+  });
+  return changed;
+}
 
 /* The bracket no longer waits to be pressed. Once every regular match is in
    — played or called off — the top four are known and so are five to eight,
@@ -9269,6 +9368,7 @@ function syncFinals() {
   if (!DB.finals3rd && p3 && untouched(p3)) { DB.fixtures = DB.fixtures.filter(f => f !== p3); changed = true; }
   const sv3 = get('SV3');
   if (!DB.finals3rd && sv3 && untouched(sv3)) { DB.fixtures = DB.fixtures.filter(f => f !== sv3); changed = true; }
+  if (spreadKO()) changed = true;
   return changed;
 }
 /* ══════════════ THE PODIUM ══════════════
@@ -9332,10 +9432,11 @@ function recordHonour() {
   if (save() === false) return;
   go('honours'); toast(ex ? 'Roll of honour updated.' : 'Added to the roll of honour.', 'ok');
 }
-function renderFinals() {
+/* The bracket, drawn once and read in two places: the Finals tab, where
+   you run the matches from it, and Home, where it is the same picture at
+   a smaller size with nothing to press. */
+function bracketHtml(mini) {
   const lo = leagueOnly();
-  $('finalsAdminCard').style.display = isMgr() && !lo ? '' : 'none';
-  $('finals3rd').checked = !!DB.finals3rd;
   const get = s => DB.fixtures.find(f => f.stage === s);
   const sf1 = get('SF1'), sf2 = get('SF2'), fin = get('F'), p3 = get('P3');
   const sv1 = get('SV1'), sv2 = get('SV2'), svf = get('SVF');
@@ -9346,26 +9447,35 @@ function renderFinals() {
       ? 'Update the roll of honour' : 'Add to roll of honour') + '</button>' : '';
 
   // a semi's winner is coloured as going through: gold to the grand final, silver to the silver final
+  /* The name and the score are two columns, so both teams' scores sit on
+     one right edge however long the names are, and a tie that went to
+     extra time and then penalties says so on its own line rather than
+     pushing the score about. */
   const bx = (f, label, metal, win) => {
-    if (!f) return '<div class="bx ' + metal + '"><div class="st">' + label + '</div><div class="muted small">awaiting the round before</div></div>';
-    const w = winnerOf(f);
-    const line = (tid, g, pens) => '<div class="sd' + (w === tid ? ' win ' + metal : '') + '">' +
-      '<span>' + crest(tid) + '' + esc(teamName(tid)) +
-        (w === tid && win ? ' <span class="thru ' + metal + '">' + win + '</span>' : '') + '</span>' +
-      '<span>' + (f.status === 'final' ? g + (pens != null ? ' (' + pens + 'p)' : '') : '–') + '</span></div>';
-    return '<div class="bx ' + metal + '"' + resAttr(f) + '><div class="st">' + label + ' ' + (f.status === 'final' ? '<span class="pill ok">final</span>' +
-      (f.aet ? ' <span class="pill aetp">extra time</span>' : '') +
-      (f.homePens != null && f.awayPens != null && f.homeGoals === f.awayGoals ? ' <span class="pill goldp">penalties</span>' : '') : statusPill(f)) + '</div>' +
+    const head = inner => '<div class="st"><span class="sttx">' + label + '</span>' +
+      (inner ? '<span class="stp">' + inner + '</span>' : '') + '</div>';
+    if (!f) return '<div class="bx ' + metal + '">' + head('') + '<div class="muted small">awaiting the round before</div></div>';
+    const w = winnerOf(f), pens = f.homePens != null && f.awayPens != null && f.homeGoals === f.awayGoals;
+    const line = (tid, g, p) => '<div class="sd' + (w === tid ? ' win ' + metal : '') + '">' +
+      '<span class="sdt">' + crest(tid) + '<span class="nm">' + esc(teamName(tid)) + '</span>' +
+        (w === tid && win ? '<span class="thru ' + metal + '">' + win + '</span>' : '') + '</span>' +
+      '<span class="sdg">' + (f.status === 'final'
+        ? g + (pens ? '<em>' + p + 'p</em>' : '')
+        : '<span class="muted">\u2013</span>') + '</span></div>';
+    return '<div class="bx ' + metal + '"' + resAttr(f) + '>' +
+      head(f.status === 'final' ? '<span class="pill ok">final</span>' +
+        (f.aet ? '<span class="pill aetp">extra time</span>' : '') +
+        (pens ? '<span class="pill goldp">penalties</span>' : '') : statusPill(f)) +
       line(f.homeId, f.homeGoals, f.homePens) + line(f.awayId, f.awayGoals, f.awayPens) +
-      (koStrip(f) ? '<div style="margin-top:7px">' + koStrip(f) + '</div>' : '') +
-      '<div class="row" style="margin-top:8px"><button class="btn sm accent" data-fxlive2="' + f.id + '">Run match</button>' +
-      (isMgr() ? '<button class="btn sm" data-fxedit2="' + f.id + '">Schedule</button>' : '') + '</div></div>';
+      (koStrip(f, true) ? '<div class="bxko">' + koStrip(f, true) + '</div>' : '') +
+      (mini ? '' : '<div class="row" style="margin-top:8px"><button class="btn sm accent" data-fxlive2="' + f.id + '">Run match</button>' +
+      (isMgr() ? '<button class="btn sm" data-fxedit2="' + f.id + '">Schedule</button>' : '') + '</div>') + '</div>';
   };
-  const crown = (tid, metal, title, sub2, withBtn) => tid
+  const crown = (tid, metal, title, sub2, wantBtn) => { const withBtn = wantBtn && !mini; return tid
     ? '<div class="bx crown ' + metal + '"><div class="trophy">' + (metal === 'gold' ? '🏆' : '🥈') + '</div>' + crest(tid, 'lg') +
       '<div class="st">' + title + '</div><div class="cw ' + metal + 'txt">' + esc(teamName(tid)) + '</div>' +
       '<div class="muted small" style="margin-top:6px">' + esc(sub2) + '</div>' + (withBtn ? recBtn() : '') + '</div>'
-    : '<div class="bx ' + metal + '"><div class="st">' + title + '</div><div class="muted small">' + esc(sub2) + '</div></div>';
+    : '<div class="bx ' + metal + '"><div class="st">' + title + '</div><div class="muted small">' + esc(sub2) + '</div></div>'; };
   // 1st, 2nd and 3rd as they are decided — 3rd has its own spot, from the play-off or the beaten semi-finalists
   const places = p => {
     if (!p) return '';
@@ -9378,16 +9488,16 @@ function renderFinals() {
       row('🥉', '3rd', p.third, p.shared ? 'the two beaten semi-finalists' : p.league ? 'decided by the table' : 'decided by the 3rd-place play-off') + '</div>';
   };
 
+  const wrap = s => '<div class="brk' + (mini ? ' mini' : '') + '">' + s + '</div>';
   if (lo) {
     const st = standings();
-    $('bracket').innerHTML = '<div class="fsec gold"><div class="fhd goldtxt">League only — pontos corridos</div>' +
+    return wrap('<div class="fsec gold"><div class="fhd goldtxt">League only — pontos corridos</div>' +
       '<div class="small muted" style="margin-bottom:10px">No finals this season: everyone plays everyone and the table decides the champion.</div>' +
       '<div class="bracket one">' + crown(champ, 'gold', 'Champion', champ ? DB.season.name + ' — top of the table'
         : (st.length && st[0].P ? st[0].name + ' lead after ' + plural(st[0].P, 'game') + ' — ' + ph.remaining + ' still to play' : 'decided by the table'), true) +
-        places(podiumOf('gold')) + '</div></div>';
-    $('finalsNote').innerHTML = '';
-  } else {
-    $('bracket').innerHTML =
+        places(podiumOf('gold')) + '</div></div>');
+  }
+  return wrap(
       '<div class="fsec gold"><div class="fhd goldtxt">★ The Championship — 1st to 4th</div><div class="bracket">' +
         '<div>' + bx(sf1, 'Gold semi-final 1 — 1st v 4th', 'gold', '→ Grand final') + bx(sf2, 'Gold semi-final 2 — 2nd v 3rd', 'gold', '→ Grand final') + '</div>' +
         '<div>' + bx(fin, 'Grand final', 'gold', '★ Champions') + (DB.finals3rd || p3 ? bx(p3, '3rd-place play-off', 'gold', '🥉 3rd place') : '') + '</div>' +
@@ -9400,13 +9510,23 @@ function renderFinals() {
           (DB.finals3rd || get('SV3') ? bx(get('SV3'), 'Silver 3rd-place play-off', 'silver', '🥉 3rd place') : '') + '</div>' +
         '<div>' + crown(silverWin, 'silver', 'Silver final winners', silverWin ? DB.season.name : 'decided by the silver final', false) +
           places(podiumOf('silver')) + '</div>' +
-      '</div></div>' : '');
-    $('finalsNote').innerHTML = sf1 ?
+      '</div></div>' : ''));
+}
+function renderFinals() {
+  const lo = leagueOnly();
+  const sf1 = DB.fixtures.find(f => f.stage === 'SF1'), sv1 = DB.fixtures.find(f => f.stage === 'SV1');
+  const champ = seasonPhase().champion;
+  const recBtn = () => isMgr() ? '<button class="btn ok sm" style="margin-top:10px" data-rechon>' +
+    (DB.honours.some(hh => +hh.year === +DB.season.year && String(hh.season).toLowerCase() === String(DB.season.name).toLowerCase())
+      ? 'Update the roll of honour' : 'Add to roll of honour') + '</button>' : '';
+  $('finalsAdminCard').style.display = isMgr() && !lo ? '' : 'none';
+  $('finals3rd').checked = !!DB.finals3rd;
+  $('bracket').innerHTML = bracketHtml(false);
+  $('finalsNote').innerHTML = lo ? '' : sf1 ?
       'Locked from the table: gold <b>1st v 4th</b> and <b>2nd v 3rd</b>' + (sv1 ? ', silver <b>5th v 8th</b> and <b>6th v 7th</b>' : '') +
       '. Semi winners meet in their final. A drawn match is settled by the penalty shoot-out on the match screen.'
       : 'Play the regular season first, then lock the semi-finals: gold for 1st–4th' + (DB.teams.length >= 8 ? ', silver for 5th–8th' : '') +
         '. Re-locking rebuilds both brackets from the current table.';
-  }
 
   $('bracket').querySelectorAll('[data-fxlive2]').forEach(b => b.onclick = () => { openLive(b.dataset.fxlive2); go('live'); });
   $('bracket').querySelectorAll('[data-fxedit2]').forEach(b => b.onclick = () => editFixture(b.dataset.fxedit2));
@@ -13795,6 +13915,25 @@ function flashGoal(which) {
    the draw, delete a team, export the database or see anybody's phone number
    or medical notes — not to protect the data from a determined reader. */
 const ROLE_KEY = 'futsal.role';
+/* The PIN is asked for once and then not again for five minutes, so a
+   refresh — or a phone reloading the page from under you — walks straight
+   back in while a tablet left on the scorer's table does not. The clock is
+   kept fresh while the tool is being used, so it is five minutes of being
+   left alone rather than five minutes of work. */
+const ROLE_TTL = 5 * 60 * 1000;
+const rememberRole = id => { try { sessionStorage.setItem(ROLE_KEY, JSON.stringify({ id, at: Date.now() })); } catch (e) {} };
+function recentRole() {
+  try {
+    const r = JSON.parse(sessionStorage.getItem(ROLE_KEY) || 'null');
+    if (!r || !r.id || Date.now() - r.at > ROLE_TTL) return null;
+    return (ROOT.staff || []).find(s => s.id === r.id) || null;     // removed from the staff, removed from the grace
+  } catch (e) { return null; }
+}
+let roleStamp = 0;
+['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => {
+  if (!me || Date.now() - roleStamp < 20000) return;
+  roleStamp = Date.now(); rememberRole(me.id);
+}, true));
 let role = null, me = null;
 const isOwner = () => !!(me && me.owner);
 const isMgr = () => role === 'manager';
@@ -13842,6 +13981,7 @@ function unlock(person) {
   // stay where you were if you are allowed to be there, otherwise your first league
   if (!mine.some(l => l.id === ROOT.active)) { ROOT.active = mine[0].id; bindDB(); }
   role = roleIn(activeLeague());
+  rememberRole(person.id);
   $('gate').classList.remove('on');
   $('roleChip').style.display = '';
   $('roleChip').className = 'rolechip' + (isMgr() ? '' : ' ref');
@@ -14128,10 +14268,6 @@ $('fxStart').onblur = () => {
   if (currentView === 'fixtures') renderFixtures();
 };
 syncLoop();
-/* The PIN is asked for every time the page is opened. It used to remember
-   who you were for the life of the tab, so a refresh walked straight back
-   in — convenient on your own machine, wrong on a tablet that gets handed
-   round a court. */
 /* The draw, who may sign in, and what is kept were written where they were
    first needed — inside Fixtures and inside Settings. Rather than copy them
    into their new rooms and have two of each to keep in step, the one copy
@@ -14146,6 +14282,8 @@ syncLoop();
   into('access', ['cardStaff', 'cardData', 'cardReset']);
 })();
 showGate();
+const backIn = recentRole();
+if (backIn) unlock(backIn);                  // still inside the five minutes
 window.addEventListener('beforeunload', e => {
   save();
   if (unsaved && (DB.teams.length || DB.people.length)) { e.preventDefault(); e.returnValue = ''; }
