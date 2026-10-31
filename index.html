@@ -11924,10 +11924,19 @@ const PUB_RACE_CSS =
   '.race-ax{fill:var(--dim);font:11.5px "Segoe UI",system-ui,sans-serif}' +
   '.viz-grid{stroke:var(--line);stroke-width:1}';
 function pubRaceBlock(h2) {
+  /* vizRace is how the chart is drawn, and it leaves the model and the
+     elements it was drawn into behind for the animation to use. Building
+     the page for the players calls it too — a few seconds after every save,
+     in the background — and that was quietly cutting the chart on screen
+     loose from its own elements, so a race being watched stopped dead
+     part-way and never finished. What is on screen is put back exactly as
+     it was; nothing can run in between, so no frame ever sees the swap. */
+  const keepModel = raceModel, keepEls = raceEls;
   const svg = vizRace();
-  if (svg.indexOf('<svg') < 0 || !raceModel) return '';          // not enough played to say anything
   const m = raceModel;
-  const model = { n: m.n, R: m.R, lo: m.lo, hi: m.hi, series: m.series.map(s => ({ path: s.path })) };
+  const model = m && { n: m.n, R: m.R, lo: m.lo, hi: m.hi, series: m.series.map(s => ({ path: s.path })) };
+  raceModel = keepModel; raceEls = keepEls;
+  if (svg.indexOf('<svg') < 0 || !model) return '';              // not enough played to say anything
   return h2('Title race') +
     '<style>' + PUB_RACE_CSS + '</style>' +
     '<div class="tw pad" id="pubRace">' + svg + '</div>' +
