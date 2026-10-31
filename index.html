@@ -2657,10 +2657,14 @@ tspan.gstar{fill:var(--gold)}
           <span id="stfHowOwn" hidden><br><b>You are the owner.</b> You see everybody here, you can read
           a PIN back, and you can put a person on any league.</span>
           <span id="stfHowMgr" hidden><br><b>You are a manager.</b> You see the people who are on your
-          leagues and nowhere else, and you can give them the referee's or the manager's job on those
-          leagues. You cannot read a PIN back — the one you are given when you add somebody is said
-          once, and after that you replace it rather than look it up. Somebody who also works on another
-          competition is the owner's to change.</span>
+          leagues and nowhere else, plus your own row, and you can give them the referee's or the
+          manager's job on those leagues. Press the eye to read a PIN back — theirs or your own — when
+          somebody has forgotten it. Anybody who also works on another competition is the owner's to
+          change, and does not appear here.</span>
+          <br>Once a league is shared between tablets, <b>the people named on it travel with it</b>: a
+          referee signed up on one tablet turns up on the others, and on the owner's, within a few
+          seconds. Nobody else's leagues travel with it, and the owner's own PIN never leaves the
+          machine it was typed on.
           <br><b>This is role separation, not security.</b> The PINs and every league are held in this
           browser, so anyone who opens the developer tools can read or change them. Use it to keep
           match-day duties separate — not as a lock on personal data. Once the leagues are shared from
@@ -13032,8 +13036,61 @@ async function publishPage(force) {
    lease is alive the web app refuses anybody else's writes to that
    fixture, so two courts cannot overwrite each other. */
 const SYNCKEY = 'futsal.sync.v1';
-const SYNC_META = ['name', 'season', 'form', 'regs', 'honours', 'bulletin', 'finals3rd'];
+/* 'staff' is not one of the league's own records — the access list is kept at
+   the root, across every league — but it travels down this league's channel,
+   so a referee a manager signs up on their tablet reaches the owner's, and a
+   PIN set in one place works in all of them. Only the people named on THIS
+   league go, and only their name, their PIN and their job here: a tablet
+   joined to one competition has no business knowing who referees another, and
+   the owner's own PIN never leaves the machine it was typed on.
+
+   It rides with the meta rather than as a list of its own because the web app
+   merges the lists by name — it knows fixtures, teams and people and nothing
+   else — while anything in the meta passes through untouched. A list of its
+   own would mean redeploying the script before one referee could travel. */
+const SYNC_META = ['name', 'season', 'form', 'regs', 'honours', 'bulletin', 'finals3rd', 'staff'];
 const SYNC_LISTS = ['fixtures', 'teams', 'people'];
+const SYNC_ROOT = { staff: 1 };
+const metaOf = k => SYNC_ROOT[k] ? staffDoc() : DB[k];
+function staffDoc() {
+  const lg = ROOT.active;
+  return (ROOT.staff || []).filter(s => s && !s.owner && rolesOf(s)[lg])
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)))      // one order, so the hash is steady
+    .map(s => ({ id: s.id, name: s.name || '', pin: String(s.pin || ''), role: rolesOf(s)[lg] }));
+}
+function staffPut(rec) {
+  if (!rec || !rec.id) return;
+  const lg = ROOT.active;
+  let s = (ROOT.staff || []).find(x => x && x.id === rec.id);
+  if (s && s.owner) return;                        // the owner is nobody else's to re-job
+  if (!s) { s = { id: rec.id, name: '', pin: '', owner: false, roles: {} }; ROOT.staff.push(s); }
+  s.name = rec.name || s.name;
+  if (rec.pin) s.pin = String(rec.pin);
+  s.roles = s.roles || {};
+  s.roles[lg] = rec.role || 'ref';
+}
+function staffDrop(id) {
+  const lg = ROOT.active, s = (ROOT.staff || []).find(x => x && x.id === id);
+  if (!s || s.owner) return;
+  /* Never the person using this tablet. A stale list from another machine
+     would otherwise sign a referee out in the middle of a match; if their
+     access really has been taken away, it goes the moment they lock. */
+  if (me && s.id === me.id) return;
+  if (s.roles) delete s.roles[lg];
+  // off this league and on no other: off the books altogether
+  if (!Object.keys(rolesOf(s)).length) ROOT.staff = (ROOT.staff || []).filter(x => x !== s);
+}
+/* What came down is who may open this league now: the people in it are put in,
+   and anybody who was on it and is not in the list has been taken off it
+   somewhere else. Whatever they are on other leagues is left alone. */
+function staffMerge(list) {
+  const lg = ROOT.active, inc = Array.isArray(list) ? list : [];
+  const still = {};
+  inc.forEach(r => { if (r && r.id) { still[r.id] = 1; staffPut(r); } });
+  (ROOT.staff || []).slice().forEach(s => {
+    if (s && !s.owner && rolesOf(s)[lg] && !still[s.id]) staffDrop(s.id);
+  });
+}
 const deviceId = DEVICE;                 // the same id the live screen stamps matches with
 let SY = { lg: '', rev: 0, shadow: null, busy: false, again: false, state: 'off', err: '', at: 0, claims: {}, pull: 0, push: 0 };
 
@@ -13054,7 +13111,7 @@ const syncHash = x => hashStr(JSON.stringify(x === undefined ? null : x));
 function syncDoc() {
   const d = {};
   SYNC_LISTS.forEach(n => d[n] = DB[n] || []);
-  SYNC_META.forEach(k => d[k] = DB[k]);
+  SYNC_META.forEach(k => d[k] = metaOf(k));
   return d;
 }
 function shadowOf(doc) {
@@ -13124,6 +13181,7 @@ function docApply(p, keep) {
   });
   if (p.meta) Object.keys(p.meta).forEach(k => {
     if (keep && keep.meta && keep.meta[k] !== undefined) return;
+    if (SYNC_ROOT[k]) return staffMerge(p.meta[k]);    // not the league's to hold: it lives at the root
     DB[k] = p.meta[k];
   });
 }
@@ -14449,33 +14507,34 @@ const EYE = '<svg viewBox="0 0 24 24"><path d="M1.6 12S5.6 5.2 12 5.2 22.4 12 22
 function paintStaff() {
   const q = stfQ.trim().toLowerCase();
   const own = isOwner();
+  const self = s => !!(me && s.id === me.id);
   /* The owner sees everybody. A manager sees the people who are on their
-     leagues and nowhere else — and never the owner. */
-  const list = (ROOT.staff || []).filter(s => (own || canTouch(s)) &&
+     leagues and nowhere else — never the owner — and their own row, so they
+     can read their own PIN back without having to ask for it. */
+  const list = (ROOT.staff || []).filter(s => (own || canTouch(s) || self(s)) &&
     (!q || (s.name || '').toLowerCase().indexOf(q) >= 0) &&
     (!stfLg || s.owner || rolesOf(s)[stfLg]));
+  // a row nobody on this screen may re-job or remove: the owner's, and your own
+  const fixed = s => s.owner || (!own && self(s));
   $('stfList').innerHTML = list.length ? list.map(s => {
     const open = !!stfOpen[s.id];
     return '<div class="stf' + (open ? ' open' : '') + '">' +
       '<div class="stf-top">' +
-        (s.owner ? '<span class="stf-ex"></span>'
+        (fixed(s) ? '<span class="stf-ex"></span>'
           : '<button class="stf-ex" data-sfx="' + esc(s.id) + '" title="Which leagues">' + CHEV + '</button>') +
         '<div class="stf-who"><input data-sfn="' + esc(s.id) + '" value="' + esc(s.name || '') + '">' +
           '<div class="small muted stf-sum">' + esc(roleSummary(s)) + '</div></div>' +
-        /* The owner holds the PINs and may read one back. A manager gives
-           access without ever seeing a PIN: the one made with the person is
-           said once, and a forgotten one is replaced rather than revealed.
-           The digits are not put on the page at all for them to find. */
-        '<div class="stf-pin">' + (own
-          ? '<input data-sfp="' + esc(s.id) + '" type="password" value="' + esc(s.pin || '') +
-            '" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="PIN">' +
-            '<button class="btn ico stf-eye" data-sfeye="' + esc(s.id) + '" title="Show this PIN">' + EYE + '</button>'
-          : '<input value="••••" disabled aria-label="PIN">' +
-            '<button class="btn ico" data-sfnew="' + esc(s.id) + '" title="Give them a new PIN">↻</button>') + '</div>' +
-        (s.owner ? '<span class="pill acc">owner</span>'
+        /* Anybody whose row is on this page may read the PIN on it: a manager
+           has to be able to tell a referee who has forgotten theirs, and to
+           read back their own. Which rows those are is the control — a
+           manager is only ever shown their own leagues' people. */
+        '<div class="stf-pin"><input data-sfp="' + esc(s.id) + '" type="password" value="' + esc(s.pin || '') +
+          '" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="PIN">' +
+          '<button class="btn ico stf-eye" data-sfeye="' + esc(s.id) + '" title="Show this PIN">' + EYE + '</button></div>' +
+        (s.owner ? '<span class="pill acc">owner</span>' : fixed(s) ? '<span class="pill acc">you</span>'
           : '<button class="btn sm bad" data-sfdel="' + esc(s.id) + '" title="Remove">\u00d7</button>') +
       '</div>' +
-      (s.owner ? '' : '<div class="stf-roles"' + (open ? '' : ' hidden') + '>' +
+      (fixed(s) ? '' : '<div class="stf-roles"' + (open ? '' : ' hidden') + '>' +
         mgrLeagues().map(l => '<label class="stf-rl"><span>' + esc(leagueName(l)) + '</span>' +
           '<select data-sfr="' + esc(s.id) + '" data-lg="' + esc(l.id) + '">' + ROLES.map(([v, t]) =>
             '<option value="' + v + '"' + (rolesOf(s)[l.id] === v || (!rolesOf(s)[l.id] && !v) ? ' selected' : '') +
@@ -14496,14 +14555,6 @@ function paintStaff() {
     i.type = show ? 'text' : 'password';
     b.classList.toggle('on', show);
     b.title = show ? 'Hide this PIN' : 'Show this PIN';
-  });
-  $('stfList').querySelectorAll('[data-sfnew]').forEach(b => b.onclick = () => {
-    const s = find(b.dataset.sfnew); if (!s || !canTouch(s)) return;
-    if (!confirm('Give ' + (s.name || 'this person') + ' a new PIN? The old one stops working.')) return;
-    const pin = freshPin();
-    if (!pin) return toast('Could not find a free PIN.', 'bad');
-    s.pin = pin;
-    keep((s.name || 'They') + ' now signs in with ' + pin + '.');
   });
   $('stfList').querySelectorAll('[data-sfn]').forEach(i => i.onchange = () => {
     const s = find(i.dataset.sfn); if (!s) return;
