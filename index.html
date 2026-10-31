@@ -2255,6 +2255,16 @@ tspan.gstar{fill:var(--gold)}
 
   <!-- ══════════════ FINANCE ══════════════ -->
   <section class="view" data-view="finance">
+    <div class="card noprint">
+      <div class="row">
+        <h3 style="margin:0">Match fees</h3>
+        <div class="spacer"></div>
+        <button class="btn accent sm" id="btnFinReport">Attendance summary report</button>
+      </div>
+      <div class="small muted" style="margin-top:8px">A dated record of what every team paid on every
+        night, and what the season has taken by the moment you press it. Choose <b>Save as PDF</b> in
+        the print window to keep the file.</div>
+    </div>
     <div id="finBody"></div>
   </section>
 
@@ -3720,6 +3730,183 @@ function renderFinance() {
   countUpAll('#finBody .cu');
   $('finBody').querySelectorAll('[data-fingo]').forEach(tr => tr.onclick = () => { attKey = tr.dataset.fingo; go('attend'); });
 }
+
+/* ── the attendance summary report ───────────────────────────
+   The money as a document rather than a screen: what each team paid on each
+   night from the players who actually turned up, what the night came to, and
+   what the season has taken by the moment the button was pressed.
+
+   It is a statement of a position at a point in time, so it signs itself at
+   the foot — who ran it, when, and which competition — under an orange rule
+   that separates the figures above from the account of who is standing
+   behind them. Built as its own page in the tool's colours and sent to a
+   hidden frame, the way the draw is printed: "Save as PDF" in the print
+   window is the file. */
+function printFinance() {
+  if (!requireMgr('The attendance summary report')) return;
+  const rs = attendRounds(), fee = feeOf();
+  if (!rs.length) return toast('No fixtures yet — there is nothing to report on.', 'bad');
+  const $$ = n => '$' + money(n * fee);
+  const rl = r => r.stage === 'regular' ? 'Round ' + r.round : stageLabel(r.stage);
+  const badge = tid => '<img src="' + esc(logoOf(tid) || SHIELD_SVG) + '" alt="">';
+  /* A night's takings, team by team. A player ticked in is one appearance and
+     one fee whether he is in the squad or a guest the team brought along, so
+     both are counted and the guests are shown separately for the record. */
+  const nights = rs.map(r => {
+    const by = {};
+    r.fx.forEach(f => [f.homeId, f.awayId].forEach(tid => {
+      if (!tid) return;
+      const a = attendHere(f, tid), e = by[tid] = by[tid] || { tid, sq: 0, g: 0, mt: 0 };
+      e.sq += a.in; e.g += a.g; e.mt++;
+    }));
+    const teams = Object.values(by).sort((a, b) => (b.sq + b.g) - (a.sq + a.g) ||
+      teamName(a.tid).localeCompare(teamName(b.tid)));
+    const named = teams.reduce((t, x) => t + x.sq + x.g, 0);
+    // ticked in on the night, since moved out of the squad or off the books
+    return { r, teams, n: r.players, other: Math.max(0, r.players - named) };
+  });
+  const tp = nights.reduce((t, x) => t + x.n, 0), paid = nights.filter(x => x.n);
+  const season = {};
+  nights.forEach(x => x.teams.forEach(e => {
+    const s = season[e.tid] = season[e.tid] || { tid: e.tid, n: 0, nights: 0 };
+    s.n += e.sq + e.g; if (e.sq + e.g) s.nights++;
+  }));
+  const byTeam = Object.values(season).sort((a, b) => b.n - a.n || teamName(a.tid).localeCompare(teamName(b.tid)));
+  const otherAll = Math.max(0, tp - byTeam.reduce((t, x) => t + x.n, 0));
+  const pct = n => tp ? Math.round(n / tp * 100) + '%' : '—';
+
+  let run = 0;
+  const roundTbl = '<table class="g"><tr><th>Round</th><th>Date</th><th class="n">Matches</th>' +
+    '<th class="n">Players in</th><th class="n">Collected</th><th class="n">Season to date</th></tr>' +
+    nights.map(x => { run += x.n;
+      return '<tr><td class="b">' + esc(rl(x.r)) + '</td><td class="m">' + esc(x.r.date ? fmtDate(x.r.date) : '—') + '</td>' +
+        '<td class="n">' + x.r.fx.length + '</td><td class="n">' + (x.n || '<span class="m">—</span>') + '</td>' +
+        '<td class="n o">' + (x.n ? $$(x.n) : '<span class="m">—</span>') + '</td>' +
+        '<td class="n m">' + (x.n ? $$(run) : '') + '</td></tr>'; }).join('') +
+    '<tr class="tot"><td class="b">Season</td><td></td><td class="n">' + nights.reduce((t, x) => t + x.r.fx.length, 0) + '</td>' +
+      '<td class="n">' + tp + '</td><td class="n o">' + $$(tp) + '</td><td></td></tr></table>';
+
+  /* A night nobody was ticked in for has nothing to break down, and ten of
+     them in a row would bury the nights that do. The round table above still
+     lists every one of them. */
+  const played = nights.filter(x => x.n);
+  const nightTbls = played.length ? played.map(x => '<section class="rd">' +
+    '<h3>' + esc(rl(x.r)) + '<span>' + esc(x.r.date ? fmtDate(x.r.date) : 'date to be set') + ' · ' +
+      plural(x.r.fx.length, 'match', 'matches') + '</span><b>' + $$(x.n) + '</b></h3>' +
+    (x.n ? '<table class="g"><tr><th>Team</th><th class="n">Squad in</th><th class="n">Guests</th>' +
+      '<th class="n">Players paid</th><th class="n">Collected</th></tr>' +
+      x.teams.map(e => '<tr><td class="tm">' + badge(e.tid) + '<span>' + esc(teamName(e.tid)) + '</span></td>' +
+        '<td class="n">' + e.sq + '</td><td class="n m">' + (e.g || '—') + '</td>' +
+        '<td class="n">' + (e.sq + e.g) + '</td><td class="n o">' + $$(e.sq + e.g) + '</td></tr>').join('') +
+      (x.other ? '<tr><td class="m">Moved or removed since</td><td class="n m">—</td><td class="n m">—</td>' +
+        '<td class="n">' + x.other + '</td><td class="n o">' + $$(x.other) + '</td></tr>' : '') +
+      '<tr class="tot"><td class="b">Night total</td><td></td><td></td><td class="n">' + x.n + '</td>' +
+        '<td class="n o">' + $$(x.n) + '</td></tr></table>'
+      : '') + '</section>').join('')
+    : '<div class="none">No attendance has been taken yet — tick the players in on the match screen and the nights appear here.</div>';
+
+  const teamTbl = '<table class="g"><tr><th>Team</th><th class="n">Nights played</th><th class="n">Players paid</th>' +
+    '<th class="n">Collected</th><th class="n">Share</th></tr>' +
+    byTeam.map(x => '<tr><td class="tm">' + badge(x.tid) + '<span>' + esc(teamName(x.tid)) + '</span></td>' +
+      '<td class="n">' + x.nights + '</td><td class="n">' + x.n + '</td>' +
+      '<td class="n o">' + $$(x.n) + '</td><td class="n m">' + pct(x.n) + '</td></tr>').join('') +
+    (otherAll ? '<tr><td class="m">Moved or removed since</td><td class="n m">—</td><td class="n">' + otherAll +
+      '</td><td class="n o">' + $$(otherAll) + '</td><td class="n m">' + pct(otherAll) + '</td></tr>' : '') +
+    '<tr class="tot"><td class="b">Season</td><td></td><td class="n">' + tp + '</td>' +
+      '<td class="n o">' + $$(tp) + '</td><td></td></tr></table>';
+
+  const tile = (k, v, s) => '<div class="tl"><div class="k">' + k + '</div><div class="v">' + v + '</div>' +
+    '<div class="s">' + s + '</div></div>';
+  const tiles = '<div class="tiles">' +
+    tile('Collected to date', $$(tp), plural(paid.length, 'night') + ' with players in') +
+    tile('Players paid in', String(tp), 'appearances, guests included') +
+    tile('Average a night', '$' + money(paid.length ? tp * fee / paid.length : 0),
+      paid.length ? Math.round(tp / paid.length) + ' players a night' : 'no nights yet') +
+    tile('Match fee', '$' + money(fee), 'per player, per game') + '</div>';
+
+  const comp = leagueName(activeLeague()), season2 = DB.season.name || '';
+  const now = new Date(), two = n => String(n).padStart(2, '0');
+  const stamp = fmtDate(todayISO()) + ' at ' + two(now.getHours()) + ':' + two(now.getMinutes());
+  const whoName = (me && me.name) || 'Unknown';
+  const ball = ballPng();
+
+  const css = '@page{size:A4;margin:11mm}' +
+    '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+    'body{margin:0;background:#16171b;color:#f4f2f0;font:12px/1.4 "Segoe UI",Helvetica,Arial,sans-serif}' +
+    '.wrap{padding:20px 22px}' +
+    /* the tool's own header: the ball in its orange ring, then the name */
+    'header{display:flex;align-items:center;gap:13px;padding:15px 19px;border-radius:14px;margin-bottom:15px;' +
+      'background:linear-gradient(135deg,#0d0d10,#24170d);border:1px solid #3a2a1c;border-bottom:3px solid #ff8a3d}' +
+    'header img{width:44px;height:44px;display:block}' +
+    'header .k{color:#ff8a3d;font-size:9.5px;letter-spacing:3px;font-weight:700;text-transform:uppercase}' +
+    'header h1{margin:1px 0 0;font-size:19px;letter-spacing:.2px}' +
+    'header .v{margin-left:auto;text-align:right;color:#b9b6b2;font-size:11.5px;line-height:1.5}' +
+    'header .v b{color:#f4f2f0;font-size:13px}' +
+    '.ttl{margin:0 2px 14px}.ttl h2{margin:0;font-size:24px;letter-spacing:.2px}' +
+    '.ttl .u{height:3px;width:62px;background:#ff8a3d;border-radius:2px;margin:7px 0 7px}' +
+    '.ttl p{margin:0;color:#9c9ca6;font-size:11.5px}' +
+    '.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:15px}' +
+    '.tl{border:1px solid #33343b;border-radius:11px;padding:10px 12px;background:#232429}' +
+    '.tl .k{color:#9c9ca6;font-size:9px;letter-spacing:1.4px;text-transform:uppercase;font-weight:700}' +
+    '.tl .v{font-size:19px;font-weight:800;margin:3px 0 1px;color:#ff8a3d;font-variant-numeric:tabular-nums}' +
+    '.tl .s{color:#77777f;font-size:10px}' +
+    'h4{margin:16px 2px 7px;font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:#ffb27a}' +
+    'table.g{width:100%;border-collapse:collapse;background:#232429;border:1px solid #33343b;' +
+      'border-radius:11px;overflow:hidden;break-inside:avoid}' +
+    'table.g th{background:#1b1c21;color:#9c9ca6;font-size:9px;letter-spacing:1.3px;text-transform:uppercase;' +
+      'text-align:left;padding:8px 10px;border-bottom:1px solid #33343b;font-weight:700}' +
+    'table.g td{padding:7px 10px;border-top:1px solid rgba(255,255,255,.055);color:#d7d4d1;vertical-align:middle}' +
+    'table.g tr:first-child td{border-top:0}' +
+    '.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}' +
+    '.m{color:#77777f}.b{font-weight:700;color:#f4f2f0}.o{color:#ff8a3d;font-weight:700}' +
+    '.tot td{border-top:1.5px solid #3a2a1c;background:#1b1c21}' +
+    '.tm{display:flex;align-items:center;gap:8px}.tm img{width:19px;height:19px;object-fit:contain;flex:0 0 auto}' +
+    '.rd{margin-bottom:10px;break-inside:avoid}' +
+    '.rd h3{display:flex;align-items:baseline;gap:9px;margin:0 2px 5px;font-size:13px}' +
+    '.rd h3 span{color:#9c9ca6;font-size:10.5px;font-weight:400}.rd h3 b{margin-left:auto;color:#ff8a3d;font-size:13px}' +
+    '.none{border:1px dashed #33343b;border-radius:11px;padding:11px;color:#77777f;font-size:11px}' +
+    /* the rule that divides the figures from who is standing behind them */
+    'footer{margin-top:18px;border-top:2px solid #ff8a3d;padding-top:11px;break-inside:avoid;' +
+      'display:flex;gap:18px;flex-wrap:wrap}' +
+    'footer .f{min-width:150px}footer .k{color:#ff8a3d;font-size:8.5px;letter-spacing:1.6px;' +
+      'text-transform:uppercase;font-weight:700}' +
+    'footer .v{color:#d7d4d1;font-size:11.5px;margin-top:2px}' +
+    'footer .note{margin-left:auto;text-align:right;color:#77777f;font-size:9.5px;max-width:230px;line-height:1.5}';
+
+  const doc = '<!doctype html><html><head><meta charset="utf-8"><title>' +
+    esc(comp + ' — attendance summary') + '</title><style>' + css + '</style></head><body><div class="wrap">' +
+    '<header>' + (ball ? '<img src="' + ball + '" alt="">' : '') +
+      '<div><div class="k">Futsal</div><h1>League Manager</h1></div>' +
+      '<div class="v"><b>' + esc(comp) + '</b>' + (season2 && season2 !== comp ? '<br>' + esc(season2) : '') +
+        (DB.season.venue ? '<br>' + esc(DB.season.venue) : '') + '</div></header>' +
+    '<div class="ttl"><h2>Attendance Summary Report</h2><div class="u"></div>' +
+      '<p>Match fees by round and by team, counted on the players who turned up on the night.</p></div>' +
+    tiles +
+    '<h4>Takings by round</h4>' + roundTbl +
+    '<h4>By team, night by night</h4>' + nightTbls +
+    '<h4>Season by team</h4>' + teamTbl +
+    '<footer>' +
+      '<div class="f"><div class="k">Exported by</div><div class="v">' + esc(whoName) + ' · ' + esc(roleWord()) + '</div></div>' +
+      '<div class="f"><div class="k">Time of export</div><div class="v">' + esc(stamp) + '</div></div>' +
+      '<div class="f"><div class="k">Competition</div><div class="v">' + esc(comp) + '</div></div>' +
+      '<div class="note">Figures are the position at the time of export. Attendance is taken on the match screen; a player ticked in is one appearance and one match fee.</div>' +
+    '</footer></div></body></html>';
+
+  let fr = $('printFrame');
+  if (!fr) {
+    fr = document.createElement('iframe'); fr.id = 'printFrame'; fr.setAttribute('aria-hidden', 'true');
+    fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+    document.body.appendChild(fr);
+  }
+  fr.onload = () => {
+    const w = fr.contentWindow, imgs = [...fr.contentDocument.images];
+    Promise.all(imgs.map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; setTimeout(r, 2000); })))
+      .then(() => { w.focus(); w.print(); });
+  };
+  fr.srcdoc = doc;
+  toast('Choose "Save as PDF" in the print window to keep it as a file.', 'ok');
+}
+$('btnFinReport').onclick = printFinance;
 
 function attendTable() {
   return DB.people.map(p => {
