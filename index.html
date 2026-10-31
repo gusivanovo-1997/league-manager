@@ -2536,7 +2536,11 @@ tspan.gstar{fill:var(--gold)}
           <b>This tablet is joining one</b>
           <span class="small muted">On the other tablet, open this tab, press <b>Join a shared league</b>
             and paste the code. It appears in the league switcher and starts syncing at once.</span>
-          <div class="row"><button class="btn sm" id="shareJoin">Join a shared league…</button></div>
+          <div class="row"><button class="btn sm" id="shareJoin">Join a shared league…</button>
+            <button class="btn sm bad" id="shareTake">Take the shared copy</button></div>
+          <span class="small muted"><b>Take the shared copy</b> when this machine and the others have
+            fallen out of step and you want the shared one to win: everything here is thrown away and
+            pulled down again. The address and the key are kept, so it stays joined.</span>
           <span class="small muted">Every tablet keeps its own full copy, so a wifi drop never stops a match
             being scored — whatever was logged goes up when the signal comes back.</span>
         </div>
@@ -13672,6 +13676,43 @@ $('shareJoin').onclick = async () => {
   syncLoad(); syncLoop();
   toast('Joined ' + leagueName(l) + ' — pulling it down now.', 'ok');
 };
+/* When two copies have drifted apart far enough that neither is worth
+   merging, this one gives in. The league's records go, the picture it had of
+   the shared copy goes with them — both, or the empty league would be read
+   as a deletion and pushed up as one — and the next pull brings the shared
+   copy down whole. The web app address and key are kept, so it stays joined
+   rather than needing the code again. */
+async function takeShared() {
+  if (!requireOwner('Taking the shared copy')) return;
+  if (!syncOn()) return toast('This league is not shared.', 'bad');
+  const nm = leagueName(activeLeague());
+  if (!confirm('Throw away this machine\'s copy of ' + nm + ' and take the shared one?')) return;
+  if (!ask('Anything scored here that has not reached the other tablets is lost. Have you taken a .json backup?')) return;
+  /* The replacement is in hand before anything is given up: the whole shared
+     copy is asked for first, and if the web app cannot be reached, or has
+     nothing in it, this machine is left exactly as it was. */
+  toast('Asking for the shared copy…');
+  const r = await syncPost({ action: 'pull', rev: 0 });
+  if (!r || !r.ok) return toast('Could not reach the web app — nothing here was changed.', 'bad');
+  if (r.empty || !r.doc) return toast('There is nothing in the shared copy yet — nothing here was changed.', 'bad');
+  clearInterval(SY.pull);
+  resetLeague({ name: DB.name, form: Object.assign({}, DB.form), publish: DB.publish });
+  try { localStorage.removeItem(syncSlot()); } catch (e) {}
+  syncLoad();                        // and with the stored picture gone, nothing left here reads as unsent
+  SY.shadow = shadowOf(r.doc);
+  SY.rev = r.rev || 0;
+  SY.claims = r.claims || {};
+  docApply(docAsPatch(r.doc, true), null);
+  dropStaleLive();
+  if (save() === false) return;
+  document.querySelectorAll('[data-db]').forEach(x => delete x.dataset.db);
+  if (typeof attKey !== 'undefined') attKey = null;
+  SY.state = 'ok'; SY.at = Date.now(); SY.err = '';
+  syncStore(); syncLoop();
+  paintLeagueBar(); paintAccess(); buildNav(); render(); liveTicker(); paintSync();
+  toast('This machine now has the shared copy.', 'ok');
+}
+$('shareTake').onclick = takeShared;
 $('shareNow').onclick = () => {
   if (!syncOn()) return toast('This league is not shared.', 'bad');
   syncTick(true); toast('Syncing…');
