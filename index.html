@@ -4710,19 +4710,23 @@ let raceModel = null, raceEls = null, raceRaf = 0;
 function vizRace() {
   const done = DB.fixtures.filter(f => f.stage === 'regular' && f.status === 'final');
   const rounds = [...new Set(done.map(f => f.round))].sort((a, b) => a - b);
-  if (rounds.length < 2) return '<div class="empty">Two match nights and this chart starts telling a story.</div>';
+  /* The season opens with every team level on nothing, and that opening is
+     part of the race: nought to three points is already a move, so one
+     match night is enough to have something worth watching. The start is a
+     column of its own at the left, before any round. */
+  if (!rounds.length) return '<div class="empty">The first match night and this chart starts telling a story.</div>';
   const st = standings();
   const leader = st.length ? st[0].id : null;
   const series = DB.teams.map(t => {
     let pts = 0;
-    const path = rounds.map(r => {
+    const path = [0].concat(rounds.map(r => {
       done.filter(f => f.round === r && (f.homeId === t.id || f.awayId === t.id)).forEach(f => {
         const mine = f.homeId === t.id ? f.homeGoals : f.awayGoals;
         const theirs = f.homeId === t.id ? f.awayGoals : f.homeGoals;
         pts += mine > theirs ? DB.season.pointsWin : mine < theirs ? DB.season.pointsLoss : DB.season.pointsDraw;
       });
       return pts;
-    });
+    }));
     return { id: t.id, name: t.name, colour: t.colour || '#8a8279', path, end: pts };
   }).sort((a, b) => a.end - b.end);          // the leader drawn last, so its badge rides on top
 
@@ -4731,17 +4735,18 @@ function vizRace() {
      round where everyone is on nought or three and pulls back as the leader
      draws away — and every point already drawn stays inside the frame. */
   const lo = [], hi = [];
+  const n = rounds.length + 1;                           // the start, then one per round
   let l0 = Infinity, h0 = -Infinity;
-  rounds.forEach((r, k) => {
+  for (let k = 0; k < n; k++) {
     series.forEach(s => { l0 = Math.min(l0, s.path[k]); h0 = Math.max(h0, s.path[k]); });
     lo.push(l0); hi.push(h0);
-  });
+  }
   // how wide the finishing row is: every team level on the final points rides it
   const tally = {};
   series.forEach(s => tally[s.end] = (tally[s.end] || 0) + 1);
   const widest = Math.min(6, Math.max.apply(null, Object.keys(tally).map(k => tally[k])));
   const R = RACE.LEAD + (widest - 1) * RACE.STEP + RACE.MARK + RACE.GAPX + 30;
-  raceModel = { series, n: rounds.length, leader, lo, hi, R };
+  raceModel = { series, n, leader, lo, hi, R };
   raceEls = null;
 
   const { W, H, L, MARK } = RACE;
@@ -4763,7 +4768,7 @@ function vizRace() {
       '</g>' +
       '<text class="race-lbl"><tspan class="race-pts"></tspan></text>' +
     '</g>').join('') +
-    '<text class="race-ax" x="' + L + '" y="' + (H - 6) + '">Round ' + rounds[0] + '</text>' +
+    '<text class="race-ax" x="' + L + '" y="' + (H - 6) + '">Start</text>' +
     '<text class="race-ax" x="' + (W - R) + '" y="' + (H - 6) + '" text-anchor="end">Round ' +
       rounds[rounds.length - 1] + '</text>' +
     '</svg>';
@@ -11911,6 +11916,33 @@ function emailText(d) {
    it. What it needs that the tool gets from the app is its own styling
    (the page has its own palette) and something to start it, which is the
    first time the reader actually scrolls it into view. */
+/* The goals a team scored, as the tiles the tool draws: a block each, sized
+   by its share of the season's goals. The markup comes from vizShare, the
+   very function the tool uses, so the page and the tool cannot drift — all
+   the page needs is the styling, since it has its own palette, and its own
+   crest rules because the tiles carry crests. */
+const PUB_SHARE_CSS =
+  '.share{position:relative;width:100%;aspect-ratio:16/8;min-height:240px;border-radius:14px;overflow:hidden;background:var(--card)}' +
+  '.sh-t{position:absolute;padding:3px;container-type:size;animation:shIn .6s cubic-bezier(.22,1,.36,1) var(--d) both}' +
+  '.sh-in{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:100%;height:100%;' +
+    'border-radius:12px;overflow:hidden;border:1px solid color-mix(in srgb,var(--tc) 60%,transparent);' +
+    'background:linear-gradient(160deg,color-mix(in srgb,var(--tc) 72%,#2a2b31) 0%,color-mix(in srgb,var(--tc) 52%,#16171b) 100%);' +
+    'box-shadow:inset 0 1px 0 rgba(255,255,255,.25),inset 0 -18px 30px -14px rgba(0,0,0,.45)}' +
+  '.sh-in::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;' +
+    'background:radial-gradient(120% 70% at 30% 0%,rgba(255,255,255,.16),transparent 60%)}' +
+  '.sh-in .crest{display:block;width:clamp(18px,40cqmin,66px);height:clamp(18px,40cqmin,66px);margin:0;' +
+    'background:center/contain no-repeat;filter:drop-shadow(0 2px 4px rgba(0,0,0,.45))}' +
+  '.sh-in .crest.none{display:none}' +                 // no crest, no space taken: the tile is the team
+  '.sh-in b{font-size:clamp(13px,21cqmin,36px);letter-spacing:-.5px;font-weight:800;line-height:1;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.65)}' +
+  '.sh-in em{font-style:normal;font-size:clamp(9px,8cqmin,13px);font-weight:700;color:#fff;background:rgba(0,0,0,.28);' +
+    'border-radius:999px;padding:1px 9px;text-shadow:0 1px 2px rgba(0,0,0,.6)}' +
+  '@container (min-aspect-ratio:2/1){.sh-in{flex-direction:row;gap:14px}' +
+    '.sh-in .crest{width:clamp(18px,58cqh,72px);height:clamp(18px,58cqh,72px)}.sh-in b{font-size:clamp(13px,34cqh,38px)}}' +
+  '@container (max-height:105px){.sh-in em{display:none}}@container (max-height:62px){.sh-in .crest{display:none}}' +
+  '@keyframes shIn{from{opacity:0;transform:scale(.85)}}' +
+  '@media (max-width:700px){.share{aspect-ratio:1/1;min-height:0}}' +
+  '@media (prefers-reduced-motion:reduce){.sh-t{animation:none}}';
+
 const PUB_RACE_CSS =
   '.viz-race{width:100%;height:330px;overflow:visible}' +
   '.race-line{fill:none;stroke:#6b6c75;stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round;opacity:.5}' +
@@ -12069,16 +12101,12 @@ function publicPageHtml() {
     }).join('') + '</table></div>';
   };
   const goalShare = () => {
-    const rows = st.map(r => Object.assign({}, r, playedAll(r.id))).filter(r => r.GF > 0)
-      .sort((a, b) => b.GF - a.GF || a.name.localeCompare(b.name));
-    const tot = rows.reduce((t, r) => t + r.GF, 0);
-    if (!tot) return '';
-    const top = rows[0].GF;
-    return h2('Goals scored, by team') + '<div class="tw"><table>' + rows.map(r =>
-      '<tr style="--tc:' + tc(r.id) + '"><td class="tm">' + dot(r.id) + esc(r.name) + '</td>' +
-      '<td class="barc"><div class="bar"><i style="width:' + Math.round(r.GF / top * 100) + '%;background:' + tc(r.id) + '"></i></div></td>' +
-      '<td class="n"><b>' + r.GF + '</b></td>' +
-      '<td class="n dim pg">' + (r.GF / tot * 100).toFixed(1) + '%</td></tr>').join('') + '</table></div>';
+    const rows = st.map(r => Object.assign({}, r, playedAll(r.id))).filter(r => r.GF > 0);
+    if (!rows.reduce((t, r) => t + r.GF, 0)) return '';
+    return h2('Goals scored, by team') +
+      '<style>' + PUB_SHARE_CSS + crestRules('.crest') + '</style>' +
+      '<div class="tw pad">' + vizShare(rows.map(r =>
+        ({ label: r.name, value: r.GF, tid: r.id, colour: (team(r.id) || {}).colour }))) + '</div>';
   };
   const h2 = (t, list) => {
     const k = (list || []).filter(f => f.stage !== 'regular');
