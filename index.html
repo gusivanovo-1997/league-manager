@@ -13300,7 +13300,12 @@ const SYNCKEY = 'futsal.sync.v1';
    merges the lists by name — it knows fixtures, teams and people and nothing
    else — while anything in the meta passes through untouched. A list of its
    own would mean redeploying the script before one referee could travel. */
-const SYNC_META = ['name', 'season', 'form', 'regs', 'honours', 'bulletin', 'finals3rd', 'staff'];
+/* 'archive' is every season this league has already played, which is where
+   each player's games, goals and hat-tricks from them live. It was not on
+   this list, so starting a new season wrote that history on one device only:
+   the other tablets took the cleared draw and the new name and ended up with
+   players whose careers began this week. */
+const SYNC_META = ['name', 'season', 'form', 'regs', 'honours', 'bulletin', 'finals3rd', 'staff', 'archive'];
 const SYNC_LISTS = ['fixtures', 'teams', 'people'];
 const SYNC_ROOT = { staff: 1 };
 const metaOf = k => SYNC_ROOT[k] ? staffDoc() : DB[k];
