@@ -2522,6 +2522,14 @@ tspan.gstar{fill:var(--gold)}
         <div class="spacer"></div>
         <button class="btn sm" id="pubCopyLink">Copy the link</button>
       </div>
+      <!-- Not about the live page, but it belongs where a manager can reach
+           it: when the tablet in your hands is the one with the right data,
+           this is how you say so. -->
+      <div class="row" style="margin-top:11px">
+        <button class="btn sm bad" id="shareSend">Send this copy up</button>
+        <span class="small muted">Makes the shared copy exactly what is on this machine — for when the
+          others have drifted and this is the one that is right.</span>
+      </div>
     </div>
 
     <div class="card" id="cardTablets">
@@ -2549,13 +2557,11 @@ tspan.gstar{fill:var(--gold)}
           <span class="small muted">On the other tablet, open this tab, press <b>Join a shared league</b>
             and paste the code. It appears in the league switcher and starts syncing at once.</span>
           <div class="row"><button class="btn sm" id="shareJoin">Join a shared league…</button>
-            <button class="btn sm bad" id="shareTake">Take the shared copy</button>
-            <button class="btn sm bad" id="shareSend">Send this copy up</button></div>
+            <button class="btn sm bad" id="shareTake">Take the shared copy</button></div>
           <span class="small muted">When this machine and the others have fallen out of step, one of them
             has to give in. <b>Take the shared copy</b> throws away what is here and pulls the shared one
-            down. <b>Send this copy up</b> does the opposite — the shared copy becomes exactly what is on
-            this machine, and the other tablets take it from there. Use whichever one is standing on the
-            machine with the right data. The address and the key are kept either way.</span>
+            down. The opposite — <b>Send this copy up</b> — is on the live page card above, where a
+            manager can reach it too. The address and the key are kept either way.</span>
           <span class="small muted">Every tablet keeps its own full copy, so a wifi drop never stops a match
             being scored — whatever was logged goes up when the signal comes back.</span>
         </div>
@@ -13565,15 +13571,37 @@ async function syncTick(force) {
        somebody, or was simply never known about here. */
     let known = !!SY.shadow;
     if (r.empty || (r.rev || 0) < SY.rev || (drifted && r.same)) {
-      // the shared copy has been started again, or this tablet's picture of it
-      // is wrong: treat everything here as unsent and put it all back up
+      /* This tablet's picture of the shared copy is wrong — it is level by
+         the revision number and yet holds a different number of records, or
+         the shared copy has gone backwards.
+
+         It used to answer that by treating EVERYTHING here as unsent, which
+         made it the authority on every record it held and pushed its whole
+         copy up over everybody else's. One tablet having a bad moment then
+         quietly undid a round somebody had just spent an hour correcting on
+         another, and the only sign of it was the work reappearing wrong.
+
+         A tablet that has lost its place is the last thing that should be
+         believed. It claims nothing, takes the shared copy as it stands, and
+         says so out loud — anything typed here in the last moments may want
+         re-entering, which is a far smaller loss than the other way round,
+         and the machine that does hold the truth can send its copy up. */
+      /* Nought asks for the whole copy on the next breath. Saying "same"
+         and leaving it there was the trap: nothing came down, the picture
+         was blank, and so everything here looked unsent and went up — the
+         stale copy over the good one, before the good one had even been
+         asked for. */
       SY.shadow = blankShadow();
-      SY.rev = r.rev || 0;
-      known = false;                 // nothing here counts as deleted by anybody
-      mine = syncDiff();             // and all of it is ours again, to hold and to send
+      SY.rev = 0;
+      SY.lost = true;
     }
+    /* While a tablet is lost it claims nothing and sends nothing. It waits
+       for the whole copy, takes it, and only then is it worth listening to
+       again. */
+    const lost = !!SY.lost;
+    if (lost) { known = false; mine = null; }
     if (r.empty) {
-      // nothing up there yet: this copy goes first
+      SY.lost = false;               // there is nothing up there to take: this copy goes first
     } else if (r.doc) {
       /* A whole copy comes down whenever this tablet has fallen further
          behind than the log reaches back. It is ALWAYS applied.
@@ -13590,6 +13618,7 @@ async function syncTick(force) {
       // what the shared copy no longer has is gone — but only if this tablet
       // knew the shared copy; anything unsent here is kept either way
       docApply(docAsPatch(r.doc, known || bare), mine);
+      SY.lost = false;               // the whole copy is here and the picture is true again
       changed = true;
     } else if (r.steps && r.steps.length) {
       r.steps.forEach(st => { shadowApply(st); docApply(st, mine); });
@@ -13600,7 +13629,10 @@ async function syncTick(force) {
       liveFinishedElsewhere();
       changed = true;
     }
-    SY.rev = r.rev || SY.rev;
+    if (lost && !SY.lost) toast('This tablet had lost its place in the shared league and has taken the shared copy. ' +
+      'Anything entered here in the last moments may need doing again.', 'bad');
+    if (!SY.lost) SY.rev = r.rev || SY.rev;
+    if (SY.lost) { SY.again = true; return; }     // ask for the whole copy before saying anything
     // and now whatever is still only here goes up
     const out = syncDiff();
     if (out) {
@@ -14048,7 +14080,10 @@ $('shareTake').onclick = takeShared;
    this one does not are deleted, not merged back in, because "merged back in"
    is how a league that was tidied up here fills with the rubbish again. */
 async function sendMine() {
-  if (!requireOwner('Sending this copy up')) return;
+  /* A manager runs this league, and when the tablet in their hands is the
+     one with the right data they should not have to find the owner to say
+     so. It is still the whole copy of ONE league — their own. */
+  if (!requireMgr('Sending this copy up')) return;
   if (!syncOn()) return toast('This league is not shared.', 'bad');
   const nm = leagueName(activeLeague());
   if (!confirm('Make the shared copy of ' + nm + ' exactly what is on this machine?')) return;
@@ -14735,7 +14770,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '01 Nov 12:30 · 8684cd1'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '01 Nov 14:00 · 8962a80'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
