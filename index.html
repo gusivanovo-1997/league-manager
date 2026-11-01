@@ -4818,7 +4818,26 @@ function render() {
 /* A match left in 'live' keeps the tab lit even after a reload or on another
    machine's copy of the league, which is the point: it is the flag that says
    a game is open somewhere. The clock only ticks in the session running it. */
+/* A phone dims and locks itself after half a minute, which is no good when it
+   is the match clock standing on the scorer's table. While a match is open the
+   screen is asked to stay awake, the way a video playing keeps it on, and it
+   is let go the moment the match closes.
+
+   The browser takes the lock back whenever the page is hidden, so it is asked
+   for again when the page comes back. Where it is refused — an old browser,
+   or a page not served over https — the screen simply behaves as it did. */
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (!on) { const w = wakeLock; wakeLock = null; if (w) await w.release(); return; }
+    if (wakeLock || !navigator.wakeLock || document.hidden) return;
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch (e) { wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && live.id) keepAwake(true); });
 function liveTicker() {
+  keepAwake(!!live.id);
   const btn = document.querySelector('[data-nav="live"]');
   if (!btn) return;
   const f = live.id ? DB.fixtures.find(x => x.id === live.id) : null;
@@ -7505,6 +7524,7 @@ function renderFixtures() {
   $('fxList').innerHTML = html;
   $('fxList').querySelectorAll('[data-fxedit]').forEach(b => b.onclick = () => editFixture(b.dataset.fxedit));
   $('fxList').querySelectorAll('[data-fxlive]').forEach(b => b.onclick = () => { openLive(b.dataset.fxlive); go('live'); });
+  $('fxList').querySelectorAll('[data-cxdate]').forEach(b => b.onclick = () => moveRound(b.dataset.cxdate));
   $('fxList').querySelectorAll('[data-cxoff]').forEach(b => b.onclick = () => cancelRound(b.dataset.cxoff));
   $('fxList').querySelectorAll('[data-cxmove]').forEach(b => b.onclick = () => rescheduleRound(b.dataset.cxmove));
   $('fxList').querySelectorAll('[data-cxback]').forEach(b => b.onclick = () => restoreRound(b.dataset.cxback));
@@ -7690,8 +7710,51 @@ function roundTools(key) {
       '<button class="btn sm" data-cxback="' + esc(key) + '">Put it back on</button></div>' : '') + '</div>';
   else if (moved) s += '<div class="cxnote moved">' + RSX + ' — called off' + (moved.offWas.reason ? ' (' + esc(moved.offWas.reason) + ')' : '') +
     (moved.offWas.date ? '<span class="muted small"> · it was on ' + esc(fmtDate(moved.offWas.date)) + '</span>' : '') + '</div>';
+  if (isMgr() && !off.length && all.length) s += '<button class="btn sm" data-cxdate="' + esc(key) + '">Change the date…</button> ';
   if (isMgr() && live1.length) s += '<button class="btn sm bad" data-cxoff="' + esc(key) + '">Call off…</button>';
   return s;
+}
+/* A round moved because the hall is shut, the long weekend landed on it, or
+   the date was typed wrong in the first place. The reschedule above only
+   moves a round that has been CALLED OFF; this moves any of them, and does
+   not pretend anything was cancelled.
+
+   Matches already played keep the night they were actually played on — the
+   record of when a thing happened is not a thing to change by accident —
+   unless it is asked for outright, which is how a typo gets corrected. */
+function moveRound(key) {
+  if (!requireMgr('Changing the date of a round')) return;
+  const all = DB.fixtures.filter(f => roundKey(f) === key);
+  if (!all.length) return;
+  const done = all.filter(f => f.status === 'final');
+  const was = [...new Set(all.map(f => f.date).filter(Boolean))].sort();
+  modal('A new date for ' + roundName(key),
+    '<div class="grid g2"><div class="field"><label>New date</label>' +
+      '<input type="date" id="mrDate" value="' + esc(was[0] || '') + '"></div>' +
+      '<div class="field"><label>First kick-off (optional)</label><input type="time" id="mrTime"></div></div>' +
+    '<div class="small muted">' + (was.length ? 'On ' + was.map(fmtDate).join(' and ') + ' at the moment. ' : '') +
+      'Every match in the round moves to the new date. Each keeps its own time and court unless you give a ' +
+      'first kick-off, in which case they keep the gaps between them.</div>' +
+    (done.length ? '<label class="row small" style="gap:8px;margin-top:11px">' +
+      '<input type="checkbox" id="mrDone"> also move ' + plural(done.length, 'match', 'matches') +
+      ' already played — tick this only to correct a date that was wrong</label>' : ''),
+    [{ label: 'Cancel' }, { label: 'Move the round', cls: 'accent', fn: () => {
+      const d = $('mrDate').value;
+      if (!d) { toast('Pick the new date.', 'bad'); return false; }
+      const t0 = $('mrTime').value;
+      const alsoDone = !!($('mrDone') && $('mrDone').checked);
+      const moving = DB.fixtures.filter(f => roundKey(f) === key && (f.status !== 'final' || alsoDone));
+      if (!moving.length) { toast('Every match in that round has been played — tick the box to move them anyway.', 'bad'); return false; }
+      const times = moving.map(f => toMins(f.time || '00:00')).sort((a, b) => a - b);
+      const first = times[0];
+      moving.forEach(f => {
+        f.date = d;
+        if (t0 && f.time) f.time = fmtMins(toMins(t0) + (toMins(f.time) - first));
+      });
+      if (save() === false) return;
+      render();
+      toast(plural(moving.length, 'match', 'matches') + ' moved to ' + fmtDate(d) + '.', 'ok');
+    } }]);
 }
 function editFixture(id) {
   if (!requireMgr('Rescheduling a match')) return;
@@ -9986,19 +10049,20 @@ function hatMap() {
    look at and the same answer every time — on this tablet, on the next one
    and on the live page, today and in March. A name that changed every time
    the page was drawn would be worse than no name at all. */
-/* The man of the match belongs to the side that won it, and he has to have
-   scored twice: one goal in a 3–0 is not the story of the match, and drawing
-   lots between four players on one goal each was picking a name out of a hat.
+/* The man of the match belongs to the side that won it: its top scorer,
+   whatever he scored. One goal in a 1–0 is the whole match, and the only
+   person it could be.
 
    A player on the losing side takes it in one case only — a hat-trick that
    still was not enough — and not even then if anybody on the winning side
    scored three of their own. (A winner with more goals than him has three or
    more by definition, so that is the same test said twice.)
 
-   A drawn match has no losing side, so it goes to the best of the two, on
-   the same two-goal floor. Level tallies within whichever side it has come
-   down to are still drawn by lot, from the match's own id, so every screen
-   and every email names the same player. */
+   A drawn match has no losing side, so it goes to the best of the two.
+   Level tallies within whichever side it has come down to are drawn by lot
+   from the match's own id — so four winners on one goal each is a real draw,
+   and every screen and every email names the same one of them. Nobody takes
+   it if no goal in the match was logged against a name. */
 function goalsByPlayer(f) {
   const ticked = new Set(attendedIn(f));
   const sideTicked = tid => attendedIn(f).some(pid => (personTeam(pid) || {}).id === tid || (f.guestOf && f.guestOf[pid] === tid));
@@ -10025,7 +10089,7 @@ function matchMvp(f) {
     const l = top(all.filter(id => by[id].teamId !== won));
     pick = (l.goals >= 3 && w.goals < 3) ? l : w;
   }
-  if (!pick.ids.length || pick.goals < 2) return null;
+  if (!pick.ids.length || !pick.goals) return null;
   if (pick.ids.length < 2) return { ids: pick.ids, goals: pick.goals };
   const ids = pick.ids.slice().sort();                               // a fixed order to draw from
   let x = 0x811c9dc5; const seed = String(f.id) + '|mvp';
@@ -14530,11 +14594,25 @@ function recentRole() {
     return (ROOT.staff || []).find(s => s.id === r.id) || null;     // removed from the staff, removed from the grace
   } catch (e) { return null; }
 }
-let roleStamp = 0;
+let roleStamp = 0, lastSeen = Date.now();
 ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => {
+  lastSeen = Date.now();
   if (!me || Date.now() - roleStamp < 20000) return;
   roleStamp = Date.now(); rememberRole(me.id);
 }, true));
+/* The five minutes were only ever read on the way in: a tab left open stayed
+   open for ever, and the PIN was never asked for again until somebody pressed
+   Lock. The same five minutes now run while the tool is sitting there — so a
+   tablet left on the scorer's table locks itself, and a refresh inside the
+   five walks straight back in.
+
+   Never while a match is being scored on this device. A clock you have to
+   sign back in to is worse than no clock. */
+setInterval(() => {
+  if (!me || live.id || Date.now() - lastSeen < ROLE_TTL) return;
+  lock();
+  toast('Locked after five minutes — your PIN, please.');
+}, 15000);
 let role = null, me = null;
 const isOwner = () => !!(me && me.owner);
 const isMgr = () => role === 'manager';
