@@ -2388,9 +2388,12 @@ tspan.gstar{fill:var(--gold)}
       <div class="hn-grid">
         <div class="field"><label>Year</label><input type="number" id="hnYear" min="2000" max="2100" value="2023"></div>
         <div class="field"><label>Season / competition</label><input id="hnSeason" placeholder="Season 1 2026"></div>
-        <div class="field"><label>Champion</label><input id="hnChamp" placeholder="Team name" list="hnTeams"></div>
-        <div class="field"><label>Runner-up</label><input id="hnRunner" placeholder="Team name" list="hnTeams"></div>
-        <div class="field"><label>3rd place</label><input id="hnThird" placeholder="Team name" list="hnTeams"></div>
+        <!-- autocomplete="off" or the browser offers its own memory of
+             everything ever typed here alongside the real teams, and a
+             misspelling typed once comes back for ever as if it were one. -->
+        <div class="field"><label>Champion</label><input id="hnChamp" placeholder="Team name" list="hnTeams" autocomplete="off"></div>
+        <div class="field"><label>Runner-up</label><input id="hnRunner" placeholder="Team name" list="hnTeams" autocomplete="off"></div>
+        <div class="field"><label>3rd place</label><input id="hnThird" placeholder="Team name" list="hnTeams" autocomplete="off"></div>
         <div class="field"><label>Golden Boot</label><input id="hnScorer" placeholder="Player (goals)"></div>
         <div class="field hn-wide"><label>Notes</label><input id="hnNotes" placeholder="e.g. won 4–3 on penalties"></div>
       </div>
@@ -6215,8 +6218,11 @@ function renderTeams() {
     const attNow = attendCount(pid);
     const ycNow = allEvents().filter(e => e.type === 'yellow' && e.personId === pid).length;
     const rcNow = allEvents().filter(e => e.type === 'red' && e.personId === pid).length;
+    const who = person(pid) || {};
     modal('Edit ' + personName(pid), `
       <div class="grid g2">
+        <div class="field"><label>First name</label><input id="pfn" value="${esc(who.firstName || '')}"></div>
+        <div class="field"><label>Last name</label><input id="pln" value="${esc(who.lastName || '')}"></div>
         <div class="field"><label>Shirt number</label><input type="number" id="pn" value="${pl.number || ''}"></div>
         <div class="field"><label>Move to team</label><select id="pt">${DB.teams.map(x =>
           '<option value="' + x.id + '"' + (x.id === tid ? ' selected' : '') + '>' + esc(x.name) + '</option>').join('')}</select></div>
@@ -6229,12 +6235,19 @@ function renderTeams() {
       <div class="small muted" id="pmpNote" style="margin:0 0 10px"></div>
       <label class="row small" style="gap:6px"><input type="checkbox" id="pc" ${pl.captain ? 'checked' : ''}> captain</label>
       <label class="row small" style="gap:6px;margin-top:6px"><input type="checkbox" id="pg" ${pl.gk ? 'checked' : ''}> goalkeeper</label>
-      <button class="btn sm injb" id="pinj" style="margin-top:10px">${INJ_ICON} ${person(pid) && person(pid).injury ? 'Injury details' : 'Mark injured'}</button>`,
+      <div class="row" style="margin-top:10px">
+        <button class="btn sm injb" id="pinj">${INJ_ICON} ${person(pid) && person(pid).injury ? 'Injury details' : 'Mark injured'}</button>
+        <!-- the rest of the person: contact, date of birth, next of kin and
+             anything medical. One more click rather than one very long box. -->
+        <button class="btn sm" id="pmore">Contact &amp; medical\u2026</button>
+      </div>`,
       [{ label: 'Cancel' }, { label: 'Save', cls: 'accent', fn: () => {
         // work out everything before changing anything: answering "no" to the
         // attendance warning must not leave a half-applied edit behind
         const t = team(tid), pl = t && t.players.find(x => x.personId === pid);
         if (!pl) { toast('That record was changed in the other window — open it again.', 'bad'); return; }
+        const first = $('pfn').value.trim(), last = $('pln').value.trim();
+        if (!first && !last) { toast('A player needs a name.', 'bad'); return false; }
         const dest = $('pt').value;
         if (dest !== tid && team(dest) && team(dest).players.length >= DB.season.squadMax) {
           toast('Squad is full (' + DB.season.squadMax + ').', 'bad'); return false;
@@ -6255,6 +6268,8 @@ function renderTeams() {
         const yWant = Math.max(0, Math.round(+$('pyc').value || 0)), rWant = Math.max(0, Math.round(+$('prc').value || 0));
         if (yWant !== ycNow) applyCards(tid, pid, 'yellow', yWant);
         if (rWant !== rcNow) applyCards(tid, pid, 'red', rWant);
+        const pp = person(pid);
+        if (pp) { pp.firstName = first; pp.lastName = last; }
         pl.number = $('pn').value ? +$('pn').value : null;
         pl.gk = $('pg').checked;
         const cap = $('pc').checked;
@@ -6279,6 +6294,7 @@ function renderTeams() {
     $('pmp').oninput = showPlan;
     showPlan();
     $('pinj').onclick = () => { closeModal(); editInjury(pid); };
+    $('pmore').onclick = () => { closeModal(); editPerson(pid); };
   });
   $('teamList').querySelectorAll('[data-tcol]').forEach(b => b.onclick = () => editTeamColour(b.dataset.tcol));
   $('teamList').querySelectorAll('[data-addplayer]').forEach(b => b.onclick = () => addPlayerToTeam(b.dataset.addplayer));
@@ -9970,13 +9986,51 @@ function hatMap() {
    look at and the same answer every time — on this tablet, on the next one
    and on the live page, today and in March. A name that changed every time
    the page was drawn would be worse than no name at all. */
+/* The man of the match belongs to the side that won it, and he has to have
+   scored twice: one goal in a 3–0 is not the story of the match, and drawing
+   lots between four players on one goal each was picking a name out of a hat.
+
+   A player on the losing side takes it in one case only — a hat-trick that
+   still was not enough — and not even then if anybody on the winning side
+   scored three of their own. (A winner with more goals than him has three or
+   more by definition, so that is the same test said twice.)
+
+   A drawn match has no losing side, so it goes to the best of the two, on
+   the same two-goal floor. Level tallies within whichever side it has come
+   down to are still drawn by lot, from the match's own id, so every screen
+   and every email names the same player. */
+function goalsByPlayer(f) {
+  const ticked = new Set(attendedIn(f));
+  const sideTicked = tid => attendedIn(f).some(pid => (personTeam(pid) || {}).id === tid || (f.guestOf && f.guestOf[pid] === tid));
+  const by = {};
+  (f.events || []).forEach(e => {
+    if (e.adj || e.type !== 'goal' || !e.personId) return;
+    if (sideTicked(e.teamId) && !ticked.has(e.personId)) return;    // logged against somebody not at the match
+    const r = by[e.personId] = by[e.personId] || { goals: 0, teamId: e.teamId };
+    r.goals++;
+  });
+  return by;
+}
 function matchMvp(f) {
-  const m = roundTopScorer({ fx: [f] });
-  if (!m || m.ids.length < 2) return m;
-  const ids = m.ids.slice().sort();                  // a fixed order to draw from
-  let x = 0x811c9dc5, seed = String(f.id) + '|mvp';
+  if (!bootOn() || !f || f.status !== 'final') return null;
+  const by = goalsByPlayer(f), all = Object.keys(by);
+  if (!all.length) return null;
+  const top = ids => { const g = Math.max(0, ...ids.map(id => by[id].goals));
+    return { goals: g, ids: ids.filter(id => by[id].goals === g) }; };
+  const won = winnerOf(f);
+  let pick;
+  if (!won) pick = top(all);                                         // a draw has no losing side
+  else {
+    const w = top(all.filter(id => by[id].teamId === won));
+    const l = top(all.filter(id => by[id].teamId !== won));
+    pick = (l.goals >= 3 && w.goals < 3) ? l : w;
+  }
+  if (!pick.ids.length || pick.goals < 2) return null;
+  if (pick.ids.length < 2) return { ids: pick.ids, goals: pick.goals };
+  const ids = pick.ids.slice().sort();                               // a fixed order to draw from
+  let x = 0x811c9dc5; const seed = String(f.id) + '|mvp';
   for (let i = 0; i < seed.length; i++) { x ^= seed.charCodeAt(i); x = Math.imul(x, 0x01000193) >>> 0; }
-  return { ids: [ids[x % ids.length]], goals: m.goals, drawn: true };
+  return { ids: [ids[x % ids.length]], goals: pick.goals, drawn: true };
 }
 function roundTopScorer(r) {
   if (!bootOn()) return null;
@@ -10085,7 +10139,13 @@ $('btnAddHonour').onclick = () => {
   if (ex) Object.assign(ex, rec, { id: ex.id }); else DB.honours.push(rec);
   if (save() === false) return;
   endHonourEdit();
-  render(); toast('Saved.', 'ok');
+  render();
+  /* A champion that matches no team in this league is kept — a club that
+     has left still won what it won — but it earns no star and no crest, and
+     that is worth saying at the time rather than being noticed later. */
+  toast(rec.championId ? 'Saved.'
+    : 'Saved — but no team here is called "' + rec.champion + '", so it is kept as a past name only.',
+    rec.championId ? 'ok' : 'bad');
 };
 $('btnHonourNew').onclick = endHonourEdit;
 function renderHonours() {
