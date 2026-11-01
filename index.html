@@ -13398,12 +13398,22 @@ function syncDiff() {
   if (!SY.shadow) return null;
   const now = syncDoc(), a = SY.shadow, set = {}, del = {};
   let any = false, meta = null;
+  /* Each record that is about to go up is marked with whether an owner made
+     the change, so another tablet holding its own version of the same record
+     can tell whose is whose. The mark is put on the record itself, not on the
+     message, because a tablet that joins later is handed the whole copy and
+     no message at all — and because the fingerprint this tablet keeps is
+     taken from the record after it is marked, so the two never drift. */
+  const own = isOwner() ? 1 : 0;
   SYNC_LISTS.forEach(n => {
     const s = {}, d = [], seen = {};
     (now[n] || []).forEach(x => {
       if (!x || !x.id) return;
       seen[x.id] = 1;
-      if ((a[n] || {})[x.id] !== syncHash(x)) { s[x.id] = x; any = true; }
+      if ((a[n] || {})[x.id] !== syncHash(x)) {
+        if (own) x.own = 1; else delete x.own;      // the latest hand on it is the one that counts
+        s[x.id] = x; any = true;
+      }
     });
     Object.keys(a[n] || {}).forEach(id => { if (!seen[id]) { d.push(id); any = true; } });
     if (Object.keys(s).length) set[n] = s;
@@ -13447,6 +13457,13 @@ function docApply(p, keep) {
     const ours = bag ? bag[id] : undefined;
     if (ours === undefined) return false;
     if (n === 'fixtures' && coming && coming.status === 'final' && (!ours || ours.status !== 'final')) return false;
+    /* Both tablets changed the same record in the same breath. Somebody has
+       to lose, and it should not be decided by which of them reached the web
+       app first: the owner's hand is the one that stands. Owner against
+       owner, and manager against manager, the rule is unchanged — what this
+       tablet has not sent yet wins, because it is the later of the two to
+       have been typed here. */
+    if (coming && coming.own && !ours.own) return false;
     return true;
   };
   SYNC_LISTS.forEach(n => {
