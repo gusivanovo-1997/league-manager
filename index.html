@@ -13388,8 +13388,12 @@ function syncLoad() {
 function syncStore() {
   try { localStorage.setItem(syncSlot(), JSON.stringify({ rev: SY.rev, shadow: SY.shadow, at: SY.at })); } catch (e) {}
 }
-// one short hash per record: enough to see what this tablet has changed
-const syncHash = x => hashStr(JSON.stringify(x === undefined ? null : x));
+/* One short hash per record: enough to see what this tablet has changed.
+   'own' is skipped because records written while the owner-priority rule
+   existed still carry it, and a mark one tablet has and another does not
+   would read as a change for ever. Ignored here, it costs nothing and
+   quietly disappears as records are rewritten. */
+const syncHash = x => hashStr(JSON.stringify(x === undefined ? null : x, (k, v) => k === 'own' ? undefined : v));
 function syncDoc() {
   const d = {};
   SYNC_LISTS.forEach(n => d[n] = DB[n] || []);
@@ -13423,20 +13427,13 @@ function syncDiff() {
   if (!SY.shadow) return null;
   const now = syncDoc(), a = SY.shadow, set = {}, del = {};
   let any = false, meta = null;
-  /* Each record that is about to go up is marked with whether an owner made
-     the change, so another tablet holding its own version of the same record
-     can tell whose is whose. The mark is put on the record itself, not on the
-     message, because a tablet that joins later is handed the whole copy and
-     no message at all — and because the fingerprint this tablet keeps is
-     taken from the record after it is marked, so the two never drift. */
-  const own = isOwner() ? 1 : 0;
   SYNC_LISTS.forEach(n => {
     const s = {}, d = [], seen = {};
     (now[n] || []).forEach(x => {
       if (!x || !x.id) return;
       seen[x.id] = 1;
       if ((a[n] || {})[x.id] !== syncHash(x)) {
-        if (own) x.own = 1; else delete x.own;      // the latest hand on it is the one that counts
+        delete x.own;                               // the mark the owner-priority rule left behind
         s[x.id] = x; any = true;
       }
     });
@@ -13482,13 +13479,15 @@ function docApply(p, keep) {
     const ours = bag ? bag[id] : undefined;
     if (ours === undefined) return false;
     if (n === 'fixtures' && coming && coming.status === 'final' && (!ours || ours.status !== 'final')) return false;
-    /* Both tablets changed the same record in the same breath. Somebody has
-       to lose, and it should not be decided by which of them reached the web
-       app first: the owner's hand is the one that stands. Owner against
-       owner, and manager against manager, the rule is unchanged — what this
-       tablet has not sent yet wins, because it is the later of the two to
-       have been typed here. */
-    if (coming && coming.own && !ours.own) return false;
+    /* An owner's change used to outrank a manager's on the same record. It
+       was the wrong rule and it did far more harm than the thing it was for:
+       the mark stayed ON the record, so one tablet that briefly thought its
+       whole copy was unsent stamped the lot, and from then on everything that
+       tablet held beat everything anybody else did — a round rescored on the
+       manager's tablet simply never landed. Everyone is level again: what a
+       tablet has changed and not yet sent is what stands, whoever they are,
+       and the one exception stays the one above — a match somebody has
+       played out beats a clock another still has open. */
     return true;
   };
   SYNC_LISTS.forEach(n => {
@@ -14736,7 +14735,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '01 Nov 12:01 · fa19c14'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '01 Nov 12:30 · 8684cd1'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
