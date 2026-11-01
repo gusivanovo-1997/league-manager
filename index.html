@@ -2303,7 +2303,7 @@ tspan.gstar{fill:var(--gold)}
       <div class="row">
         <h3 style="margin:0">Match fees</h3>
         <div class="spacer"></div>
-        <button class="btn accent sm" id="btnFinReport">Fee summary report</button>
+        <button class="btn accent sm" id="btnFinReport">Financial summary report</button>
       </div>
       <div class="small muted" style="margin-top:8px">A dated record of what every team paid on every
         night, and what the season has taken by the moment you press it. Choose <b>Save as PDF</b> in
@@ -3824,7 +3824,7 @@ function renderFinance() {
   $('finBody').querySelectorAll('[data-fingo]').forEach(tr => tr.onclick = () => { attKey = tr.dataset.fingo; go('attend'); });
 }
 
-/* ── the fee summary report ─────────────────────────────────
+/* ── the financial summary report ───────────────────────────
    The money as a document rather than a screen: what each team paid on each
    night from the players who actually turned up, what the night came to, and
    what the season has taken by the moment the button was pressed.
@@ -3836,7 +3836,7 @@ function renderFinance() {
    hidden frame, the way the draw is printed: "Save as PDF" in the print
    window is the file. */
 function printFinance() {
-  if (!requireMgr('The fee summary report')) return;
+  if (!requireMgr('The financial summary report')) return;
   const rs = attendRounds(), fee = feeOf();
   if (!rs.length) return toast('No fixtures yet — there is nothing to report on.', 'bad');
   const $$ = n => '$' + money(n * fee);
@@ -3954,7 +3954,12 @@ function printFinance() {
       'text-align:left;padding:8px 10px;border-bottom:1px solid #33343b;font-weight:700}' +
     'table.g td{padding:7px 10px;border-top:1px solid rgba(255,255,255,.055);color:#d7d4d1;vertical-align:middle}' +
     'table.g tr:first-child td{border-top:0}' +
-    '.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}' +
+    /* A column of figures reads as a column when the heading, the numbers
+       and the total all sit on the same line down the middle. Right-aligned
+       they hugged the rule between columns while the headings stayed left,
+       so neither lined up with the other. The th rule is more specific than
+       a bare .n, which is why both are named here. */
+    'table.g th.n,table.g td.n{text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap}' +
     '.m{color:#77777f}.b{font-weight:700;color:#f4f2f0}.o{color:#ff8a3d;font-weight:700}' +
     '.tot td{border-top:1.5px solid #3a2a1c;background:#1b1c21}' +
     '.tm{display:flex;align-items:center;gap:8px}.tm img{width:19px;height:19px;object-fit:contain;flex:0 0 auto}' +
@@ -3970,12 +3975,12 @@ function printFinance() {
     'footer .v{color:#d7d4d1;font-size:11.5px;margin-top:2px}';
 
   const doc = '<!doctype html><html><head><meta charset="utf-8"><title>' +
-    esc(comp + ' — fee summary') + '</title><style>' + css + '</style></head><body><div class="wrap">' +
+    esc(comp + ' — financial summary') + '</title><style>' + css + '</style></head><body><div class="wrap">' +
     '<header>' + (ball ? '<img src="' + ball + '" alt="">' : '') +
       '<div><h1><span class="lg">League</span> Manager</h1></div>' +
       '<div class="v"><b>' + esc(client) + '</b>' + (under ? '<span class="c">' + esc(under) + '</span>' : '') +
         (DB.season.venue ? '<span class="c">' + esc(DB.season.venue) + '</span>' : '') + '</div></header>' +
-    '<div class="ttl"><h2>Fee Summary Report</h2><div class="u"></div>' +
+    '<div class="ttl"><h2>Financial Summary Report</h2><div class="u"></div>' +
       '<p>Match fees by round and by team, counted on the players who turned up on the night.</p></div>' +
     tiles +
     '<h4>Takings by round</h4>' + roundTbl +
@@ -14770,7 +14775,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '01 Nov 14:00 · 8962a80'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '01 Nov 16:58 · 71970c8'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
