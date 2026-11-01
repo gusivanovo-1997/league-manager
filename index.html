@@ -5689,7 +5689,7 @@ $('btnRegManual').onclick = () => {
   modal('Add registration manually', `
     <div class="grid g2">
       <div class="field"><label>First name</label><input id="mFirst"></div>
-      <div class="field"><label>Last name</label><input id="mLast"></div>
+      <div class="field"><label>Last name <span class="muted">(optional)</span></label><input id="mLast"></div>
       <div class="field"><label>Mobile</label><input id="mPhone"></div>
       <div class="field"><label>Email</label><input id="mEmail"></div>
       <div class="field"><label>Team</label><input id="mTeam"></div>
@@ -5706,7 +5706,7 @@ $('btnRegManual').onclick = () => {
         captain: !!$('mCap').value, emergencyName: $('mEcN').value.trim(), emergencyPhone: $('mEcP').value.trim(),
         emergencyRel: $('mEcR').value.trim(), dob: $('mDob').value, acceptTerms: true, acceptWaiver: true,
         signature: null, submittedAt: new Date().toISOString(), manual: true };
-      if (!sub.firstName || !sub.lastName) { toast('Name is required.', 'bad'); return false; }
+      if (!sub.firstName && !sub.lastName) { toast('A player needs a name.', 'bad'); return false; }
       importSubmission(sub, 'manual'); save(); render(); toast('Added to pending.', 'ok');
     } }
   ]);
@@ -6329,7 +6329,7 @@ function addPlayerToTeam(tid) {
       </select></div>
     <div class="grid g2">
       <div class="field"><label>First name</label><input id="apF"></div>
-      <div class="field"><label>Last name</label><input id="apL"></div>
+      <div class="field"><label>Last name <span class="muted">(optional)</span></label><input id="apL"></div>
       <div class="field"><label>Mobile</label><input id="apPh"></div>
       <div class="field"><label>Email</label><input id="apE"></div>
       <div class="field"><label>Shirt number</label><input type="number" id="apN"></div>
@@ -6344,7 +6344,9 @@ function addPlayerToTeam(tid) {
       let pid = $('apP').value;
       if (!pid) {
         const f = $('apF').value.trim(), l = $('apL').value.trim();
-        if (!f || !l) { toast('Name is required.', 'bad'); return false; }
+        // one name is a name: plenty of players are known by one, and a
+        // surname nobody uses is not worth refusing the player over
+        if (!f && !l) { toast('A player needs a name.', 'bad'); return false; }
         const ec = $('apEc').value.split('·');
         const p = { id: uid(), firstName: f, lastName: l, phone: $('apPh').value.trim(), email: $('apE').value.trim(),
           emergencyName: (ec[0] || '').trim(), emergencyPhone: (ec[1] || '').trim(), seasons: [DB.season.name],
