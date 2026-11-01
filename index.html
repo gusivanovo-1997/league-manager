@@ -2470,6 +2470,17 @@ tspan.gstar{fill:var(--gold)}
       <div id="blRecips"></div>
     </div>
 
+    <div class="card">
+      <h3>Google's sending allowance</h3>
+      <div class="small muted" style="line-height:1.8">Google counts <b>recipients</b>, not emails: one bulletin
+        to fifteen players spends fifteen, plus one for the copy that comes back to you. A personal Gmail
+        account is allowed 100 a day; a Workspace account 1,500. It is the whole account's allowance, shared
+        by everything that sends from it — including the sign-up form, which emails you every time somebody
+        registers. It replenishes about a day after each send rather than all at once at midnight.</div>
+      <div class="row" style="margin-top:11px"><button class="btn sm" id="blQuota">Ask Google what is left</button></div>
+      <div class="note" id="blQuotaOut" style="margin-top:11px" hidden></div>
+    </div>
+
     <div class="card"><h3>Send history</h3><div id="blLog"></div></div>
   </section>
 
@@ -13804,6 +13815,35 @@ async function gPost(body) {
   if (!j.ok && j.error === 'wrong key') return { ok: false, error: 'your Google web app has a different key — copy the setup script again and deploy a new version' };
   return j;
 }
+/* Google's own number, beside what this tool knows it has spent. The two
+   rarely match, and the gap is the useful part: anything else sending from
+   the same Google account comes out of the same allowance, and the sign-up
+   form emailing a registration through is the usual answer. */
+$('blQuota').onclick = async () => {
+  if (!requireMgr('The sending allowance')) return;
+  const out = $('blQuotaOut'), b = $('blQuota'), was = b.textContent;
+  const c = pubCfg();
+  if (!c.url || !c.key) { out.hidden = false; out.innerHTML = 'No web app set up yet — the allowance is Google\'s, and it is the web app that asks.'; return; }
+  b.disabled = true; b.textContent = 'Asking…';
+  const q = await gPost({ action: 'quota' });
+  b.disabled = false; b.textContent = was;
+  out.hidden = false;
+  if (!q.ok) { out.innerHTML = '<b style="color:var(--bad)">Could not ask: ' + esc(String(q.error || 'no answer')) + '.</b>'; return; }
+  const day = Date.now() - 86400000;
+  const mine = (DB.bulletin.log || []).filter(l => l && l.at && Date.parse(l.at) > day);
+  const spent = mine.reduce((t, l) => t + (+l.count || 0), 0);
+  const cap = q.left > 100 ? 1500 : 100;                       // a Workspace account is allowed far more
+  const gone = Math.max(0, cap - q.left);
+  const other = gone - spent;
+  out.innerHTML = '<b>' + q.left + '</b> recipients left on this Google account right now.' +
+    '<br><span class="small muted">This tool has sent <b>' + spent + '</b> to ' +
+      plural(mine.length, 'bulletin') + ' in the last 24 hours' +
+    (other > 1
+      ? ', so about <b>' + other + '</b> went from something else on the same account — the sign-up form ' +
+        'emails you one for every registration, and a test registration counts too.'
+      : '. That accounts for it.') + '</span>';
+};
+
 /* Send now: the bulletin goes out through the manager's own Google web app.
    Google takes at most 50 recipients a message, so the list goes in batches
    of 49 BCC, the To (the manager) counted once in each. While it is on its
@@ -13831,7 +13871,8 @@ async function sendBulletin(emails) {
       (x.sender.email ? ', replies to ' + esc(x.sender.email) : '') + '.' +
       (msgs > 1 ? '<br><span class="small muted">Google takes 50 people a message, so it goes as ' + msgs +
         ' emails of up to 49 — you get a copy of each.</span>' : '') + '</div>' +
-    '<div class="small muted" style="margin-top:8px">Google lets this account send to ' + q.left + ' more recipients today' +
+    '<div class="small muted" style="margin-top:8px">Google lets this account send to ' + q.left +
+      ' more <b>recipients</b> today — people, not emails, and shared with anything else that sends from it' +
       (msgs > 1 || need > q.left ? '; this send uses ' + need + ' (you count once in each email)' : '') + '.' +
       (need > q.left ? ' <b style="color:var(--bad)">That is more than is left — send it tomorrow, or from a computer with Copy bulletin.</b>' : '') + '</div>',
     [{ label: 'Cancel' }, { label: 'Send it now', cls: 'ok', fn: () => {
@@ -14809,7 +14850,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '01 Nov 17:59 · 0dc9dce'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '02 Nov 05:49 · e75b4e5'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
