@@ -3139,7 +3139,7 @@ function titlesOf(tid) {
 const starStr = n => n > 5 ? '\u2605\u00d7' + n : '\u2605'.repeat(n);
 const titleTip = list => (list.length === 1 ? 'Champions ' : list.length + ' titles: ') +
   list.map(x => x.year + (x.season && String(x.season).indexOf(String(x.year)) < 0 ? ' ' + x.season : '')).join(', ');
-const fullName = p => p ? (p.firstName + ' ' + p.lastName).trim() : '—';
+const fullName = p => p ? (((p.firstName || '') + ' ' + (p.lastName || '')).trim() || '—') : '—';
 function personName(id) { return fullName(person(id)); }
 
 function normPhone(s) {
@@ -10328,7 +10328,14 @@ function renderSettings() {
   try { bytes = (localStorage.getItem(KEY) || '').length; } catch (e) {}
   $('storeInfo').innerHTML = (storageOk ? ' Currently using ' + (bytes / 1024).toFixed(0) + ' KB.'
     : ' <b style="color:var(--bad)">This browser is not storing anything — back up before you close the tab.</b>') +
-    '<br><span class="mono small">Build ' + esc(BUILD) + '</span> — every device sharing a league should show the same one.';
+    '<br><span class="mono small">Build ' + esc(BUILD) + '</span> — every device sharing a league should show the same one.' +
+    /* What this device is holding, in the four numbers worth comparing with
+       another device when the two disagree about what the league contains. */
+    '<br><span class="mono small">' + (DB.teams || []).length + ' teams · ' + (DB.people || []).length +
+      ' players · ' + (DB.fixtures || []).length + ' matches' +
+      (syncOn() ? ' · shared copy ' + (SY.rev || 0) : ' · not shared') + '</span>' +
+    (orphanSquad() ? ' <b style="color:var(--bad)">' + plural(orphanSquad(), 'squad place') +
+      ' with no player behind it — the rest of that copy has not arrived; it is being asked for again.</b>' : '');
   fill('stRegEmail', DB.form.email || '');
   fill('stRegEndpoint', DB.form.endpoint || '');
   paintDelivery();
@@ -13397,6 +13404,20 @@ function shadowOf(doc) {
 }
 // a picture of a shared copy this tablet knows nothing about
 const blankShadow = () => { const s = { meta: {} }; SYNC_LISTS.forEach(n => s[n] = {}); return s; };
+/* A squad place whose player is not in this copy is what a dash on the team
+   page actually means: part of what another tablet sent arrived and the rest
+   did not. Waiting does not mend it — the next pull carries only what has
+   changed SINCE, and the missing names changed before that. The way out is
+   to ask for the whole copy again, which is cheap enough to be worth doing
+   the moment one of these is noticed. */
+function orphanSquad() {
+  const known = new Set((DB.people || []).map(p => p && p.id));
+  let n = 0;
+  (DB.teams || []).forEach(t => (t.players || []).forEach(pl => {
+    if (pl && pl.personId && !known.has(pl.personId)) n++;
+  }));
+  return n;
+}
 // what this tablet holds that the shared copy does not
 function syncDiff() {
   if (!SY.shadow) return null;
@@ -13527,7 +13548,14 @@ async function syncTick(force) {
     let mine = syncDiff();
     const openHere = live.id && (DB.fixtures.find(f => f.id === live.id) || {}).status !== 'final' ? live.id : null;
     let bad = false;
-    const r = await syncPost({ action: 'pull', rev: SY.rev });
+    /* Asking from nought means "send me everything", and that is what mends
+       a copy with squad places whose players never came. Once every half a
+       minute at most, so a league that genuinely has an odd record in it
+       cannot turn into a tablet fetching the whole thing every four
+       seconds. */
+    const refill = orphanSquad() > 0 && (!SY.refill || Date.now() - SY.refill > 30000);
+    if (refill) SY.refill = Date.now();
+    const r = await syncPost({ action: 'pull', rev: refill ? 0 : SY.rev });
     if (lg !== ROOT.active) return;
     if (!r.ok) { SY.state = r.off ? 'off' : 'err'; SY.err = r.error || ''; return; }
     SY.claims = r.claims || {};
@@ -14708,7 +14736,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '01 Nov 11:49 · 21f62e0'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '01 Nov 12:01 · fa19c14'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
