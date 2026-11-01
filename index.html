@@ -2974,6 +2974,7 @@ function save() {
       toast.hold = true; setTimeout(() => { toast.hold = false; }, 0);
       return false;
     }
+    if (typeof stampEdits === 'function') stampEdits();   // mark what changed, before it is written down
     const raw = JSON.stringify(ROOT);
     localStorage.setItem(KEY, raw); lastRaw = raw; unsaved = false;
     pubSoon();
@@ -13404,7 +13405,8 @@ function syncStore() {
    existed still carry it, and a mark one tablet has and another does not
    would read as a change for ever. Ignored here, it costs nothing and
    quietly disappears as records are rewritten. */
-const syncHash = x => hashStr(JSON.stringify(x === undefined ? null : x, (k, v) => k === 'own' ? undefined : v));
+const syncHash = x => hashStr(JSON.stringify(x === undefined ? null : x,
+  (k, v) => (k === 'own' || k === 'edAt') ? undefined : v));
 function syncDoc() {
   const d = {};
   SYNC_LISTS.forEach(n => d[n] = DB[n] || []);
@@ -13416,6 +13418,36 @@ function shadowOf(doc) {
   SYNC_LISTS.forEach(n => { s[n] = {}; (doc[n] || []).forEach(x => { if (x && x.id) s[n][x.id] = syncHash(x); }); });
   SYNC_META.forEach(k => s.meta[k] = syncHash(doc[k]));
   return s;
+}
+/* When each record was last altered, and on which machine it happened.
+
+   Two machines that have both touched the same record have to be put in
+   some order. "Whatever this one has not sent yet" is not an order — it
+   depends on which of them next reaches the web app, so the same pair of
+   edits can come out either way round, and the two can disagree about the
+   answer for ever. The later edit stands instead, which is the same answer
+   on every machine.
+
+   The stamp is put on as the league is SAVED, not as it is sent: a tablet
+   that has been off all evening must not get to claim its old work is new
+   just because it has only now found a signal. The fingerprint above skips
+   the stamp, so stamping a record is never itself a change to send. */
+let SAVED = null;
+function rememberSaved() {
+  SAVED = { lg: ROOT.active };
+  SYNC_LISTS.forEach(n => {
+    SAVED[n] = {};
+    (DB[n] || []).forEach(x => { if (x && x.id) SAVED[n][x.id] = syncHash(x); });
+  });
+}
+function stampEdits() {
+  if (!SAVED || SAVED.lg !== ROOT.active) return rememberSaved();   // a league just opened: nothing is new
+  const now = Date.now();
+  SYNC_LISTS.forEach(n => {
+    const was = SAVED[n] || {};
+    (DB[n] || []).forEach(x => { if (x && x.id && was[x.id] !== syncHash(x)) x.edAt = now; });
+  });
+  rememberSaved();
 }
 // a picture of a shared copy this tablet knows nothing about
 const blankShadow = () => { const s = { meta: {} }; SYNC_LISTS.forEach(n => s[n] = {}); return s; };
@@ -13490,15 +13522,12 @@ function docApply(p, keep) {
     const ours = bag ? bag[id] : undefined;
     if (ours === undefined) return false;
     if (n === 'fixtures' && coming && coming.status === 'final' && (!ours || ours.status !== 'final')) return false;
-    /* An owner's change used to outrank a manager's on the same record. It
-       was the wrong rule and it did far more harm than the thing it was for:
-       the mark stayed ON the record, so one tablet that briefly thought its
-       whole copy was unsent stamped the lot, and from then on everything that
-       tablet held beat everything anybody else did — a round rescored on the
-       manager's tablet simply never landed. Everyone is level again: what a
-       tablet has changed and not yet sent is what stands, whoever they are,
-       and the one exception stays the one above — a match somebody has
-       played out beats a clock another still has open. */
+    /* Both machines have changed this record. The later change is the one
+       that stands — the same answer on both of them, whoever made it and
+       whichever reached the web app first. Where neither carries a stamp,
+       or they carry the same one, it falls back to what this machine has
+       not sent yet, which is where it stood before. */
+    if (+(coming && coming.edAt) > +(ours && ours.edAt || 0)) return false;
     return true;
   };
   SYNC_LISTS.forEach(n => {
@@ -13517,6 +13546,11 @@ function docApply(p, keep) {
     if (SYNC_ROOT[k]) return staffMerge(p.meta[k]);    // not the league's to hold: it lives at the root
     DB[k] = p.meta[k];
   });
+  /* Records that arrived are not this machine's doing. Remembering them now
+     stops the next save reading them as edits made here and stamping them
+     with this moment, which would make every tablet the most recent author
+     of everything it had just been handed. */
+  if (typeof rememberSaved === 'function') rememberSaved();
 }
 // a whole copy arrives as one big patch: lists keyed by id, the rest as meta
 function docAsPatch(doc, wipe) {
@@ -14775,7 +14809,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '01 Nov 16:58 · 71970c8'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '01 Nov 17:59 · 0dc9dce'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
