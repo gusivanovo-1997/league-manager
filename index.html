@@ -2253,6 +2253,7 @@ tspan.gstar{fill:var(--gold)}
       </div>
       <div class="row">
         <button class="btn accent" id="btnGenFx">Generate fixtures</button>
+        <button class="btn sm" id="btnNewSeason">Start a new season…</button>
         <button class="btn bad sm" id="btnClearFx">Clear all fixtures</button>
         <span class="muted small" id="fxNote"></span>
       </div>
@@ -7349,6 +7350,46 @@ $('btnGenFx').onclick = () => {
     go2.disabled = true;
     $('fxWipeOk').onchange = () => { go2.disabled = !$('fxWipeOk').checked; };
   }
+};
+/* The changeover between one competition and the next, under its own name.
+   Clearing the fixtures has always kept every player's season in their
+   history — the confirmation says so — but nobody looking for "start the
+   next one" reads a button called Clear all fixtures. A season ended any
+   other way leaves no history at all: erasing the competition takes the
+   players with it, and starting a separate league for the new season leaves
+   the old one's record in the old league, where the new squads cannot see
+   it. This is the one to use, and it keeps the teams and the squads. */
+const nextSeasonName = () => {
+  const n = String(DB.season.name || '');
+  const m = /season\s*(\d+)/i.exec(n);
+  return m ? n.replace(m[0], m[0].replace(m[1], String(+m[1] + 1))) : n;
+};
+$('btnNewSeason').onclick = () => {
+  if (!requireMgr('Starting a new season')) return;
+  const played = DB.fixtures.filter(playedFx).length;
+  const nm = prompt('What is the new season called?', nextSeasonName());
+  if (nm === null) return;
+  const name = String(nm).trim();
+  if (!name) return toast('The season needs a name.', 'bad');
+  if (!ask((played ? plural(played, 'played match', 'played matches') + ', and every player\'s games, goals, ' +
+      'hat-tricks, MVPs and cards from them, are kept in their history — Teams → Players. ' : '') +
+    'The draw and the results are cleared so the new season can be drawn. Teams and squads stay as they are. Go ahead?')) return;
+  archiveSeason();                              // the season just played becomes a row in every player's career
+  if (live.id) { clearInterval(liveTimer); live = { id: null, running: false, elapsed: 0, half: 1, period: 'H1', t0: 0 }; }
+  DB.fixtures = [];
+  DB.season.draw = uid(); delete DB.season.drawnAs;
+  DB.teams.forEach(t => { delete t.joinedRound; delete t.missedMatches; delete t.equivPoints; });
+  /* The name changes without the question the season settings ask, because
+     here the answer is not in doubt: this is a NEW season, so the old one
+     keeps its name in everybody's history rather than being renamed with it. */
+  DB.season.name = name;
+  DB.teams.forEach(t => t.players.forEach(pl => {
+    const p = person(pl.personId);
+    if (p) { p.seasons = Array.isArray(p.seasons) ? p.seasons : []; if (p.seasons.indexOf(name) < 0) p.seasons.push(name); }
+  }));
+  if (save() === false) return;
+  render(); liveTicker();
+  toast(name + ' is open — generate the draw when the teams are set.', 'ok');
 };
 $('btnClearFx').onclick = () => {
   if (!requireMgr('Clearing the fixtures')) return;
