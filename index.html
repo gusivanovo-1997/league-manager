@@ -2531,6 +2531,10 @@ tspan.gstar{fill:var(--gold)}
             <button class="btn sm accent" id="shareCode">Copy the join code</button>
             <button class="btn sm" id="shareNow">Sync now</button>
           </div>
+          <div class="row"><button class="btn sm" id="shareAll">Copy a code for <b>all</b> my leagues</button></div>
+          <span class="small muted">The join code above is <b>this league alone</b> — that is the one to
+            hand to a manager or a referee with their PIN. The all-leagues code is for setting up
+            another machine of your own: paste it once and every competition you run is there.</span>
         </div>
         <div class="shbox">
           <b>This tablet is joining one</b>
@@ -13538,9 +13542,21 @@ async function sendBulletin(emails) {
       })();
     } }]);
 }
-const joinCode = () => { const c = pubCfg();
-  return c.url && c.key && c.share
-    ? 'FUTSAL1.' + btoa(JSON.stringify({ u: c.url, k: c.key, n: leagueName(activeLeague()) })).replace(/=+$/, '') : ''; };
+/* The pair at the top of the file carries UTF-8 properly, which plain btoa
+   does not, and a league is allowed to be called whatever it is called. An
+   ASCII name encodes the same either way, so codes written before this
+   still read. */
+const packCode = s => b64enc(s).replace(/=+$/, '');
+const codeOf = l => { const c = l && l.publish;
+  return c && c.url && c.key && c.share ? { u: c.url, k: c.key, n: leagueName(l) } : null; };
+const joinCode = () => { const one = codeOf(activeLeague());
+  return one ? 'FUTSAL1.' + packCode(JSON.stringify(one)) : ''; };
+/* Every shared league on this machine in one code. The owner pastes it once
+   on a new machine and has the lot; a manager or a referee is still handed
+   the code for their own league alone, which is the only one they should be
+   able to reach. */
+const allCode = () => { const set = ROOT.leagues.map(codeOf).filter(Boolean);
+  return set.length ? 'FUTSALX.' + packCode(JSON.stringify(set)) : ''; };
 function paintShare() {
   const c = pubCfg(), el = $('shareNote');
   if (!el) return;
@@ -13657,6 +13673,14 @@ $('shareCode').onclick = () => {
   const code = joinCode();
   copyPlain(code).then(ok => toast(ok ? 'Join code copied — paste it into the other tablet.' : 'Could not copy: ' + code, ok ? 'ok' : 'bad'));
 };
+$('shareAll').onclick = () => {
+  if (!requireOwner('The all-leagues code')) return;
+  const code = allCode();
+  if (!code) return toast('No league is shared yet — tick "share this league" on the ones you want to carry.', 'bad');
+  const n = ROOT.leagues.map(codeOf).filter(Boolean).length;
+  copyPlain(code).then(ok => toast(ok ? plural(n, 'league') + ' in one code — paste it into the other machine.'
+    : 'Could not copy: ' + code, ok ? 'ok' : 'bad'));
+};
 $('pubCopyLink').onclick = () => {
   const u = pubCfg().url;
   if (!u) return toast('No web app address yet.', 'bad');
@@ -13678,24 +13702,36 @@ $('pubCheck').onclick = async () => {
     toast('No answer. Check the address ends in /exec and the deployment is set to "Anyone".', 'bad');
   } finally { b.disabled = false; b.textContent = was; }
 };
+/* One league or a whole set: the same box takes either, because the person
+   pasting should not have to know which kind they were given. */
 $('shareJoin').onclick = async () => {
   if (!requireOwner('Joining a shared league')) return;
-  const raw = prompt('Paste the join code from the tablet that runs the league:');
+  const raw = prompt('Paste the code you were given — one league, or all of yours:');
   if (!raw) return;
   let j = null;
-  try { j = JSON.parse(atob(String(raw).trim().replace(/^FUTSAL1\./, ''))); } catch (e) {}
-  if (!j || !j.u || !j.k) return toast('That is not a join code.', 'bad');
-  const already = ROOT.leagues.find(l => (l.publish || {}).url === j.u && (l.publish || {}).key === j.k);
-  if (already) { switchLeague(already.id); return toast('Already here — opened it.'); }
-  const l = blankLeague();
-  l.name = j.n || 'Shared league';
-  l.publish = { url: j.u, key: j.k, auto: true, share: true };
-  ROOT.leagues.push(l);
-  ROOT.active = l.id; bindDB(); role = roleIn(l);
+  try { j = JSON.parse(b64dec(String(raw).trim().replace(/^FUTSAL[1X]\./, ''))); } catch (e) {}
+  const list = (Array.isArray(j) ? j : [j]).filter(x => x && x.u && x.k);
+  if (!list.length) return toast('That is not a join code.', 'bad');
+  let added = 0, had = 0, open = null;
+  list.forEach(x => {
+    const already = ROOT.leagues.find(l => (l.publish || {}).url === x.u && (l.publish || {}).key === x.k);
+    if (already) { had++; open = open || already; return; }
+    const l = blankLeague();
+    l.name = x.n || 'Shared league';
+    l.publish = { url: x.u, key: x.k, auto: true, share: true };
+    ROOT.leagues.push(l);
+    added++; open = open || l;
+  });
+  ROOT.active = open.id; bindDB(); role = roleIn(open);
   if (save() === false) return;
   paintLeagueBar(); paintAccess(); buildNav(); go('dash');
   syncLoad(); syncLoop();
-  toast('Joined ' + leagueName(l) + ' — pulling it down now.', 'ok');
+  /* Only the league that is open talks to its web app, so the rest come down
+     as they are opened. Said plainly rather than left to be discovered. */
+  toast(!added ? 'Already here — opened ' + leagueName(open) + '.'
+    : plural(added, 'league') + ' added' + (had ? ', ' + had + ' already here' : '') +
+      '. ' + leagueName(open) + ' is pulling down now' +
+      (added > 1 ? '; the others pull as you open them.' : '.'), 'ok');
 };
 /* When two copies have drifted apart far enough that neither is worth
    merging, this one gives in. The league's records go, the picture it had of
