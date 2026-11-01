@@ -2549,10 +2549,13 @@ tspan.gstar{fill:var(--gold)}
           <span class="small muted">On the other tablet, open this tab, press <b>Join a shared league</b>
             and paste the code. It appears in the league switcher and starts syncing at once.</span>
           <div class="row"><button class="btn sm" id="shareJoin">Join a shared league…</button>
-            <button class="btn sm bad" id="shareTake">Take the shared copy</button></div>
-          <span class="small muted"><b>Take the shared copy</b> when this machine and the others have
-            fallen out of step and you want the shared one to win: everything here is thrown away and
-            pulled down again. The address and the key are kept, so it stays joined.</span>
+            <button class="btn sm bad" id="shareTake">Take the shared copy</button>
+            <button class="btn sm bad" id="shareSend">Send this copy up</button></div>
+          <span class="small muted">When this machine and the others have fallen out of step, one of them
+            has to give in. <b>Take the shared copy</b> throws away what is here and pulls the shared one
+            down. <b>Send this copy up</b> does the opposite — the shared copy becomes exactly what is on
+            this machine, and the other tablets take it from there. Use whichever one is standing on the
+            machine with the right data. The address and the key are kept either way.</span>
           <span class="small muted">Every tablet keeps its own full copy, so a wifi drop never stops a match
             being scored — whatever was logged goes up when the signal comes back.</span>
         </div>
@@ -10323,8 +10326,9 @@ function renderSettings() {
   paintAccess();
   let bytes = 0;
   try { bytes = (localStorage.getItem(KEY) || '').length; } catch (e) {}
-  $('storeInfo').innerHTML = storageOk ? ' Currently using ' + (bytes / 1024).toFixed(0) + ' KB.'
-    : ' <b style="color:var(--bad)">This browser is not storing anything — back up before you close the tab.</b>';
+  $('storeInfo').innerHTML = (storageOk ? ' Currently using ' + (bytes / 1024).toFixed(0) + ' KB.'
+    : ' <b style="color:var(--bad)">This browser is not storing anything — back up before you close the tab.</b>') +
+    '<br><span class="mono small">Build ' + esc(BUILD) + '</span> — every device sharing a league should show the same one.';
   fill('stRegEmail', DB.form.email || '');
   fill('stRegEndpoint', DB.form.endpoint || '');
   paintDelivery();
@@ -14012,6 +14016,39 @@ async function takeShared() {
   toast('This machine now has the shared copy.', 'ok');
 }
 $('shareTake').onclick = takeShared;
+/* The other way round: this machine is the one that is right, and the shared
+   copy is to become exactly what is here — records the shared copy has and
+   this one does not are deleted, not merged back in, because "merged back in"
+   is how a league that was tidied up here fills with the rubbish again. */
+async function sendMine() {
+  if (!requireOwner('Sending this copy up')) return;
+  if (!syncOn()) return toast('This league is not shared.', 'bad');
+  const nm = leagueName(activeLeague());
+  if (!confirm('Make the shared copy of ' + nm + ' exactly what is on this machine?')) return;
+  if (!ask('Anything the other tablets have that this one does not is deleted everywhere. Have you taken a .json backup?')) return;
+  toast('Looking at the shared copy\u2026');
+  const r = await syncPost({ action: 'pull', rev: 0 });
+  if (!r || !r.ok) return toast('Could not reach the web app \u2014 nothing was sent.', 'bad');
+  const theirs = r.doc || {};
+  const set = {}, del = {}, meta = {};
+  SYNC_LISTS.forEach(n => {
+    set[n] = {};
+    (DB[n] || []).forEach(x => { if (x && x.id) set[n][x.id] = x; });
+    del[n] = (theirs[n] || []).map(x => x && x.id).filter(id => id && !set[n][id]);
+  });
+  SYNC_META.forEach(k => meta[k] = metaOf(k));
+  const w = await syncPost({ action: 'push', base: r.rev || 0, set, del, meta });
+  if (!w || !w.ok) return toast('Could not send: ' + ((w && w.error) || 'no answer') + '.', 'bad');
+  SY.rev = w.rev || 0;
+  SY.shadow = shadowOf(syncDoc());
+  SY.state = 'ok'; SY.at = Date.now(); SY.err = '';
+  SY.claims = w.claims || SY.claims;
+  syncStore(); syncLoop(); paintSync();
+  const stuck = (w.blocked || []).length;
+  toast(stuck ? 'Sent \u2014 but ' + plural(stuck, 'match') + ' is being scored on another tablet and was left alone.'
+    : 'The shared copy is now this machine\'s. The other tablets take it within a few seconds.', stuck ? 'bad' : 'ok');
+}
+$('shareSend').onclick = sendMine;
 $('shareNow').onclick = () => {
   if (!syncOn()) return toast('This league is not shared.', 'bad');
   syncTick(true); toast('Syncing…');
@@ -14668,6 +14705,10 @@ function flashGoal(which) {
    them. It is here to keep match-day duties apart — a scorer cannot rewrite
    the draw, delete a team, export the database or see anybody's phone number
    or medical notes — not to protect the data from a determined reader. */
+/* Stamped as the file is published. Two devices quietly running different
+   builds is the hardest kind of fault to see from the outside — one of them
+   behaves, the other does not, and nothing on either screen says why. */
+const BUILD = '01 Nov 11:49 · 21f62e0'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
