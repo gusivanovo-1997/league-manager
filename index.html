@@ -325,6 +325,8 @@ nav button.livenow.flash{animation:liveFlash 1.5s ease-in-out infinite}
 :root[data-theme="light"] #gatePad button:hover{background:#e2eaf7}
 #gatePad button:active{transform:translateY(1px)}
 #gateMsg{min-height:17px;text-align:center;font-size:calc(12.5px * var(--fs));color:var(--bad);margin-top:10px}
+#gateMsg.ok{color:var(--ok)}
+#gateCode{text-align:center;margin-top:4px}
 .swatches{display:grid;grid-template-columns:repeat(6,1fr);gap:7px}
 .sw{height:32px;border-radius:9px;border:2px solid transparent;cursor:pointer;padding:0;
   box-shadow:inset 0 0 0 1px rgba(0,0,0,.3);transition:transform .16s var(--bounce),border-color .16s}
@@ -2049,13 +2051,15 @@ tspan.gstar{fill:var(--gold)}
       <span class="ballring" id="gateBall"></span>
       <div class="title-wrap"><h1><span class="lg">League</span> <span class="mg">Manager</span></h1></div>
     </div>
-    <h2>Enter your PIN</h2>
+    <h2 id="gateTitle">Enter your PIN</h2>
     <!-- inputmode="none": the keys are on the screen already, and a tablet
          throwing its own keyboard over them helps nobody. A real keyboard
          still types into it, because the box is focused and not read-only. -->
     <input id="gatePin" type="password" inputmode="none" autocomplete="off" maxlength="8" placeholder="••••">
     <div id="gatePad"></div>
     <div id="gateMsg"></div>
+    <!-- only on a copy nobody has set up yet -->
+    <div id="gateCode" hidden><button class="btn sm" id="gateHaveCode">I have a code from another machine</button></div>
   </div>
 </div>
 
@@ -2823,8 +2827,13 @@ const leagueById = id => ROOT.leagues.find(l => l.id === id);
    with the role they were given there. A file from before this existed is
    given an owner carrying the old manager PIN and one referee on its only
    league, so nobody is locked out by the upgrade. */
-function seedStaff(r) {
+function seedStaff(r, had) {
   if (Array.isArray(r.staff) && r.staff.length) return r;
+  /* A saved copy that carries an empty list is not an old copy missing one:
+     it is a copy that knows it has nobody yet, and is waiting to be given an
+     owner at the gate. Only something saved before people existed gets the
+     old manager PIN turned into one. */
+  if (!had) { r.staff = []; return r; }
   const a = r.access || {};
   r.staff = [{ id: uid(), name: 'Owner', pin: String(a.managerPin || '4564'), owner: true, roles: {} }];
   if (a.refPin && r.leagues[0]) r.staff.push({ id: uid(), name: 'Referee', pin: String(a.refPin), owner: false, roles: { [r.leagues[0].id]: 'ref' } });
@@ -2878,7 +2887,7 @@ function rootFrom(d) {
     // so the saved league never matched and every start fell back to the
     // first one in the list
     if (!r.leagues.some(l => l.id === r.active)) r.active = r.leagues[0].id;
-    return seedStaff(splitPeople(r, d.people));
+    return seedStaff(splitPeople(r, d.people), !Array.isArray(d.staff));
   }
   const l = Object.assign(blankLeague(), {}, {});
   LEAGUE_KEYS.forEach(k => { if (d && d[k] !== undefined) l[k] = d[k]; });
@@ -2891,7 +2900,7 @@ function rootFrom(d) {
   r.access = Object.assign(blankRoot().access, (d && d.access) || {});
   r.leagues = [l]; r.active = l.id;
   if (Array.isArray(d && d.staff) && d.staff.length) r.staff = d.staff;
-  return seedStaff(splitPeople(r, null));
+  return seedStaff(splitPeople(r, null), !Array.isArray(d && d.staff));
 }
 /* The player database used to sit above the leagues, so a league made later
    opened with every other competition's players already in it. Each league
@@ -13703,15 +13712,15 @@ $('pubCheck').onclick = async () => {
   } finally { b.disabled = false; b.textContent = was; }
 };
 /* One league or a whole set: the same box takes either, because the person
-   pasting should not have to know which kind they were given. */
-$('shareJoin').onclick = async () => {
-  if (!requireOwner('Joining a shared league')) return;
-  const raw = prompt('Paste the code you were given — one league, or all of yours:');
-  if (!raw) return;
+   pasting should not have to know which kind they were given.
+   atGate is the unused copy taking its first code, with nobody signed in:
+   it joins and pulls, and the people on that league — the owner among them
+   — arrive with it, so the next thing typed is a real PIN. */
+async function joinFromCode(raw, atGate) {
   let j = null;
   try { j = JSON.parse(b64dec(String(raw).trim().replace(/^FUTSAL[1X]\./, ''))); } catch (e) {}
   const list = (Array.isArray(j) ? j : [j]).filter(x => x && x.u && x.k);
-  if (!list.length) return toast('That is not a join code.', 'bad');
+  if (!list.length) { toast('That is not a join code.', 'bad'); return 0; }
   let added = 0, had = 0, open = null;
   list.forEach(x => {
     const already = ROOT.leagues.find(l => (l.publish || {}).url === x.u && (l.publish || {}).key === x.k);
@@ -13722,16 +13731,36 @@ $('shareJoin').onclick = async () => {
     ROOT.leagues.push(l);
     added++; open = open || l;
   });
-  ROOT.active = open.id; bindDB(); role = roleIn(open);
-  if (save() === false) return;
-  paintLeagueBar(); paintAccess(); buildNav(); go('dash');
-  syncLoad(); syncLoop();
+  ROOT.active = open.id; bindDB();
+  if (!atGate) role = roleIn(open);
+  if (save() === false) return 0;
+  syncLoad();
+  if (atGate) { await syncTick(true); syncLoop(); return added || -1; }
+  paintLeagueBar(); paintAccess(); buildNav(); go('dash'); syncLoop();
   /* Only the league that is open talks to its web app, so the rest come down
      as they are opened. Said plainly rather than left to be discovered. */
   toast(!added ? 'Already here — opened ' + leagueName(open) + '.'
     : plural(added, 'league') + ' added' + (had ? ', ' + had + ' already here' : '') +
       '. ' + leagueName(open) + ' is pulling down now' +
       (added > 1 ? '; the others pull as you open them.' : '.'), 'ok');
+  return added;
+}
+$('shareJoin').onclick = () => {
+  if (!requireOwner('Joining a shared league')) return;
+  const raw = prompt('Paste the code you were given — one league, or all of yours:');
+  if (raw) joinFromCode(raw, false);
+};
+$('gateHaveCode').onclick = async () => {
+  const raw = prompt('Paste the code from the machine that already has your leagues:');
+  if (!raw) return;
+  $('gateMsg').className = ''; $('gateMsg').textContent = 'Fetching\u2026';
+  const n = await joinFromCode(raw, true);
+  if (!n) { $('gateMsg').textContent = ''; return; }
+  const got = (ROOT.staff || []).length;
+  showGate();
+  $('gateMsg').className = got ? 'ok' : '';
+  $('gateMsg').textContent = got ? 'Ready \u2014 sign in with your PIN.'
+    : 'Joined, but nobody is named on it yet. Choose an owner PIN.';
 };
 /* When two copies have drifted apart far enough that neither is worth
    merging, this one gives in. The league's records go, the picture it had of
@@ -14487,8 +14516,13 @@ const REF_VIEWS = ['dash', 'teams', 'players', 'fixtures', 'live', 'attend', 'ta
 const allowedView = v => isMgr() || REF_VIEWS.indexOf(v) >= 0;
 const pinOf = k => String((DB.access && DB.access[k]) || blankDB().access[k]);
 
+let gateSetup = false;                  // nobody on this copy yet: it is asking for an owner, not for a sign-in
 function showGate() {
   role = null; me = null;
+  gateSetup = !(ROOT.staff || []).length;
+  $('gateTitle').textContent = gateSetup ? 'Choose an owner PIN' : 'Enter your PIN';
+  $('gateCode').hidden = !gateSetup;
+  $('gateMsg').className = '';
   $('leagueBar').hidden = true;
   $('syncChip').hidden = true;
   document.querySelectorAll('.view').forEach(sec => sec.classList.remove('on'));
@@ -14597,9 +14631,26 @@ function lock() {
   try { sessionStorage.removeItem(ROLE_KEY); } catch (e) {}
   showGate();
 }
+/* The very first PIN typed into an unused copy is not a sign-in, it is the
+   owner being created. Four to eight digits, the same as every other PIN. */
+function setupOwner(pin) {
+  if (!/^\d{4,8}$/.test(pin)) {
+    $('gateMsg').className = '';
+    $('gateMsg').textContent = 'A PIN is 4 to 8 digits.';
+    $('gatePin').value = ''; $('gatePin').classList.add('err');
+    setTimeout(() => $('gatePin').classList.remove('err'), 900);
+    return;
+  }
+  ROOT.staff = [{ id: uid(), name: 'Owner', pin, owner: true, roles: {} }];
+  if (save() === false) return;
+  gateSetup = false;
+  unlock(ROOT.staff[0]);
+  toast('This machine is yours — give yourself a name under Setup → Access & data.', 'ok');
+}
 function tryPin(v) {
   const pin = String(v || '').trim();
   if (!pin) return;
+  if (gateSetup) return setupOwner(pin);
   const who = staffByPin(pin);
   if (who) return unlock(who);
   $('gateMsg').textContent = 'That PIN is not recognised.';
@@ -14814,7 +14865,14 @@ try {
 } catch (e) {}
 
 // a browser with nothing in it yet still needs somebody who can sign in
-if (!load()) { seedStaff(ROOT); save(); }
+/* A copy that has never been used has NOBODY on it. It used to be given an
+   owner holding 4564, which is printed in this file and therefore known to
+   anyone who has ever opened it — so every fresh copy of the tool handed
+   out owner rights to a PIN that is not a secret, and a real manager using
+   4564 collided with it. The first thing an unused copy asks for is an owner
+   PIN of its own, or a code from a machine that is already set up.
+   A copy with saved data is migrated as before, so nobody is locked out. */
+if (!load()) { ROOT.staff = []; save(); }
 syncLoad();
 if (!$('fxStart').value) $('fxStart').value = defaultStart();
 ['fxRounds', 'fxStart', 'fxTime', 'fxSlot', 'fxCourts', 'fxGap', 'fxDay'].forEach(id =>
