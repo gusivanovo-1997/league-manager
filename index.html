@@ -13345,6 +13345,8 @@ function shadowOf(doc) {
   SYNC_META.forEach(k => s.meta[k] = syncHash(doc[k]));
   return s;
 }
+// a picture of a shared copy this tablet knows nothing about
+const blankShadow = () => { const s = { meta: {} }; SYNC_LISTS.forEach(n => s[n] = {}); return s; };
 // what this tablet holds that the shared copy does not
 function syncDiff() {
   if (!SY.shadow) return null;
@@ -13388,7 +13390,15 @@ function shadowApply(p, kept) {
    again on the other tablet. */
 function docApply(p, keep) {
   const held = (n, id, coming) => {
-    const ours = keep && (keep.set || {})[n] && (keep.set || {})[n][id];
+    /* keep && ... yields NULL, not undefined, when this tablet has nothing
+       waiting to go up — and null is not undefined, so every record that
+       came down was read as "ours" and thrown away. A tablet in step with
+       the others therefore accepted nothing from them: a rename never
+       arrived, a squad typed in elsewhere never appeared, and the stale
+       copy went back up over it. Only ids it had never seen got through,
+       which is why it looked like some things synced and some did not. */
+    const bag = keep && (keep.set || {})[n];
+    const ours = bag ? bag[id] : undefined;
     if (ours === undefined) return false;
     if (n === 'fixtures' && coming && coming.status === 'final' && (!ours || ours.status !== 'final')) return false;
     return true;
@@ -13447,7 +13457,7 @@ async function syncTick(force) {
   paintSync();
   const lg = ROOT.active;
   try {
-    const mine = syncDiff();
+    let mine = syncDiff();
     const openHere = live.id && (DB.fixtures.find(f => f.id === live.id) || {}).status !== 'final' ? live.id : null;
     let bad = false;
     const r = await syncPost({ action: 'pull', rev: SY.rev });
@@ -13456,23 +13466,37 @@ async function syncTick(force) {
     SY.claims = r.claims || {};
     let changed = false;
     const drifted = r.n && SY.shadow && SYNC_LISTS.some(n => Object.keys(SY.shadow[n] || {}).length !== r.n[n]);
+    /* Whether this tablet's picture of the shared copy can be trusted. It is
+       what decides if a record missing from what comes down was deleted by
+       somebody, or was simply never known about here. */
+    let known = !!SY.shadow;
     if (r.empty || (r.rev || 0) < SY.rev || (drifted && r.same)) {
       // the shared copy has been started again, or this tablet's picture of it
       // is wrong: treat everything here as unsent and put it all back up
-      SY.shadow = { meta: {}, fixtures: {}, teams: {}, people: {} };
+      SY.shadow = blankShadow();
       SY.rev = r.rev || 0;
+      known = false;                 // nothing here counts as deleted by anybody
+      mine = syncDiff();             // and all of it is ours again, to hold and to send
     }
     if (r.empty) {
       // nothing up there yet: this copy goes first
     } else if (r.doc) {
+      /* A whole copy comes down whenever this tablet has fallen further
+         behind than the log reaches back. It is ALWAYS applied.
+
+         It used to be dropped when the tablet had nothing of its own
+         waiting to go up — while the shared copy's fingerprints were taken
+         anyway. So the tablet sat holding its own old records while claiming
+         to be level, and the very next comparison read every stale record of
+         its own as a change and pushed the lot back up over everybody else's
+         work. That is how a rename never arrived, and how a squad typed in
+         on one device was wiped from all of them. */
       const bare = !(DB.teams || []).length && !(DB.fixtures || []).length;
       SY.shadow = shadowOf(r.doc);
-      if (!SY.shadow || bare || mine !== null) {
-        // either this tablet is empty and joining, or it knows what is its own
-        docApply(docAsPatch(r.doc, bare || mine !== null), mine);
-        changed = true;
-      }
-      // with content here and no shadow, nothing comes down: the next push sends this copy up
+      // what the shared copy no longer has is gone — but only if this tablet
+      // knew the shared copy; anything unsent here is kept either way
+      docApply(docAsPatch(r.doc, known || bare), mine);
+      changed = true;
     } else if (r.steps && r.steps.length) {
       r.steps.forEach(st => { shadowApply(st); docApply(st, mine); });
       changed = true;
