@@ -9109,6 +9109,14 @@ function serveSuspensions(f) {
   [...new Set(squad)].forEach(pid => {
     const p = person(pid);
     if (!p || !p.susp || !p.susp.games) return;
+    /* A match serves a suspension once. Settling the same result again —
+       correcting a score, or the sync applying it a second time — used to
+       count as another match sat out, so a ban could be served without
+       anybody missing anything. */
+    if (p.susp.fid === f.id) return;            // the match it was given in never serves it
+    p.susp.by = Array.isArray(p.susp.by) ? p.susp.by : [];
+    if (p.susp.by.indexOf(f.id) >= 0) return;
+    p.susp.by.push(f.id);
     p.susp.games--;
     if (p.susp.games <= 0) { delete p.susp; served.push(personName(pid)); }
   });
@@ -9126,11 +9134,20 @@ function serveSuspensions(f) {
      count, which is the first half's as far as anybody has played. */
   const carry = p => { if (ph === 'L1' && p.ycSeen != null && p.ycSeenL1 == null) p.ycSeenL1 = p.ycSeen; };
   const ycIn = pid => allEvents().filter(e => e.type === 'yellow' && e.personId === pid && mineStage(e)).length;
-  [...new Set(mine.filter(e => e.type === 'red').map(e => e.personId))].forEach(pid => {
+  /* One match per red card, charged ONCE. The yellows have always been
+     remembered so the same two are never paid for twice; the red was not,
+     so every time the result was settled again — edited, re-confirmed, or
+     simply applied again by the sync — another match was added, and a
+     player sent off once stood there reading "2 matches". */
+  mine.filter(e => e.type === 'red').forEach(e => {
+    const pid = e.personId, p = person(pid);
+    if (!p) return;
+    p.redPaid = Array.isArray(p.redPaid) ? p.redPaid : [];
+    if (p.redPaid.indexOf(e.id) >= 0) return;
+    p.redPaid.push(e.id);
     suspend(pid, 1, 'a red card', f.id); fresh.push(personName(pid) + ' — red card');
     // sent off is sent off: the bookings behind it are not served as well
-    const p = person(pid);
-    if (p) { carry(p); p[KEY] = ycIn(pid); }
+    carry(p); p[KEY] = ycIn(pid);
   });
   [...new Set(mine.filter(e => e.type === 'yellow').map(e => e.personId))].forEach(pid => {
     const p = person(pid);
@@ -12813,15 +12830,24 @@ function pubRaceBlock(h2) {
   if (svg.indexOf('<svg') < 0 || !model) return '';              // not enough played to say anything
   return h2('Title race') +
     '<style>' + PUB_RACE_CSS + '</style>' +
-    '<div class="tw pad" id="pubRace">' + svg + '</div>' +
+    '<div class="tw pad" id="pubRace" data-model="' + esc(JSON.stringify(model)) + '">' + svg + '</div>' +
     '<scr' + 'ipt>(function(){' +
-      'var RACE=' + JSON.stringify(RACE) + ',raceModel=' + JSON.stringify(model) + ',raceEls=null;' +
+      'var RACE=' + JSON.stringify(RACE) + ',raceModel=null,raceEls=null;' +
       'var raceFrame=' + raceFrame.toString() + ';' +
       'var raceBind=' + raceBind.toString() + ';' +
       'var raceGlide=' + raceGlide.toString() + ';' +
-      'function start(){' +
+      'function start(again){' +
         'var host=document.getElementById("pubRace");' +
         'if(!host||!host.querySelector(".race-g"))return;' +
+        /* the page is rebuilt in place every time a new one is published, and
+           a script written in by innerHTML never runs again — so the chart sat
+           there frozen until somebody reloaded. start() is published on the
+           window and called again after each rebuild, and it reads the season
+           off the new markup rather than trusting the one it was born with. */
+        'try{raceModel=JSON.parse(host.getAttribute("data-model"));}catch(e){return;}' +
+        'if(!raceModel||!raceModel.n)return;' +
+        'raceEls=null;' +
+        'if(window.__raceIO){window.__raceIO.disconnect();window.__raceIO=null;}' +
         'raceBind(host);' +
         'var last=raceModel.n-1,raf=0,t0=0;' +
         'if(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches){raceFrame(host,last);return;}' +
@@ -12829,12 +12855,15 @@ function pubRaceBlock(h2) {
         'function tick(now){if(!t0)t0=now;var t=Math.min(1,(now-t0)/MS);raceFrame(host,raceGlide(t)*last);if(t<1)raf=requestAnimationFrame(tick);}' +
         'function play(){cancelAnimationFrame(raf);t0=0;raceFrame(host,0);raf=requestAnimationFrame(tick);}' +
         'raceFrame(host,last);' +
+        /* a rebuilt page plays at once: the reader was already looking at it */
+        'if(again){play();}' +
         'if(!window.IntersectionObserver){return;}' +
         'var seen=false;' +
-        'new IntersectionObserver(function(es){es.forEach(function(e){' +
+        'window.__raceIO=new IntersectionObserver(function(es){es.forEach(function(e){' +
           'if(e.isIntersecting){if(!seen){seen=true;play();}}else{seen=false;}' +
-        '});},{threshold:.35}).observe(host);' +
+        '});},{threshold:.35});window.__raceIO.observe(host);' +
       '}' +
+      'window.__raceStart=start;' +
       'if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start);else start();' +
     '})();</scr' + 'ipt>';
 }
@@ -13248,7 +13277,10 @@ function pubClient() {
       if (!nv || nv === v) return;
       google.script.run.withSuccessHandler(function (h) {
         if (!h) return;
-        document.getElementById('app').innerHTML = h; show(cur); ago();
+        /* innerHTML never runs the scripts it brings in, so everything the
+           page does for itself has to be started again by hand here. */
+        document.getElementById('app').innerHTML = h; show(cur); ago(); clocks();
+        if (window.__raceStart) window.__raceStart(1);
       }).body();
     }).version();
   }, 30000);
@@ -15109,7 +15141,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '02 Nov 20:33 · 1549fdb'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '02 Nov 20:41 · 55d6f4c'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
