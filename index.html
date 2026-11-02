@@ -2701,7 +2701,9 @@ tspan.gstar{fill:var(--gold)}
         <div class="field"><label>Half length (min)</label><input type="number" id="stHalf" min="5" max="45"></div>
         <div class="field"><label>Half-time break (min)</label><input type="number" id="stBreak" min="0" max="30"></div>
         <div class="field"><label>Extra time, each half (min) — finals only</label><input type="number" id="stEt" min="1" max="15"></div>
-        <div class="field"><label>Yellows before suspension</label><input type="number" id="stYc" min="1" max="10"></div>
+        <div class="field"><label>Yellows before suspension</label><input type="number" id="stYc" min="1" max="10">
+          <div class="small muted">Counted within one time round the league. One yellow carried into the
+            next time round, or into the finals, starts again at nought.</div></div>
         <div class="field"><label>Minimum age</label><input type="number" id="stAge" min="0" max="99"></div>
         <div class="field"><label>Match fee per player ($)</label><input type="number" id="stFee" min="0" step="0.5"></div>
         <div class="field"><label>Competition format</label><select id="stFormat">
@@ -2834,7 +2836,7 @@ function blankLeague() {
     id: uid(),
     name: '',          // what to call it in the switcher; blank falls back to the season name
     season: { name: 'Season ' + new Date().getFullYear(), year: new Date().getFullYear(), venue: '',
-      client: '', reportSub: '', squadMax: 12, pointsWin: 3, pointsDraw: 1, pointsLoss: 0, halfMin: 20, breakMin: 2, ycSuspend: 3, minAge: 16, fee: 15, format: 'finals', etMin: 5 },
+      client: '', reportSub: '', squadMax: 12, pointsWin: 3, pointsDraw: 1, pointsLoss: 0, halfMin: 20, breakMin: 2, ycSuspend: 2, minAge: 16, fee: 15, format: 'finals', etMin: 5 },
     form: { title: '', intro: 'Complete this form to register for the season.', endpoint: '',
       email: '', hashes: true, terms: '', waiver: '' },
     people: [],        // the player database: this league's own, nobody else's
@@ -4202,7 +4204,7 @@ function cardTable() {
   return Object.values(m).map(r => ({
     name: r.personId ? personName(r.personId) : 'Unattributed',
     teamId: (r.personId && (personTeam(r.personId) || {}).id) || r.teamId, y: r.y, r: r.r, personId: r.personId,
-    susp: r.r > 0 || r.y >= DB.season.ycSuspend
+    susp: r.r > 0 || r.y >= Math.max(1, +DB.season.ycSuspend || 2)
   })).sort((a, b) => (b.r - a.r) || (b.y - a.y) || a.name.localeCompare(b.name));
 }
 
@@ -9010,13 +9012,33 @@ function editInjury(pid) {
       } }]));
 }
 /* ── suspensions ────────────────────────────────────────────────────────
-   A red card is a match. So is every third yellow — the count is the
-   season's, and the yellows already paid for are remembered so the same
-   three are never charged twice. A suspension is served by the next match
-   their team plays, whether they sat it out or were ticked in and played
-   anyway: either way it is spent, and they are free the week after. The
-   manager can make it longer, shorter, or nothing at all.
-   p.susp = { games, why, at, fid }   p.ycSeen = yellows already punished */
+   A red card is a match, and it wipes the yellows with it — a player who
+   has already been sent off does not then sit out again for the booking
+   that came before it.
+
+   Yellows are counted within one time round the league, not across the
+   whole season: a player carrying one into the second time round, or into
+   the finals, starts again at nought. Reach the count and it is a match,
+   and the yellows already paid for are remembered so the same two are
+   never charged twice.
+
+   A suspension is served by the next match their team plays, whether they
+   sat it out or were ticked in and played anyway: either way it is spent,
+   and they are free the week after. The manager can make it longer,
+   shorter, or nothing at all.
+   p.susp = { games, why, at, fid }   p.ycSeen<phase> = yellows already paid */
+/* How many rounds one complete time round the league takes: every side
+   meeting every other once. Nine teams take nine rounds, one resting each
+   week; eight take seven. */
+function legRounds() {
+  const n = DB.teams.length;
+  const rounds = [...new Set(DB.fixtures.filter(f => f.stage === 'regular').map(f => f.round))].length;
+  const per = n > 1 ? (n % 2 ? n : n - 1) : 1;
+  return per > 0 && rounds >= per ? per : Math.max(1, rounds);
+}
+// which part of the season a match belongs to: L1, L2 … or F for the finals
+const cardPhase = f => !f || f.stage !== 'regular' ? 'F'
+  : 'L' + Math.max(1, Math.ceil((f.round || 1) / legRounds()));
 const suspOf = pid => { const p = person(pid); const s = p && p.susp;
   return s && s.games > 0 ? s : null; };
 const SUSP_ICON = '<i class="susic" aria-hidden="true"><svg viewBox="0 0 24 24">' +
@@ -9058,26 +9080,35 @@ function serveSuspensions(f) {
     if (p.susp.games <= 0) { delete p.susp; served.push(personName(pid)); }
   });
   const fresh = [];
-  const yc = Math.max(1, +DB.season.ycSuspend || 3);
+  const yc = Math.max(1, +DB.season.ycSuspend || 2);
   const mine = (f.events || []).filter(e => !e.adj && e.personId);
+  /* Each time round the league keeps its own count, and so do the finals: a
+     booking from the first half does not hang over the second, and nothing
+     from the league hangs over a semi-final. A total reached on the last
+     night of a half still stands — that suspension is already set, and is
+     served by the next match the team plays. */
+  const ph = cardPhase(f), KEY = 'ycSeen' + ph;
+  const mineStage = e => cardPhase(e.fixture || f) === ph;
+  /* A count kept before the season was read in halves was the league's whole
+     count, which is the first half's as far as anybody has played. */
+  const carry = p => { if (ph === 'L1' && p.ycSeen != null && p.ycSeenL1 == null) p.ycSeenL1 = p.ycSeen; };
+  const ycIn = pid => allEvents().filter(e => e.type === 'yellow' && e.personId === pid && mineStage(e)).length;
   [...new Set(mine.filter(e => e.type === 'red').map(e => e.personId))].forEach(pid => {
     suspend(pid, 1, 'a red card', f.id); fresh.push(personName(pid) + ' — red card');
+    // sent off is sent off: the bookings behind it are not served as well
+    const p = person(pid);
+    if (p) { carry(p); p[KEY] = ycIn(pid); }
   });
-  /* The knockouts start the count again: cards carried through the league
-     do not hang over a semi-final. A total reached on the last league night
-     still stands — that suspension is already set, and is served by the
-     next match the team plays, semi-final or not. */
-  const ko = f.stage !== 'regular', KEY = ko ? 'ycSeenF' : 'ycSeen';
-  const mineStage = e => (e.fixture ? e.fixture.stage !== 'regular' : ko) === ko;
   [...new Set(mine.filter(e => e.type === 'yellow').map(e => e.personId))].forEach(pid => {
     const p = person(pid);
     if (!p) return;
-    const total = allEvents().filter(e => e.type === 'yellow' && e.personId === pid && mineStage(e)).length +
+    carry(p);
+    const total = ycIn(pid) +
       (f.status === 'final' ? 0 : mine.filter(e => e.type === 'yellow' && e.personId === pid).length);
     while (total - (p[KEY] || 0) >= yc) {
       p[KEY] = (p[KEY] || 0) + yc;
-      suspend(pid, 1, p[KEY] + ' yellow cards' + (ko ? ' in the finals' : ''), f.id);
-      fresh.push(personName(pid) + ' — ' + p[KEY] + ' yellows');
+      suspend(pid, 1, yc + ' yellow cards' + (ph === 'F' ? ' in the finals' : ''), f.id);
+      fresh.push(personName(pid) + ' — ' + yc + ' yellows');
     }
   });
   if (fresh.length) setTimeout(() => toast('Suspended for the next match: ' + fresh.join(', ') + '.', 'bad'), 900);
@@ -15044,7 +15075,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '02 Nov 19:22 · 65db21c'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '02 Nov 19:53 · a18b149'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
