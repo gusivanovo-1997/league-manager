@@ -12849,11 +12849,23 @@ function pubRaceBlock(h2) {
         'raceEls=null;' +
         'if(window.__raceIO){window.__raceIO.disconnect();window.__raceIO=null;}' +
         'raceBind(host);' +
-        'var last=raceModel.n-1,raf=0,t0=0;' +
+        /* one loop, globally. A restart used to leave the previous one
+           running: two ticks writing the same chart, and whichever lost the
+           race left it wherever it had got to — usually frame nought, where
+           every side is still level and the badges sit in a heap. */
+        'var last=raceModel.n-1,t0=0;' +
+        'cancelAnimationFrame(window.__raceRaf||0);clearTimeout(window.__raceEnd||0);' +
         'if(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches){raceFrame(host,last);return;}' +
         'var MS=Math.max(4000,Math.min(12000,RACE.STEPMS*last));' +
-        'function tick(now){if(!t0)t0=now;var t=Math.min(1,(now-t0)/MS);raceFrame(host,raceGlide(t)*last);if(t<1)raf=requestAnimationFrame(tick);}' +
-        'function play(){cancelAnimationFrame(raf);t0=0;raceFrame(host,0);raf=requestAnimationFrame(tick);}' +
+        'function tick(now){if(!t0)t0=now;var t=Math.min(1,(now-t0)/MS);raceFrame(host,raceGlide(t)*last);' +
+          'if(t<1){window.__raceRaf=requestAnimationFrame(tick);}else{clearTimeout(window.__raceEnd||0);}}' +
+        /* and a race that never gets its frames — a tab asleep, a phone
+           throttling it — is put at the finish rather than left in a heap at
+           the start, because a finished chart is the truth and a piled-up
+           one is not */
+        'function play(){cancelAnimationFrame(window.__raceRaf||0);clearTimeout(window.__raceEnd||0);' +
+          't0=0;raceFrame(host,0);window.__raceRaf=requestAnimationFrame(tick);' +
+          'window.__raceEnd=setTimeout(function(){cancelAnimationFrame(window.__raceRaf||0);raceFrame(host,last);},MS+2000);}' +
         'raceFrame(host,last);' +
         /* a rebuilt page plays at once: the reader was already looking at it */
         'if(again){play();}' +
@@ -15141,7 +15153,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '02 Nov 20:41 · 55d6f4c'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '02 Nov 20:50 · 53cc0c0'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
