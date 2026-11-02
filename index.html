@@ -321,9 +321,21 @@ nav button.livenow.flash{animation:liveFlash 1.5s ease-in-out infinite}
 #gatePad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
 #gatePad button{background:var(--chip);border:1px solid var(--chipline);color:var(--text);
   border-radius:8px;padding:15px 0;font-size:calc(18px * var(--fs));cursor:pointer;font-family:inherit}
-#gatePad button:hover{background:#241a14}
-:root[data-theme="light"] #gatePad button:hover{background:#e2eaf7}
-#gatePad button:active{transform:translateY(1px)}
+/* hover only where there is a pointer that can hover. A finger leaves the
+   hover behind on a touch screen — the key stays lit, and the one before it
+   stays lit too, so the pad ends up looking like several keys held down at
+   once. */
+@media (hover:hover){#gatePad button:hover{background:#241a14}
+  :root[data-theme="light"] #gatePad button:hover{background:#e2eaf7}}
+#gatePad button{transition:transform .08s var(--ease),background .12s var(--ease);-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#gatePad button:active{transform:translateY(1px) scale(.97);background:#241a14}
+:root[data-theme="light"] #gatePad button:active{background:#e2eaf7}
+/* and a key that has been pressed does not keep the ring afterwards: the
+   focus stays on it until something else is touched, which looks exactly
+   like a key still held down. Somebody driving it from a keyboard still
+   gets a ring, because they have no other way of knowing where they are. */
+#gatePad button:focus{outline:none}
+#gatePad button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #gateMsg{min-height:17px;text-align:center;font-size:calc(12.5px * var(--fs));color:var(--bad);margin-top:10px}
 #gateMsg.ok{color:var(--ok)}
 #gateCode{text-align:center;margin-top:4px}
@@ -1020,8 +1032,15 @@ body.cupmode .leaguecard{display:none}
 #gate .brand{animation:none;color:var(--hue)}
 /* On the sign-in screen the mark is all there is, so it stands as the two
    words it is: the lit one over the plain one, under the ball. */
-#gate .title-wrap h1{font-size:calc(20px * var(--fs));line-height:1.12;letter-spacing:.2px}
+/* The wordmark as the live page sets it: monospace capitals, widely
+   letter-spaced, the lit word carrying its own glow and the plain one
+   stepping back. The two sit one above the other, because on this screen
+   the mark is all there is. */
+#gate .title-wrap h1{font:700 calc(15px * var(--fs))/1.5 ui-monospace,'Cascadia Mono',Consolas,monospace;
+  letter-spacing:3px;text-transform:uppercase;margin:4px 0 0;text-indent:3px}
 #gate .title-wrap h1 span{display:block}
+#gate .title-wrap h1 .lg{text-shadow:0 0 14px color-mix(in srgb,currentColor 55%,transparent)}
+#gate .title-wrap h1 .mg{color:var(--dim);font-weight:400;text-shadow:none}
 
 @media (prefers-reduced-motion:reduce){#rail{animation:none;color:var(--accent)}}
 /* The open tab is marked by a line under it rather than a filled box, and
@@ -15075,7 +15094,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '02 Nov 19:53 · a18b149'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '02 Nov 20:12 · d2406b0'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
