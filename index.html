@@ -2231,6 +2231,19 @@ tspan.gstar{fill:var(--gold)}
 
   <!-- ══════════════ FIXTURES ══════════════ -->
   <section class="view" data-view="fixtures">
+    <!-- The card that makes the draw is moved to Setup → Draw as the page
+         comes up, which is the right home for it — you set a season up once.
+         But somebody looking for "generate the fixtures" looks HERE, finds
+         nothing, and concludes the button has been taken away. This says
+         where it went, and says when the draw no longer matches the teams. -->
+    <div class="card noprint" id="fxDrawBar" hidden>
+      <div class="row">
+        <div style="min-width:0"><b id="fxDrawWhat"></b>
+          <div class="small muted" id="fxDrawWhy"></div></div>
+        <div class="spacer"></div>
+        <button class="btn accent sm" id="fxDrawGo">Draw &amp; season setup…</button>
+      </div>
+    </div>
     <div class="card" id="fxGenCard">
       <h3>Generate draw</h3>
       <div class="grid g4">
@@ -7522,7 +7535,39 @@ $('fxFormat').addEventListener('change', () => { if (currentView === 'fixtures')
    plain, then a warm ember tint, then plain. A knockout night is gold. */
 // a section's colour: rounds take turns, the semis are silver and the finals gold
 const secCls = (i, k) => 'sec ' + (k === 'FINAL' ? 'sec-ko' : k === 'SEMI' ? 'sec-ko sec-semi' : i % 2 ? 'sec-b' : 'sec-a');
+/* What the Fixtures page says about the draw: whether there is one, and
+   whether it still covers every team. A team added after the draw was made
+   has no matches in it, which is the usual reason a season "goes wrong" —
+   nothing is broken, it simply has not been drawn again. */
+function paintDrawBar() {
+  const bar = $('fxDrawBar');
+  if (!bar) return;
+  bar.hidden = !isMgr();
+  if (!isMgr()) return;
+  const reg = DB.fixtures.filter(f => f.stage === 'regular');
+  const rounds = [...new Set(reg.map(f => f.round))].length;
+  const playing = new Set();
+  DB.fixtures.forEach(f => { playing.add(f.homeId); playing.add(f.awayId); });
+  const out = DB.teams.filter(t => !playing.has(t.id));
+  const what = $('fxDrawWhat'), why = $('fxDrawWhy'), go2 = $('fxDrawGo');
+  if (!reg.length) {
+    what.textContent = 'No draw yet';
+    why.innerHTML = 'The draw is made under <b>Setup → Draw</b>, along with starting the next season.';
+    go2.textContent = 'Make the draw…';
+  } else if (out.length) {
+    what.innerHTML = plural(out.length, 'team') + ' not in the draw';
+    why.innerHTML = esc(out.map(t => t.name).join(', ')) +
+      ' joined after it was made, so they have no matches. Draw it again to bring them in.';
+    go2.textContent = 'Draw it again…';
+  } else {
+    what.textContent = plural(reg.length, 'match', 'matches') + ' over ' + plural(rounds, 'round');
+    why.innerHTML = 'Drawing again, or starting the next season of this competition, is under <b>Setup → Draw</b>.';
+    go2.textContent = 'Draw & season setup…';
+  }
+}
+$('fxDrawGo').onclick = () => go('draw');
 function renderFixtures() {
+  paintDrawBar();
   $('fxGenCard').style.display = isMgr() ? '' : 'none';
   fill('fxFormat', DB.season.format || 'finals');
   const reg = DB.fixtures.filter(f => f.stage === 'regular');
@@ -14850,7 +14895,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '02 Nov 05:49 · e75b4e5'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '02 Nov 17:15 · 25ab95a'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
