@@ -46,7 +46,13 @@ header{display:flex;align-items:center;gap:14px;padding:10px 16px;background:lin
 .brand.stack .ballring{width:58px;height:58px}
 .ballmark{width:12px;height:12px;display:block;animation:ballTurn 14s linear infinite}
 @keyframes ballTurn{to{transform:rotate(360deg)}}
-.title-wrap h1{font-size:calc(15px * var(--fs));margin:2px 0 0;font-weight:600}
+/* The wordmark, one setting for the whole tool: monospace capitals, widely
+   letter-spaced, the lit word first and the plain one behind it. It is what
+   the live page has always used and what the sign-in screen wears, so the
+   rail, the reports, the sign-up form and the email all say the name the
+   same way at every size. */
+.title-wrap h1{font:700 calc(13.5px * var(--fs))/1.45 ui-monospace,'Cascadia Mono',Consolas,monospace;
+  letter-spacing:2.6px;text-transform:uppercase;margin:2px 0 0;text-indent:2.6px}
 .toolbar{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
 /* The tools are five verbs that never change, so they are five icons. The
    label is still there — it waits for a deliberate hover rather than firing
@@ -449,13 +455,12 @@ main{position:relative;z-index:1}
 header{backdrop-filter:blur(10px);background:linear-gradient(180deg,rgba(16,21,39,.92),rgba(10,14,26,.72));
   border-bottom:1px solid var(--line);box-shadow:0 1px 0 rgba(255,255,255,.04),var(--e1)}
 :root[data-theme="light"] header{background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(255,255,255,.75))}
-.title-wrap h1{letter-spacing:-.2px}
 /* one animation on the wrapper: the lit word inherits the colour, the ring
    reads it through currentColor, so the two can never drift out of step.
    LEAGUE is the word that moves; MANAGER is left in the reading colour. */
 .brand{animation:hue 9s ease-in-out infinite alternate}
 .brand h1{color:inherit;animation:none}
-.brand h1 .mg{color:var(--text);font-weight:400}
+.brand h1 .mg{color:var(--dim);font-weight:400}
 @keyframes hue{from{color:var(--accent)}to{color:var(--hue2)}}
 
 /* ---------- buttons ---------- */
@@ -1071,7 +1076,7 @@ body.cupmode .leaguecard{display:none}
 :root[data-theme="light"] #rail nav button.on svg{stroke:#c2410c}
 #rail header{position:static;padding:6px 8px 10px;background:none;border:0;box-shadow:none;
   display:block;backdrop-filter:none}
-#rail .title-wrap h1{font-size:calc(16px * var(--fs));line-height:1.2}
+#rail .title-wrap h1{font-size:calc(14.5px * var(--fs));line-height:1.35}
 /* top:auto — the base rule carries top:53px for the old sticky tab bar,
    and as a relative offset that shunts the whole row down over the tools */
 #rail nav{position:relative;top:auto;flex:1 1 auto;flex-direction:column;align-items:stretch;gap:3px;
@@ -1882,7 +1887,7 @@ tspan.gstar{fill:var(--gold)}
   #rail header{padding:0}
   #rail .brand{gap:8px}
   #rail .ballring{width:30px;height:30px}
-  #rail .title-wrap h1{font-size:calc(14px * var(--fs))}
+  #rail .title-wrap h1{font-size:calc(12.5px * var(--fs));letter-spacing:2px;text-indent:2px}
   #rail .toolbar{gap:5px}
   #rail .toolbar .btn.ico{width:34px;height:34px}
   #rail nav button{padding:7px 10px;font-size:calc(12.5px * var(--fs))}
@@ -4045,8 +4050,9 @@ function printFinance() {
     'header{display:flex;align-items:center;gap:13px;padding:15px 19px;border-radius:14px;margin-bottom:15px;' +
       'background:linear-gradient(135deg,#0d0d10,#24170d);border:1px solid #3a2a1c;border-bottom:3px solid #ff8a3d}' +
     'header img{width:44px;height:44px;display:block}' +
-    'header h1{margin:0;font-size:19px;letter-spacing:.2px;font-weight:400;color:#d7d4d1}' +
-    'header h1 .lg{color:#ff8a3d;font-weight:800}' +
+    'header h1{margin:0;font:400 15px/1.4 Consolas,monospace;letter-spacing:3px;' +
+      'text-transform:uppercase;text-indent:3px;color:#9c9ca6}' +
+    'header h1 .lg{color:#ff8a3d;font-weight:700}' +
     'header .v{margin-left:auto;text-align:right;color:#b9b6b2;font-size:11.5px;line-height:1.45}' +
     'header .v b{display:block;color:#f4f2f0;font-size:15.5px;font-weight:700;line-height:1.25}' +
     'header .v .c{display:block;font-size:12px;margin-top:1px}' +
@@ -7588,8 +7594,9 @@ function printDraw() {
     'header{display:flex;align-items:center;gap:14px;padding:16px 20px;border-radius:14px;margin-bottom:16px;' +
       'background:linear-gradient(135deg,#0d0d10,#24170d);border:1px solid #3a2a1c;border-bottom:3px solid #ff8a3d}' +
     'header img{width:46px;height:46px}' +
-    'header .k{color:#9c9ca6;font-size:10px;letter-spacing:3px;font-weight:700;text-transform:uppercase}' +
-    'header .k span{color:#ff8a3d}' +
+    'header .k{color:#9c9ca6;font:400 11px/1.4 Consolas,monospace;letter-spacing:3px;' +
+      'text-transform:uppercase;text-indent:3px}' +
+    'header .k span{color:#ff8a3d;font-weight:700}' +
     'header h1{margin:2px 0 0;font-size:22px}header .v{margin-left:auto;text-align:right;color:#b9b6b2;font-size:12px}' +
     '.rd{border:1px solid #33343b;border-radius:12px;padding:6px 14px 10px;margin-bottom:12px;background:#232429;break-inside:avoid}' +
     '.rd.alt{background:linear-gradient(180deg,rgba(255,138,61,.16),rgba(255,138,61,.05)),#232429;border-color:rgba(255,138,61,.42)}' +
@@ -11125,7 +11132,8 @@ h1{font-size:23px;margin:0;font-weight:700;letter-spacing:-.4px;color:var(--text
 .ballring{flex:0 0 auto;width:54px;height:54px;box-sizing:border-box;padding:3px;
   border:2px solid currentColor;border-radius:50%;display:block;box-shadow:0 0 18px -7px currentColor}
 .ballring img{width:100%;height:100%;border-radius:50%;display:block;animation:ballSpin 26s linear infinite}
-.wordmark{font-size:11px;letter-spacing:2.5px;font-family:ui-monospace,monospace;font-weight:700}
+.wordmark{font:700 11px/1.5 ui-monospace,'Cascadia Mono',Consolas,monospace;letter-spacing:2.5px;
+  text-transform:uppercase;text-indent:2.5px}
 .wordmark span{color:var(--dim);font-weight:400}
 @keyframes ballSpin{to{transform:rotate(360deg)}}
 @keyframes hue{from{color:var(--accent)}to{color:#ffc247}}
@@ -15101,7 +15109,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '02 Nov 20:18 · 64caa61'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '02 Nov 20:21 · 1c1574c'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
