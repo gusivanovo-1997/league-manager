@@ -9190,6 +9190,11 @@ function serveSuspensions(f) {
      count, which is the first half's as far as anybody has played. */
   const carry = p => { if (ph === 'L1' && p.ycSeen != null && p.ycSeenL1 == null) p.ycSeenL1 = p.ycSeen; };
   const ycIn = pid => allEvents().filter(e => e.type === 'yellow' && e.personId === pid && mineStage(e)).length;
+  /* Every yellow of this half INCLUDING tonight's. The settled matches come
+     from allEvents(), which does not carry a match until its result is in,
+     so tonight's are counted from the sheet in front of us. */
+  const ycAll = pid => ycIn(pid) +
+    (f.status === 'final' ? 0 : mine.filter(e => e.type === 'yellow' && e.personId === pid).length);
   /* One match per red card, charged ONCE. The yellows have always been
      remembered so the same two are never paid for twice; the red was not,
      so every time the result was settled again — edited, re-confirmed, or
@@ -9202,15 +9207,18 @@ function serveSuspensions(f) {
     if (p.redPaid.indexOf(e.id) >= 0) return;
     p.redPaid.push(e.id);
     suspend(pid, 1, 'a red card', f.id); fresh.push(personName(pid) + ' — red card');
-    // sent off is sent off: the bookings behind it are not served as well
-    carry(p); p[KEY] = ycIn(pid);
+    /* Sent off is sent off — one match, and the bookings behind it are not
+       served as well. Two yellows and the red they earned are the same
+       sending-off written down three times; counting the red AND the pair
+       put a player out for two weeks for one night's work. Tonight's
+       bookings are marked paid with the rest, so the red covers them. */
+    carry(p); p[KEY] = ycAll(pid);
   });
   [...new Set(mine.filter(e => e.type === 'yellow').map(e => e.personId))].forEach(pid => {
     const p = person(pid);
     if (!p) return;
     carry(p);
-    const total = ycIn(pid) +
-      (f.status === 'final' ? 0 : mine.filter(e => e.type === 'yellow' && e.personId === pid).length);
+    const total = ycAll(pid);
     while (total - (p[KEY] || 0) >= yc) {
       p[KEY] = (p[KEY] || 0) + yc;
       suspend(pid, 1, yc + ' yellow cards' + (ph === 'F' ? ' in the finals' : ''), f.id);
@@ -13756,19 +13764,19 @@ function staffMerge(list) {
   });
 }
 const deviceId = DEVICE;                 // the same id the live screen stamps matches with
-let SY = { lg: '', rev: 0, shadow: null, busy: false, again: false, state: 'off', err: '', at: 0, claims: {}, pull: 0, push: 0 };
+let SY = { lg: '', rev: 0, shadow: null, busy: false, again: false, state: 'off', err: '', at: 0, claims: {}, fin: {}, pull: 0, push: 0 };
 
 const syncSlot = () => SYNCKEY + '.' + (ROOT.active || '');
 const syncOn = () => { const c = pubCfg(); return !!(c.url && c.key && c.share && !DB.demo); };
 function syncLoad() {
-  SY = { lg: ROOT.active, rev: 0, shadow: null, busy: false, again: false, state: 'off', err: '', at: 0, claims: {}, pull: 0, push: 0 };
+  SY = { lg: ROOT.active, rev: 0, shadow: null, busy: false, again: false, state: 'off', err: '', at: 0, claims: {}, fin: {}, pull: 0, push: 0 };
   try {
     const s = JSON.parse(localStorage.getItem(syncSlot()) || 'null');
-    if (s && s.shadow) { SY.rev = s.rev || 0; SY.shadow = s.shadow; SY.at = s.at || 0; }
+    if (s && s.shadow) { SY.rev = s.rev || 0; SY.shadow = s.shadow; SY.at = s.at || 0; SY.fin = s.fin || {}; }
   } catch (e) {}
 }
 function syncStore() {
-  try { localStorage.setItem(syncSlot(), JSON.stringify({ rev: SY.rev, shadow: SY.shadow, at: SY.at })); } catch (e) {}
+  try { localStorage.setItem(syncSlot(), JSON.stringify({ rev: SY.rev, shadow: SY.shadow, at: SY.at, fin: SY.fin })); } catch (e) {}
 }
 /* One short hash per record: enough to see what this tablet has changed.
    'own' is skipped because records written while the owner-priority rule
@@ -13838,13 +13846,15 @@ function orphanSquad() {
 // what this tablet holds that the shared copy does not
 function syncDiff() {
   if (!SY.shadow) return null;
-  const now = syncDoc(), a = SY.shadow, set = {}, del = {};
+  const now = syncDoc(), a = SY.shadow, set = {}, del = {}, stale = [];
   let any = false, meta = null;
   SYNC_LISTS.forEach(n => {
     const s = {}, d = [], seen = {};
     (now[n] || []).forEach(x => {
       if (!x || !x.id) return;
       seen[x.id] = 1;
+      // the shared copy has this result in, and what is here is older than the news of it
+      if (n === 'fixtures' && SY.fin[x.id] && x.status !== 'final' && !(+x.edAt > SY.fin[x.id])) { stale.push(x.id); return; }
       if ((a[n] || {})[x.id] !== syncHash(x)) {
         delete x.own;                               // the mark the owner-priority rule left behind
         s[x.id] = x; any = true;
@@ -13857,11 +13867,36 @@ function syncDiff() {
   SYNC_META.forEach(k => {
     if (a.meta[k] !== syncHash(now[k])) { (meta = meta || {})[k] = now[k]; any = true; }
   });
-  return any ? { set, del, meta } : null;
+  return any || stale.length ? { set, del, meta, stale } : null;
 }
 const syncCount = p => !p ? 0 : SYNC_LISTS.reduce((t, n) =>
   t + Object.keys((p.set || {})[n] || {}).length + (((p.del || {})[n] || []).length), 0) + (p.meta ? 1 : 0);
+/* Which matches the shared copy has as FINISHED, and the moment this device
+   first saw that.
+
+   A result is a decision somebody made; an open clock is not. So the two are
+   not weighed against each other as if they were the same kind of thing: a
+   device that has been asleep all evening, and still holds last week's open
+   fixtures, must not be able to push them up over the results another
+   device has confirmed — which is how a round that had been played and
+   closed on a phone turned up open again on a tablet, and then open
+   everywhere, because the stale copy went up and came back down.
+
+   A manager reopening a match to correct a score is a decision too, and it
+   carries the moment it was made, so it is let through: only a fixture
+   older than the news of its own result is refused, and a device holding
+   one asks for the shared copy whole instead. */
+function noteFinals(list, kept) {
+  const now = Date.now();
+  (list || []).forEach(f => {
+    if (!f || !f.id || (kept && kept.indexOf(f.id) >= 0)) return;
+    if (f.status === 'final') { if (!SY.fin[f.id]) SY.fin[f.id] = now; }
+    else delete SY.fin[f.id];
+  });
+}
 function shadowApply(p, kept) {
+  noteFinals(Object.values((p.set || {}).fixtures || {}), kept);
+  ((p.del || {}).fixtures || []).forEach(id => { if (!(kept && kept.indexOf(id) >= 0)) delete SY.fin[id]; });
   if (!SY.shadow) return;
   const stuck = id => kept && kept.indexOf(id) >= 0;
   SYNC_LISTS.forEach(n => {
@@ -13888,6 +13923,12 @@ function docApply(p, keep) {
        arrived, a squad typed in elsewhere never appeared, and the stale
        copy went back up over it. Only ids it had never seen got through,
        which is why it looked like some things synced and some did not. */
+    /* Whatever is held here, sent or not: a result that is in does not come
+       back out because a device that never heard about it sent its own older
+       copy of the fixture up. */
+    const have = n === 'fixtures' ? (DB.fixtures || []).find(x => x && x.id === id) : null;
+    if (have && have.status === 'final' && coming && coming.status !== 'final' &&
+        !(+coming.edAt > +(have.edAt || 0))) return true;
     const bag = keep && (keep.set || {})[n];
     const ours = bag ? bag[id] : undefined;
     if (ours === undefined) return false;
@@ -13967,8 +14008,8 @@ async function syncTick(force) {
        minute at most, so a league that genuinely has an odd record in it
        cannot turn into a tablet fetching the whole thing every four
        seconds. */
-    const refill = orphanSquad() > 0 && (!SY.refill || Date.now() - SY.refill > 30000);
-    if (refill) SY.refill = Date.now();
+    const refill = (SY.want || orphanSquad() > 0) && (!SY.refill || Date.now() - SY.refill > 30000);
+    if (refill) { SY.refill = Date.now(); SY.want = false; }
     const r = await syncPost({ action: 'pull', rev: refill ? 0 : SY.rev });
     if (lg !== ROOT.active) return;
     if (!r.ok) { SY.state = r.off ? 'off' : 'err'; SY.err = r.error || ''; return; }
@@ -14024,6 +14065,7 @@ async function syncTick(force) {
          on one device was wiped from all of them. */
       const bare = !(DB.teams || []).length && !(DB.fixtures || []).length;
       SY.shadow = shadowOf(r.doc);
+      noteFinals(r.doc.fixtures);
       // what the shared copy no longer has is gone — but only if this tablet
       // knew the shared copy; anything unsent here is kept either way
       docApply(docAsPatch(r.doc, known || bare), mine);
@@ -14044,7 +14086,15 @@ async function syncTick(force) {
     if (SY.lost) { SY.again = true; return; }     // ask for the whole copy before saying anything
     // and now whatever is still only here goes up
     const out = syncDiff();
-    if (out) {
+    if (out && out.stale.length) {
+      /* Results this device has not caught up with. It stops arguing and
+         asks for the shared copy whole, which is what puts it right. */
+      SY.want = true;
+      const sig = out.stale.slice().sort().join(',');
+      if (sig !== SY.behind) toast(plural(out.stale.length, 'match') + ' was closed on another device — taking the result.', 'bad');
+      SY.behind = sig;
+    } else SY.behind = '';
+    if (out && syncCount(out)) {
       const w = await syncPost({ action: 'push', base: SY.rev, set: out.set, del: out.del, meta: out.meta });
       if (lg !== ROOT.active) return;
       if (w.ok) {
@@ -14501,6 +14551,7 @@ async function takeShared() {
   try { localStorage.removeItem(syncSlot()); } catch (e) {}
   syncLoad();                        // and with the stored picture gone, nothing left here reads as unsent
   SY.shadow = shadowOf(r.doc);
+  SY.fin = {}; noteFinals(r.doc.fixtures);
   SY.rev = r.rev || 0;
   SY.claims = r.claims || {};
   docApply(docAsPatch(r.doc, true), null);
@@ -14542,6 +14593,7 @@ async function sendMine() {
   if (!w || !w.ok) return toast('Could not send: ' + ((w && w.error) || 'no answer') + '.', 'bad');
   SY.rev = w.rev || 0;
   SY.shadow = shadowOf(syncDoc());
+  SY.fin = {}; noteFinals(DB.fixtures);
   SY.state = 'ok'; SY.at = Date.now(); SY.err = '';
   SY.claims = w.claims || SY.claims;
   syncStore(); syncLoop(); paintSync();
@@ -15209,7 +15261,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '03 Nov 05:58 · b8934cb'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '03 Nov 06:11 · 8286bfd'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
