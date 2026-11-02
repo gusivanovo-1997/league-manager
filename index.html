@@ -44,10 +44,6 @@ header{display:flex;align-items:center;gap:14px;padding:10px 16px;background:lin
 .brand.stack{flex-direction:column;gap:9px;text-align:center}
 .brand.stack .title-wrap{align-items:center}
 .brand.stack .ballring{width:58px;height:58px}
-/* on the sign-in screen the mark is the whole page, so the ball sits back a
-   little and lets the name carry it */
-#gate .brand.stack .ballring{width:44px;height:44px;padding:1.5px;border-width:1.5px;
-  box-shadow:0 0 10px -4px currentColor}
 .ballmark{width:12px;height:12px;display:block;animation:ballTurn 14s linear infinite}
 @keyframes ballTurn{to{transform:rotate(360deg)}}
 .title-wrap h1{font-size:calc(15px * var(--fs));margin:2px 0 0;font-weight:600}
@@ -322,7 +318,7 @@ nav button.livenow.flash{animation:liveFlash 1.5s ease-in-out infinite}
    monospace capitals, a size down and in the reading grey, so it reads as
    an instruction under the mark rather than a second title */
 .gate-box h2{font:600 calc(11.5px * var(--fs))/1.6 ui-monospace,'Cascadia Mono',Consolas,monospace;
-  letter-spacing:2.4px;text-transform:uppercase;color:var(--dim);
+  letter-spacing:2.4px;text-transform:uppercase;color:var(--text);
   margin:14px 0 12px;text-align:center;text-indent:2.4px}
 #gatePin{text-align:center;font-size:calc(24px * var(--fs));letter-spacing:9px;padding:11px 8px;
   font-family:ui-monospace,'Cascadia Mono',Consolas,monospace}
@@ -334,11 +330,13 @@ nav button.livenow.flash{animation:liveFlash 1.5s ease-in-out infinite}
    hover behind on a touch screen — the key stays lit, and the one before it
    stays lit too, so the pad ends up looking like several keys held down at
    once. */
-@media (hover:hover){#gatePad button:hover{background:#241a14}
-  :root[data-theme="light"] #gatePad button:hover{background:#e2eaf7}}
-#gatePad button{transition:transform .08s var(--ease),background .12s var(--ease);-webkit-tap-highlight-color:transparent;touch-action:manipulation}
-#gatePad button:active{transform:translateY(1px) scale(.97);background:#241a14}
-:root[data-theme="light"] #gatePad button:active{background:#e2eaf7}
+#gatePad button{transition:transform .09s var(--ease),background .14s var(--ease);
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+/* lit while held and not a moment longer: the class goes on at pointerdown
+   and comes off at every way a press can end, so neither a hover left
+   behind by a finger nor a sticky :active can keep a key looking pressed */
+#gatePad button.down{transform:translateY(1px) scale(.97);background:#241a14}
+:root[data-theme="light"] #gatePad button.down{background:#e2eaf7}
 /* and a key that has been pressed does not keep the ring afterwards: the
    focus stays on it until something else is touched, which looks exactly
    like a key still held down. Somebody driving it from a keyboard still
@@ -15103,7 +15101,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '02 Nov 20:15 · ef6ac68'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '02 Nov 20:18 · 64caa61'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
@@ -15323,6 +15321,16 @@ function tryPin(v) {
 }
 $('gatePad').innerHTML = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', '✓']
   .map(k => '<button type="button" data-key="' + k + '">' + k + '</button>').join('');
+/* The press, driven rather than left to CSS state. Whatever the browser
+   does with :hover and :active after a tap, a key cannot stay lit: the
+   class goes on under the finger and comes off the moment the press ends,
+   however it ends. */
+$('gatePad').querySelectorAll('[data-key]').forEach(b => {
+  const up = () => b.classList.remove('down');
+  b.addEventListener('pointerdown', () => b.classList.add('down'));
+  ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture', 'blur'].forEach(ev => b.addEventListener(ev, up));
+});
+addEventListener('pointerup', () => $('gatePad').querySelectorAll('.down').forEach(b => b.classList.remove('down')));
 $('gatePad').querySelectorAll('[data-key]').forEach(b => b.onclick = () => {
   const k = b.dataset.key, el = $('gatePin');
   $('gateMsg').textContent = '';
