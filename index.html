@@ -3379,12 +3379,11 @@ function paintCrests() {
    backdrop (black, white, any one colour at all four corners) has that
    backdrop made see-through — only where it reaches in from the edge, with
    gaps in the badge's frame sealed first, so the dark inside a shield stays. */
-function makeCrest(file) {
-  return new Promise((res, rej) => {
-    const url = URL.createObjectURL(file), img = new Image();
-    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('not a picture')); };
-    img.onload = () => {
-      URL.revokeObjectURL(url);
+/* Taking the backdrop out of a badge. The same work whether the picture has
+   just been chosen from a file or is already on a team and wants tidying —
+   several of the supplied badges are a round crest sitting on the white
+   square it was drawn on, and that square shows at the four corners. */
+function crestFromImage(img) {
       const k = Math.min(1, 480 / Math.max(img.naturalWidth, img.naturalHeight));
       const W = Math.max(1, Math.round(img.naturalWidth * k)), H = Math.max(1, Math.round(img.naturalHeight * k));
       const c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -3392,9 +3391,22 @@ function makeCrest(file) {
       const d = x.getImageData(0, 0, W, H), a = d.data;
       const at = (px, py) => (py * W + px) * 4;
       const corners = [at(0, 0), at(W - 1, 0), at(0, H - 1), at(W - 1, H - 1)];
-      const ref = [0, 1, 2].map(ch => corners.reduce((s, i) => s + a[i + ch], 0) / 4);
-      const dist = i => Math.max(Math.abs(a[i] - ref[0]), Math.abs(a[i + 1] - ref[1]), Math.abs(a[i + 2] - ref[2]));
-      const plain = corners.every(i => a[i + 3] > 250 && dist(i) < 24);
+      /* Which colour the backdrop is, decided by the corners that AGREE with
+         each other rather than by the average of all four. A badge that runs
+         into one corner — a ribbon, a long name, a crest drawn off-centre —
+         used to drag the average away from the real backdrop, so no corner
+         matched it, the cleanup never ran, and the white square stayed put.
+         Three corners agreeing is enough to call it a backdrop. */
+      const away = (i, r) => Math.max(Math.abs(a[i] - r[0]), Math.abs(a[i + 1] - r[1]), Math.abs(a[i + 2] - r[2]));
+      let ref = [255, 255, 255], agreed = 0;
+      corners.forEach(ci => {
+        if (a[ci + 3] <= 250) return;
+        const r = [a[ci], a[ci + 1], a[ci + 2]];
+        const same = corners.filter(i => a[i + 3] > 250 && away(i, r) < 30);
+        if (same.length > agreed) { agreed = same.length; ref = [0, 1, 2].map(ch => same.reduce((s, i) => s + a[i + ch], 0) / same.length); }
+      });
+      const dist = i => away(i, ref);
+      const plain = agreed >= 3;
       if (plain) {
         const T1 = 40, T2 = 90, N = W * H, R = Math.max(2, Math.round(Math.max(W, H) * 0.013));
         const fg = new Uint8Array(N), wall = new Uint8Array(N), tmp = new Uint8Array(N);
@@ -3432,9 +3444,24 @@ function makeCrest(file) {
       ox.drawImage(c, x0, y0, bw, bh, (S - bw * s) / 2, (S - bh * s) / 2, bw * s, bh * s);
       let u = o.toDataURL('image/webp', 0.86);
       if (!/^data:image\/webp/.test(u)) u = o.toDataURL('image/png');   // a browser that cannot write WebP
-      res(u);
-    };
+      return u;
+}
+// a picture the manager has just chosen from the machine
+function makeCrest(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('not a picture')); };
+    img.onload = () => { URL.revokeObjectURL(url); try { res(crestFromImage(img)); } catch (e) { rej(e); } };
     img.src = url;
+  });
+}
+// and a badge already on a team, put through the same thing again
+function tidyCrest(src) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onerror = () => rej(new Error('not a picture'));
+    img.onload = () => { try { res(crestFromImage(img)); } catch (e) { rej(e); } };
+    img.src = src;
   });
 }
 /* the card a manager opens from a team's badge */
@@ -3453,10 +3480,21 @@ function editCrest(tid) {
   modal('Badge — ' + t.name,
     '<div style="text-align:center;margin-bottom:12px">' + crest(tid, 'xl') + '</div>' +
     '<div class="small muted" style="text-align:center;line-height:1.7">A square picture works best — a PNG with a see-through background, ' +
-      'or any badge on a plain black or white backdrop (that backdrop is taken out).</div>' +
+      'or any badge on a plain black or white backdrop (that backdrop is taken out).' +
+      (t.logo ? '<br>If this badge still shows its square corners, <b>Take the backdrop out</b> runs that over it again.' : '') + '</div>' +
     '<input type="file" id="crestFile" accept="image/*" style="display:none">',
     [{ label: 'Remove — grey shield', cls: 'bad', fn: () => set('', 'Badge removed — ' + t.name + ' shows the grey shield.') }]
       .concat(supplied ? [{ label: 'Use the supplied badge', fn: () => set(supplied, 'The supplied badge is back on ' + t.name + '.') }] : [])
+      .concat(t.logo ? [{ label: 'Take the backdrop out', fn: () => { (async () => {
+        const tt = team(tid);
+        if (!tt || !tt.logo) return;
+        try {
+          const u = await tidyCrest(tt.logo);
+          if (u.length > 160000) return toast('That picture is too detailed to keep — try a simpler one.', 'bad');
+          if (u === tt.logo) return toast('Nothing to take out — that badge has no plain backdrop.', 'bad');
+          set(u, 'Backdrop taken out of ' + tt.name + '\'s badge.');
+        } catch (e) { toast('That badge could not be read as a picture.', 'bad'); }
+      })(); }, }] : [])
       .concat([{ label: 'Close' }, { label: 'Upload a picture…', cls: 'accent', fn: () => { $('crestFile').click(); return false; } }]));
   $('crestFile').onchange = async e => {
     const f = e.target.files[0];
@@ -14981,7 +15019,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '02 Nov 19:03 · 87a2f66'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '02 Nov 19:13 · c724559'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
