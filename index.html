@@ -12855,7 +12855,14 @@ function publicPageHtml() {
       '" data-el="' + Math.round(c.elapsed || 0) + '" data-run="' + (c.running ? 1 : 0) +
       '" data-t0="' + Math.round(c.t0 || 0) + '">\u25CF ' + txt + '</b>';
   };
-  const card = f => {
+  /* lean: the dashboard's look back at the round just gone. Who played, how
+     it finished, and the man of the match — and nothing else. The minute by
+     minute belongs on Fixtures & Results, where somebody has gone looking
+     for it; stacked eight matches deep on the front page it buries the
+     table, the Golden Boot and everything else worth seeing at a glance.
+     How a knockout was settled stays, because that qualifies the score
+     itself: 2-2 with no word of the shoot-out is not a result. */
+  const card = (f, lean) => {
     const on = liveNow(f), done = f.status === 'final';
     const s = on || done ? shownScore(f) : null, w = done ? winnerOf(f) : null;
     const hs = s ? eventsFor(f, f.homeId) : '', as = s ? eventsFor(f, f.awayId) : '', steps = done ? koNote(f) : '';
@@ -12866,13 +12873,13 @@ function publicPageHtml() {
         (s ? '<span class="sc">' + s.h + '<i>–</i>' + s.a + '</span>' : '<span class="sc v">' + esc(f.time || 'v') + '</span>') +
         '<span class="t' + (w === f.awayId ? ' w' : '') + '">' + dot(f.awayId) + '<span class="nm">' + esc(teamName(f.awayId)) + '</span></span></div>' +
       (steps ? '<div class="kon">' + esc(steps).replace(/, /g, ' <i>›</i> ') + '</div>' : '') +
-      (hs || as ? '<div class="evs"><span>' + hs + '</span><span>' + as + '</span></div>' : '') +
+      (!lean && (hs || as) ? '<div class="evs"><span>' + hs + '</span><span>' + as + '</span></div>' : '') +
       ((m => m ? '<div class="mvp"><span>MVP</span> ' + mvpNamed(m, dot, ' ') + ' &middot; ' + mvpGoals(m) + '</div>' : '')(done ? matchMvp(f) : null)) +
       '<div class="meta">' + [on ? liveTag(f) : '', isWO(f) ? '<b class="wo">walkover</b>' : '',
         f.date ? esc(fmtDate(f.date)) + (isMoved(f) ? ' <b class="rsx">rescheduled</b>' : '') : s ? '' : 'date to be set',
         f.court ? 'Court ' + esc(f.court) : ''].filter(Boolean).join(' · ') + '</div></div>';
   };
-  const grid = list => '<div class="grid">' + list.map(card).join('') + '</div>';
+  const grid = (list, lean) => '<div class="grid">' + list.map(f => card(f, lean)).join('') + '</div>';
   /* The bracket, and who is scoring the goals — the two things the page was
      missing. Both are built from classes the page already has, so nothing
      new has to be styled for them. */
@@ -12952,7 +12959,7 @@ function publicPageHtml() {
        fixture appeared twice on the page — once with a clock running and
        once as if it had not started. */
     (nextFx.length ? h2(esc(d.nextTitle), nextFx) + grid(nextFx.slice().sort(order)) : '') +
-    (d.lastFx.length ? h2(esc(d.lastTitle), d.lastFx) + grid(d.lastFx.slice().sort(order)) : '') +
+    (d.lastFx.length ? h2(esc(d.lastTitle), d.lastFx) + grid(d.lastFx.slice().sort(order), true) : '') +
     '<div class="two">' + (isCup() ? '' : '<div>' + h2('Table') + (st.length ? '<div class="tw"><table><tr><th class="n">#</th><th>Team</th>' +
         '<th class="n">P</th><th class="n">GD</th><th class="n">Pts</th></tr>' +
         st.map(r => '<tr' + q(r) + ' style="--tc:' + tc(r.id) + '"><td class="n dim">' + r.pos + moveMark(mv, r.id) + '</td><td class="tm">' + dot(r.id) + esc(r.name) + '</td>' +
@@ -15019,7 +15026,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '02 Nov 19:13 · c724559'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '02 Nov 19:16 · 278693e'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
