@@ -3390,7 +3390,20 @@ function crestFromImage(img) {
       const x = c.getContext('2d'); x.drawImage(img, 0, 0, W, H);
       const d = x.getImageData(0, 0, W, H), a = d.data;
       const at = (px, py) => (py * W + px) * 4;
-      const corners = [at(0, 0), at(W - 1, 0), at(0, H - 1), at(W - 1, H - 1)];
+      /* Sampled a little way IN from the edge, and averaged over a small
+         block. A logo saved with a hairline frame round the square, or a
+         drop shadow, or the ringing a JPEG leaves against a dark edge, puts
+         something other than the backdrop in the outermost pixel — and a
+         single pixel then decided there was no backdrop at all. */
+      const INS = Math.max(2, Math.round(Math.min(W, H) * 0.03));
+      const blk = (px, py) => { let r = 0, g = 0, b = 0, al = 0, n = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const qx = Math.min(W - 1, Math.max(0, px + dx)), qy = Math.min(H - 1, Math.max(0, py + dy));
+          const i = at(qx, qy); r += a[i]; g += a[i + 1]; b += a[i + 2]; al += a[i + 3]; n++; }
+        return [r / n, g / n, b / n, al / n]; };
+      const cornerPx = [[INS, INS], [W - 1 - INS, INS], [INS, H - 1 - INS], [W - 1 - INS, H - 1 - INS]];
+      const cornerCol = cornerPx.map(p => blk(p[0], p[1]));
+      const corners = cornerPx.map(p => at(p[0], p[1]));
       /* Which colour the backdrop is, decided by the corners that AGREE with
          each other rather than by the average of all four. A badge that runs
          into one corner — a ribbon, a long name, a crest drawn off-centre —
@@ -3398,12 +3411,13 @@ function crestFromImage(img) {
          matched it, the cleanup never ran, and the white square stayed put.
          Three corners agreeing is enough to call it a backdrop. */
       const away = (i, r) => Math.max(Math.abs(a[i] - r[0]), Math.abs(a[i + 1] - r[1]), Math.abs(a[i + 2] - r[2]));
+      const awayC = (c, r) => Math.max(Math.abs(c[0] - r[0]), Math.abs(c[1] - r[1]), Math.abs(c[2] - r[2]));
       let ref = [255, 255, 255], agreed = 0;
-      corners.forEach(ci => {
-        if (a[ci + 3] <= 250) return;
-        const r = [a[ci], a[ci + 1], a[ci + 2]];
-        const same = corners.filter(i => a[i + 3] > 250 && away(i, r) < 30);
-        if (same.length > agreed) { agreed = same.length; ref = [0, 1, 2].map(ch => same.reduce((s, i) => s + a[i + ch], 0) / same.length); }
+      cornerCol.forEach(c0 => {
+        if (c0[3] <= 250) return;
+        const same = cornerCol.filter(c => c[3] > 250 && awayC(c, c0) < 30);
+        if (same.length > agreed) { agreed = same.length;
+          ref = [0, 1, 2].map(ch => same.reduce((s, c) => s + c[ch], 0) / same.length); }
       });
       const dist = i => away(i, ref);
       const plain = agreed >= 3;
@@ -3422,6 +3436,10 @@ function crestFromImage(img) {
         const push = n => { if (!out[n] && !wall[n]) { out[n] = 1; q.push(n); } };
         for (let i = 0; i < W; i++) { push(i); push((H - 1) * W + i); }
         for (let y = 0; y < H; y++) { push(y * W); push(y * W + W - 1); }
+        /* and from just inside each corner as well, so a hairline frame or a
+           shadow round the square cannot wall the backdrop off at the very
+           first pixel and leave the whole white square sitting there */
+        cornerPx.forEach(p => push(p[1] * W + p[0]));
         while (q.length) { const n = q.pop(), px = n % W;
           if (px > 0) push(n - 1); if (px < W - 1) push(n + 1); if (n >= W) push(n - W); if (n < N - W) push(n + W); }
         const near = new Uint8Array(N); grow(out, near, R + 2);
@@ -15026,7 +15044,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '02 Nov 19:16 · 278693e'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '02 Nov 19:22 · 65db21c'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
