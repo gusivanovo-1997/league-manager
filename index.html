@@ -12796,6 +12796,27 @@ function publicPageHtml() {
         esc(who) + (e.type === 'own' ? ' (og)' : '') + '</span>';
     }).join('');
   };
+  /* A page built a minute ago would show a minute that is a minute old, so
+     the clock is not written into it — what it carries is everything needed
+     to work the clock out: the period, the seconds already run, whether it
+     is running and from what moment. The page then counts for itself, and a
+     watcher sees the same minute the scorer's tablet does.
+
+     The break and extra time are periods like any other, and say so rather
+     than quietly showing a minute that would mean nothing. */
+  const liveTag = f => {
+    const c = f.clock || {}, p = c.period || 'H1';
+    const half = DB.season.halfMin || 20, et = etMin();
+    const base = { H1: 0, BRK: half, H2: half, ET1: 2 * half, ET2: 2 * half + et }[p] || 0;
+    const cap = (p === 'ET1' || p === 'ET2') ? 2 * half + 2 * et : 2 * half;
+    const secs = (c.elapsed || 0) + (c.running && c.t0 ? (Date.now() - c.t0) / 1000 : 0);
+    const minute = Math.min(cap, base + Math.floor(Math.max(0, secs) / 60)) + 1;
+    const txt = p === 'BRK' ? 'LIVE \u00b7 half-time'
+      : 'LIVE \u00b7 ' + (p === 'ET1' || p === 'ET2' ? 'ET ' : '') + minute + '\u2032';
+    return '<b class="lv" data-lv="1" data-p="' + esc(p) + '" data-base="' + base + '" data-cap="' + cap +
+      '" data-el="' + Math.round(c.elapsed || 0) + '" data-run="' + (c.running ? 1 : 0) +
+      '" data-t0="' + Math.round(c.t0 || 0) + '">\u25CF ' + txt + '</b>';
+  };
   const card = f => {
     const on = liveNow(f), done = f.status === 'final';
     const s = on || done ? shownScore(f) : null, w = done ? winnerOf(f) : null;
@@ -12809,7 +12830,7 @@ function publicPageHtml() {
       (steps ? '<div class="kon">' + esc(steps).replace(/, /g, ' <i>›</i> ') + '</div>' : '') +
       (hs || as ? '<div class="evs"><span>' + hs + '</span><span>' + as + '</span></div>' : '') +
       ((m => m ? '<div class="mvp"><span>MVP</span> ' + mvpNamed(m, dot, ' ') + ' &middot; ' + mvpGoals(m) + '</div>' : '')(done ? matchMvp(f) : null)) +
-      '<div class="meta">' + [on ? '<b class="lv">● LIVE</b>' : '', isWO(f) ? '<b class="wo">walkover</b>' : '',
+      '<div class="meta">' + [on ? liveTag(f) : '', isWO(f) ? '<b class="wo">walkover</b>' : '',
         f.date ? esc(fmtDate(f.date)) + (isMoved(f) ? ' <b class="rsx">rescheduled</b>' : '') : s ? '' : 'date to be set',
         f.court ? 'Court ' + esc(f.court) : ''].filter(Boolean).join(' · ') + '</div></div>';
   };
@@ -13061,7 +13082,25 @@ function pubClient() {
     var b = e.target && e.target.closest ? e.target.closest('[data-t]') : null;
     if (b) { show(b.getAttribute('data-t')); window.scrollTo(0, 0); }
   });
+  /* The same sum the tool does, done here every second: a published page is
+     a photograph, and a photograph of a clock is wrong the moment it is
+     taken. */
+  function clocks() {
+    var els = document.querySelectorAll('[data-lv]'), i;
+    for (i = 0; i < els.length; i++) {
+      var el = els[i], p = el.getAttribute('data-p');
+      var base = +el.getAttribute('data-base') || 0, cap = +el.getAttribute('data-cap') || 0;
+      var run = el.getAttribute('data-run') === '1', t0 = +el.getAttribute('data-t0') || 0;
+      var secs = (+el.getAttribute('data-el') || 0) + (run && t0 ? (Date.now() - t0) / 1000 : 0);
+      if (secs < 0) secs = 0;
+      var txt = p === 'BRK' ? 'LIVE \u00b7 half-time'
+        : 'LIVE \u00b7 ' + (p === 'ET1' || p === 'ET2' ? 'ET ' : '') +
+          (Math.min(cap, base + Math.floor(secs / 60)) + 1) + '\u2032';
+      el.textContent = '\u25CF ' + txt;
+    }
+  }
   show(cur); ago(); setInterval(ago, 30000);
+  clocks(); setInterval(clocks, 1000);
   // every orange on the page walks the house palettes, as the tool's rail does
   var PAL = ['#ff924d', '#d6d3ce', '#9ad3da', '#86c5e8', '#5fd3d3', '#7fd6b0', '#00a8a8', '#ada69c'], STEP = 7000, HOLD = 4500;
   function hex(s) { return [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)]; }
@@ -14942,7 +14981,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '02 Nov 18:45 · 30bf035'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '02 Nov 19:03 · 87a2f66'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
