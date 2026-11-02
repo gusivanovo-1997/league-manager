@@ -1610,7 +1610,7 @@ td.num .gboot,th .gboot{margin:0}
 .sh-in .crest{width:clamp(18px,40cqmin,66px);height:clamp(18px,40cqmin,66px);margin:0;filter:drop-shadow(0 2px 4px rgba(0,0,0,.45))}
 .sh-in b{font-size:clamp(13px,21cqmin,36px);letter-spacing:-.5px;font-weight:800;line-height:1;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.65)}
 .sh-in em{font-style:normal;font-size:clamp(9px,8cqmin,13px);font-weight:700;color:#fff;background:rgba(0,0,0,.28);border-radius:999px;padding:1px 9px;text-shadow:0 1px 2px rgba(0,0,0,.6)}
-@container (min-aspect-ratio:2/1){.sh-in{flex-direction:row;gap:14px}.sh-in .crest{width:clamp(18px,58cqh,72px);height:clamp(18px,58cqh,72px)}.sh-in b{font-size:clamp(13px,34cqh,38px)}}@container (max-height:105px){.sh-in em{display:none}}@container (max-height:62px){.sh-in .crest{display:none}}
+@container (min-aspect-ratio:2/1){.sh-in{flex-direction:row;gap:14px}.sh-in .crest{width:clamp(18px,58cqh,72px);height:clamp(18px,58cqh,72px)}.sh-in b{font-size:clamp(13px,34cqh,38px)}}@container (max-height:105px){.sh-in{gap:3px}.sh-in em{font-size:clamp(8px,7cqmin,11px);padding:0 6px;letter-spacing:-.2px}}@container (max-height:62px){.sh-in .crest{display:none}.sh-in em{font-size:9px;padding:0 5px}}@container (max-height:34px){.sh-in em{display:none}}
 @keyframes shIn{from{opacity:0;transform:scale(.85)}}
 .sh-t:hover{transform:scale(1.02);z-index:1}
 .sh-in::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(120% 70% at 30% 0%,rgba(255,255,255,.16),transparent 60%)}
@@ -12780,7 +12780,7 @@ const PUB_SHARE_CSS =
     'border-radius:999px;padding:1px 9px;text-shadow:0 1px 2px rgba(0,0,0,.6)}' +
   '@container (min-aspect-ratio:2/1){.sh-in{flex-direction:row;gap:14px}' +
     '.sh-in .crest{width:clamp(18px,58cqh,72px);height:clamp(18px,58cqh,72px)}.sh-in b{font-size:clamp(13px,34cqh,38px)}}' +
-  '@container (max-height:105px){.sh-in em{display:none}}@container (max-height:62px){.sh-in .crest{display:none}}' +
+  '@container (max-height:105px){.sh-in{gap:3px}.sh-in em{font-size:clamp(8px,7cqmin,11px);padding:0 6px;letter-spacing:-.2px}}@container (max-height:62px){.sh-in .crest{display:none}.sh-in em{font-size:9px;padding:0 5px}}@container (max-height:34px){.sh-in em{display:none}}' +
   '@keyframes shIn{from{opacity:0;transform:scale(.85)}}' +
   '@media (max-width:700px){.share{aspect-ratio:1/1;min-height:0}}' +
   '@media (prefers-reduced-motion:reduce){.sh-t{animation:none}}';
@@ -15109,7 +15109,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '02 Nov 20:21 · 1c1574c'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '02 Nov 20:33 · 1549fdb'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
