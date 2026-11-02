@@ -44,6 +44,10 @@ header{display:flex;align-items:center;gap:14px;padding:10px 16px;background:lin
 .brand.stack{flex-direction:column;gap:9px;text-align:center}
 .brand.stack .title-wrap{align-items:center}
 .brand.stack .ballring{width:58px;height:58px}
+/* on the sign-in screen the mark is the whole page, so the ball sits back a
+   little and lets the name carry it */
+#gate .brand.stack .ballring{width:44px;height:44px;padding:1.5px;border-width:1.5px;
+  box-shadow:0 0 10px -4px currentColor}
 .ballmark{width:12px;height:12px;display:block;animation:ballTurn 14s linear infinite}
 @keyframes ballTurn{to{transform:rotate(360deg)}}
 .title-wrap h1{font-size:calc(15px * var(--fs));margin:2px 0 0;font-weight:600}
@@ -314,7 +318,12 @@ nav button.livenow.flash{animation:liveFlash 1.5s ease-in-out infinite}
    top when there is not — align-items:center would put the mark off-screen */
 .gate-box{width:100%;max-width:330px;margin:auto;background:var(--panel);border:1px solid var(--line2);
   border-radius:14px;padding:22px 20px;box-shadow:0 22px 70px rgba(0,0,0,.55)}
-.gate-box h2{font-size:calc(16px * var(--fs));margin:8px 0 14px;text-align:center;font-weight:600}
+/* the one question the screen asks, lettered as the name is — the same
+   monospace capitals, a size down and in the reading grey, so it reads as
+   an instruction under the mark rather than a second title */
+.gate-box h2{font:600 calc(11.5px * var(--fs))/1.6 ui-monospace,'Cascadia Mono',Consolas,monospace;
+  letter-spacing:2.4px;text-transform:uppercase;color:var(--dim);
+  margin:14px 0 12px;text-align:center;text-indent:2.4px}
 #gatePin{text-align:center;font-size:calc(24px * var(--fs));letter-spacing:9px;padding:11px 8px;
   font-family:ui-monospace,'Cascadia Mono',Consolas,monospace}
 #gatePin.err{border-color:var(--bad)}
@@ -1036,8 +1045,8 @@ body.cupmode .leaguecard{display:none}
    letter-spaced, the lit word carrying its own glow and the plain one
    stepping back. The two sit one above the other, because on this screen
    the mark is all there is. */
-#gate .title-wrap h1{font:700 calc(15px * var(--fs))/1.5 ui-monospace,'Cascadia Mono',Consolas,monospace;
-  letter-spacing:3px;text-transform:uppercase;margin:4px 0 0;text-indent:3px}
+#gate .title-wrap h1{font:700 calc(17.5px * var(--fs))/1.5 ui-monospace,'Cascadia Mono',Consolas,monospace;
+  letter-spacing:3.4px;text-transform:uppercase;margin:4px 0 0;text-indent:3.4px}
 #gate .title-wrap h1 span{display:block}
 #gate .title-wrap h1 .lg{text-shadow:0 0 14px color-mix(in srgb,currentColor 55%,transparent)}
 #gate .title-wrap h1 .mg{color:var(--dim);font-weight:400;text-shadow:none}
@@ -15094,7 +15103,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '02 Nov 20:12 · d2406b0'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '02 Nov 20:15 · ef6ac68'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
