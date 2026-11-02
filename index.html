@@ -514,6 +514,8 @@ nav button.on{border-bottom-color:transparent}
 .stat:hover{transform:translateY(-3px);box-shadow:var(--e2),var(--hair)}
 .stat .v{font-variant-numeric:tabular-nums;letter-spacing:-1px}
 .pill{transition:transform .2s var(--ease),box-shadow .2s var(--ease)}
+/* the team with the week off: present on the page, and plainly not a result */
+.pill.bye{background:var(--chip);color:var(--dim);border-style:dashed}
 .pill.ok{background:rgba(70,224,138,.12)}
 .pill.warn{background:rgba(255,210,77,.12)}
 .pill.bad{background:rgba(255,107,107,.12)}
@@ -5510,6 +5512,25 @@ const SEMI_STAGES = ['SF1', 'SF2', 'SV1', 'SV2'];
 const STAGE_TIER = { regular: 0, SF1: 1, SF2: 1, SV1: 1, SV2: 1, P3: 2, SV3: 2, SVF: 2, F: 3 };
 const roundKey = f => f.stage === 'regular' ? 'R' + f.round : SEMI_STAGES.indexOf(f.stage) >= 0 ? 'SEMI' : 'FINAL';
 const roundName = k => k === 'SEMI' ? 'Semi-finals' : k === 'FINAL' ? 'Finals' : 'Round ' + String(k).slice(1);
+/* Who is out this week. An odd number of teams leaves one side resting every
+   round, and a draw that simply does not mention them reads as a team
+   forgotten rather than a team with a week off — which is exactly how an
+   odd-numbered season looks wrong when it is right.
+
+   Only the league's own rounds: in the finals nearly everybody is out, and
+   calling that a bye would be nonsense. */
+function byesIn(key) {
+  if (!/^R/.test(String(key))) return [];
+  const fx = DB.fixtures.filter(f => roundKey(f) === key);
+  if (!fx.length) return [];
+  const playing = new Set();
+  fx.forEach(f => { playing.add(f.homeId); playing.add(f.awayId); });
+  const out = DB.teams.filter(t => !playing.has(t.id));
+  return out.length * 2 < DB.teams.length ? out : [];     // a round most of the league is missing is not a bye
+}
+const byeChip = key => { const b = byesIn(key);
+  return b.length ? '<span class="pill bye" data-tip="No match this round">' +
+    (b.length === 1 ? 'Bye' : 'Byes') + ' · ' + b.map(t => esc(t.name)).join(', ') + '</span>' : ''; };
 const rkOrder = k => k === 'FINAL' ? 1e6 : k === 'SEMI' ? 1e6 - 1 : (+String(k).slice(1) || 0);
 /* ── a night called off, and a match nobody turned up for ──────────────
    Rain, a flooded court, a power cut: the round is not played, and it is
@@ -7452,7 +7473,7 @@ function printDraw() {
   const groups = [];
   [...new Set(reg.map(f => f.round))].sort((a, b) => a - b).forEach(r => {
     if (pick && pick !== String(r)) return;
-    groups.push({ title: 'Round ' + r, fx: reg.filter(f => f.round === r) });
+    groups.push({ title: 'Round ' + r, fx: reg.filter(f => f.round === r), bye: byesIn('R' + r) });
   });
   [['SEMI', 'Semi-finals'], ['FINAL', 'Finals']].forEach(([k, t]) => {
     if (pick && pick !== k) return;
@@ -7467,7 +7488,8 @@ function printDraw() {
   const body = groups.map((g, i) => {
     const dates = [...new Set(g.fx.map(f => f.date).filter(Boolean))].sort().map(fmtDate).join(', ');
     return '<section class="rd' + (g.ko === 'FINAL' ? ' gold' : g.ko === 'SEMI' ? ' silver' : i % 2 ? ' alt' : '') + '">' +
-      '<h2>' + esc(g.title) + '<span>' + esc(dates || 'date to be set') + '</span></h2><table>' +
+      '<h2>' + esc(g.title) + '<span>' + esc(dates || 'date to be set') +
+        (g.bye && g.bye.length ? ' · bye: ' + esc(g.bye.map(t => t.name).join(', ')) : '') + '</span></h2><table>' +
       g.fx.slice().sort((a, b) => when(a).localeCompare(when(b)) || (STAGE_TIER[a.stage] - STAGE_TIER[b.stage])).map(f =>
         '<tr><td class="t">' + esc(f.time || '—') + '</td>' + (courts ? '<td class="c">' + (f.court ? 'Court ' + esc(f.court) : '') + '</td>' : '') +
           (g.ko ? '<td class="k">' + esc(stageLabel(f.stage)) + '</td>' : '') +
@@ -7604,6 +7626,7 @@ function renderFixtures() {
       if (last !== null) html += '</table></div>';
       html += '<div class="tbl-wrap fxsec ' + secCls(sec++) + '"><div class="row" style="margin:2px 0 6px">' +
         '<b>Round ' + f.round + '</b><span class="muted small">' + fmtDate(nightOf[f.round]) + '</span>' +
+        byeChip('R' + f.round) +
         '<div class="spacer"></div>' + roundTools('R' + f.round) + '</div>' +
         '<table><tr><th>Time</th><th>Court</th><th>Home</th><th class="num">Score</th><th>Away</th><th>Status</th><th></th></tr>';
       last = f.round;
@@ -12812,6 +12835,8 @@ function publicPageHtml() {
   };
   const empty = t => '<div class="empty">' + t + '</div>';
   const live = DB.fixtures.filter(liveNow).sort(order);
+  const onNow = new Set(live.map(f => f.id));
+  const nextFx = (d.nextFx || []).filter(f => !onNow.has(f.id));
   const cut = ko && st.length >= 4 && ph.mode !== 'wrap' ? 4 : 0, cutS = ko && st.length >= 8 && ph.mode !== 'wrap' ? 8 : 0;
   const q = r => r.pos <= cut ? ' class="qg"' : r.pos <= cutS ? ' class="qs"' : '';
   const gd = r => (r.GD > 0 ? '+' : '') + r.GD;
@@ -12845,7 +12870,11 @@ function publicPageHtml() {
       (s[0] === 'Golden Boot' ? '' : s[5] && s[5].length ? s[5].map(dot).join('') : s[3] ? dot(s[3]) : '') + esc(s[1]) + '</b>' +
       '<em>' + esc(s[2]) + '</em></div>').join('') + '</div>' +
     (live.length ? h2('Live now', live) + grid(live) : '') +
-    (d.nextFx.length ? h2(esc(d.nextTitle), d.nextFx) + grid(d.nextFx.slice().sort(order)) : '') +
+    /* A match being played belongs under Live now and nowhere else. It used
+       to sit in the round's list of games to come as well, so the same
+       fixture appeared twice on the page — once with a clock running and
+       once as if it had not started. */
+    (nextFx.length ? h2(esc(d.nextTitle), nextFx) + grid(nextFx.slice().sort(order)) : '') +
     (d.lastFx.length ? h2(esc(d.lastTitle), d.lastFx) + grid(d.lastFx.slice().sort(order)) : '') +
     '<div class="two">' + (isCup() ? '' : '<div>' + h2('Table') + (st.length ? '<div class="tw"><table><tr><th class="n">#</th><th>Team</th>' +
         '<th class="n">P</th><th class="n">GD</th><th class="n">Pts</th></tr>' +
@@ -14895,7 +14924,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '02 Nov 17:15 · 25ab95a'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '02 Nov 18:03 · 57a63d5'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
