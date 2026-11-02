@@ -3015,6 +3015,7 @@ let storageOk = true, unsaved = false;
    loaded instead and the person is told to redo the last step. */
 let lastRaw = null;
 function save() {
+  XL.sig = null;                                  // a career read from another league is no longer current
   if (!storageOk) { unsaved = true; return; }
   if (typeof cupAdvance === 'function') cupAdvance();   // a cup: the winners meet in the next round
   if (typeof autoFinals === 'function') autoFinals();   // the season is over: draw the semis
@@ -6736,6 +6737,51 @@ const moveMark = (mv, id) => !mv ? '' : mv[id] > 0
   ? '<i class="tmv up" data-tip="Up ' + mv[id] + '">' + MV_CHEV + '</i>'
   : mv[id] < 0 ? '<i class="tmv dn" data-tip="Down ' + (-mv[id]) + '">' + MV_CHEV + '</i>'
   : '<i class="tmv same" data-tip="No change">&ndash;</i>';
+/* A player's record is kept in the league they played it in — that is how
+   the file is built and how it has to stay: two competitions keep their own
+   squads, their own fees and their own table, and a goal in one is not a
+   goal in the other.
+
+   But a player is one person, and the Players tab is THEIR record rather
+   than the competition's. A league that finishes and is followed by a new
+   one used to leave the old numbers behind in the old league, where the new
+   squads could not see them, so every player looked as though they had just
+   started. So every other league held on this machine is read as well, and
+   the seasons it keeps for somebody of the same name are added to their
+   career: games, goals, hat-tricks, MVPs, cards and titles of all time,
+   with the season being played here still marked as the one happening now.
+
+   Matching is by name, because a player registered in two competitions is
+   two records with two ids and nothing else to go on. The seasons that come
+   in this way are read-only — they are corrected in the league that holds
+   them — and the teams they were played for stay out of this league's team
+   filter, which is still about who is in which squad here. */
+const careerKey = n => String(n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+let XL = { sig: null, by: {} }, XLBUSY = false;
+function crossRows() {
+  // reading another league means binding DB to it, so never from inside that read
+  if (XLBUSY || (ROOT.leagues || []).length < 2) return {};
+  const sig = ROOT.active + '|' + ROOT.leagues.map(l => l.id).join(',');
+  if (XL.sig === sig) return XL.by;
+  const by = {};
+  XLBUSY = true;
+  try {
+    (ROOT.leagues || []).forEach(l => {
+      if (!l || l.id === ROOT.active || l.demo) return;
+      const nm = leagueName(l);
+      inLeague(l.id, () => {
+        Object.values(careers().by).forEach(c => {
+          const k = careerKey(c.n);
+          if (!k || !c.rows.length) return;
+          (by[k] || (by[k] = [])).push.apply(by[k], c.rows.map(x =>
+            ({ s: Object.assign({}, x.s, { other: nm, live: false }), r: x.r })));
+        });
+      });
+    });
+  } finally { XLBUSY = false; }
+  XL = { sig, by };
+  return by;
+}
 const seasonOrder = s => (+s.year || 0) * 10 + (+((/season\s*(\d+)/i.exec(s.title || '') || [])[1]) || 0);
 // every season on record plus the one being played, oldest first, and each player's whole run through them
 function careers() {
@@ -6770,6 +6816,15 @@ function careers() {
       const s = { manual: true, id: x.id, title: x.season || 'Season ' + x.year, year: +x.year || 0,
         teams: tk ? [{ id: tk, name: tt ? tt.name : x.team, colour: tt ? tt.colour : '#8a8279' }] : [] };
       add(c, s, Object.assign({ n: fullName(p), t: tk ? [tk] : [] }, x));
+    });
+  });
+  // the same player's seasons in the other competitions on this machine
+  const xl = crossRows();
+  if (Object.keys(xl).length) Object.values(by).forEach(c => {
+    const p = person(c.pid);
+    (xl[careerKey(c.n || (p ? fullName(p) : ''))] || []).forEach(x => {
+      c.rows.push(x);
+      SEASON_TOTALS.forEach(k => c[k] += +x.r[k] || 0);
     });
   });
   Object.values(by).forEach(c => {
@@ -6929,7 +6984,7 @@ function renderPlayer(data, c) {
         '</div></div>' +
       (c.now ? crest(c.now.id, 'res') : '') + '</div></div>' +
     '<div class="grid g4" style="margin-bottom:14px">' +
-      tile('Games', c.P, plural(c.rows.length, 'season')) +
+      tile('Games', c.P, plural(c.rows.length, 'season') + ' of all time') +
       tile('Goals', c.G, per + ' per game') +
       tile('Hat-tricks', c.H, c.H ? 'three or more in a match' : 'none yet') +
       tile('MVP', c.M, c.RM ? plural(c.RM, 'round') + ' as MVP of the round' : 'match MVP awards') +
@@ -6947,12 +7002,13 @@ function renderPlayer(data, c) {
     '<th class="num">Games</th><th class="num">Goals</th><th class="num">HT</th><th class="num">MVP</th><th class="num">YC</th><th class="num">RC</th><th></th>' + (mgr ? '<th></th>' : '') + '</tr>' +
     c.rows.slice().reverse().map(x => { const s = x.s, r = x.r;
       return '<tr><td><b>' + esc(s.title) + '</b>' + (s.live ? ' <span class="pill acc">now</span>' : '') +
-        (s.manual ? ' <span class="pill" data-tip="Added by hand">added</span>' : '') + (r.fixed ? ' <span class="pill warn" data-tip="Numbers corrected by a manager">corrected</span>' : '') + '</td>' +
+        (s.manual ? ' <span class="pill" data-tip="Added by hand">added</span>' : '') + (r.fixed ? ' <span class="pill warn" data-tip="Numbers corrected by a manager">corrected</span>' : '') +
+        (s.other ? ' <span class="pill" data-tip="Played in another competition — corrected there">' + esc(s.other) + '</span>' : '') + '</td>' +
       '<td class="pltms">' + ((r.t || []).length ? r.t.map(id => teamChip(s, id)).join('<span class="muted"> → </span>') : '<span class="muted">—</span>') + '</td>' +
       '<td class="num">' + (+r.P || 0) + '</td><td class="num"><b>' + (+r.G || 0) + '</b></td><td class="num">' + (+r.H || '') + '</td><td class="num">' + (+r.M || '') + '</td>' +
       '<td class="num">' + (+r.Y || '') + '</td><td class="num">' + (+r.R || '') + '</td>' +
       '<td>' + (r.C ? '<span class="gstar gtc" style="margin:0" data-tip="Champions">' + CROWN_SVG + '</span>' : '') + (r.S ? ' <span class="plsv" data-tip="Silver Cup">🥈</span>' : '') + '</td>' +
-      (mgr ? '<td style="text-align:right"><button class="btn sm" data-sedit="' + esc(key(x)) + '">Edit</button></td>' : '') + '</tr>'; }).join('') +
+      (mgr ? '<td style="text-align:right">' + (s.other ? '' : '<button class="btn sm" data-sedit="' + esc(key(x)) + '">Edit</button>') + '</td>' : '') + '</tr>'; }).join('') +
     '</table></div>' : '<div class="empty">No games on record yet.</div>') +
     (mgr ? '<div class="row" style="margin-top:10px"><button class="btn" id="plAddPast">+ Add a past competition</button></div>' : '') + '</div>';
   // moves between teams, as they were made
@@ -15153,7 +15209,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '02 Nov 20:50 · 53cc0c0'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '03 Nov 05:58 · b8934cb'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
