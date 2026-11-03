@@ -352,6 +352,12 @@ nav button.livenow.flash{animation:liveFlash 1.5s ease-in-out infinite}
 #gateMsg{min-height:17px;text-align:center;font-size:calc(12.5px * var(--fs));color:var(--bad);margin-top:10px}
 #gateMsg.ok{color:var(--ok)}
 #gateCode{text-align:center;margin-top:4px}
+/* the code is a line of text, not four digits, so it is set at a reading
+   size in the same monospace the name and the question above it use */
+#gateCodeIn{width:100%;text-align:center;padding:12px 10px;font-size:calc(12.5px * var(--fs));
+  letter-spacing:.6px;font-family:ui-monospace,'Cascadia Mono',Consolas,monospace}
+#gateJoin button{width:100%;margin-top:10px;padding:12px 0;justify-content:center;text-align:center}
+#gatePad[hidden],#gatePin[hidden],#gateJoin[hidden]{display:none}
 .swatches{display:grid;grid-template-columns:repeat(6,1fr);gap:7px}
 .sw{height:32px;border-radius:9px;border:2px solid transparent;cursor:pointer;padding:0;
   box-shadow:inset 0 0 0 1px rgba(0,0,0,.3);transition:transform .16s var(--bounce),border-color .16s}
@@ -2090,6 +2096,18 @@ tspan.gstar{fill:var(--gold)}
          still types into it, because the box is focused and not read-only. -->
     <input id="gatePin" type="password" inputmode="none" autocomplete="off" maxlength="8" placeholder="••••">
     <div id="gatePad"></div>
+    <!-- A browser that has never held this league has no PIN worth asking
+         for. What it needs first is the league itself: the code brings the
+         whole competition down, and everybody named on it with the PINs they
+         were given, so the screen can then ask for a PIN exactly as every
+         other machine does. The keypad stays one tap away for the single
+         case where there is genuinely nothing to join — a brand new league
+         being set up on this machine. -->
+    <div id="gateJoin" hidden>
+      <input id="gateCodeIn" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+             placeholder="Paste your league code">
+      <button class="btn accent" id="gateJoinGo">Join the league</button>
+    </div>
     <div id="gateMsg"></div>
     <!-- only on a copy nobody has set up yet -->
     <div id="gateCode" hidden><button class="btn sm" id="gateHaveCode">I have a code from another machine</button></div>
@@ -14515,18 +14533,25 @@ $('shareJoin').onclick = () => {
   const raw = prompt('Paste the code you were given — one league, or all of yours:');
   if (raw) joinFromCode(raw, false);
 };
-$('gateHaveCode').onclick = async () => {
-  const raw = prompt('Paste the code from the machine that already has your leagues:');
-  if (!raw) return;
+// the two screens, each one tap from the other
+$('gateHaveCode').onclick = () => { gateWant = $('gateJoin').hidden ? 'join' : 'pin'; showGate(); };
+async function gateJoinGo() {
+  const raw = ($('gateCodeIn').value || '').trim();
+  if (!raw) return $('gateCodeIn').focus();
   $('gateMsg').className = ''; $('gateMsg').textContent = 'Fetching\u2026';
   const n = await joinFromCode(raw, true);
   if (!n) { $('gateMsg').textContent = ''; return; }
   const got = (ROOT.staff || []).length;
+  gateWant = null;
+  $('gateCodeIn').value = '';
   showGate();
   $('gateMsg').className = got ? 'ok' : '';
   $('gateMsg').textContent = got ? 'Ready \u2014 sign in with your PIN.'
     : 'Joined, but nobody is named on it yet. Choose an owner PIN.';
-};
+}
+$('gateJoinGo').onclick = gateJoinGo;
+$('gateCodeIn').onkeydown = e => { if (e.key === 'Enter') gateJoinGo(); };
+$('gateCodeIn').oninput = () => { $('gateMsg').textContent = ''; };
 /* When two copies have drifted apart far enough that neither is worth
    merging, this one gives in. The league's records go, the picture it had of
    the shared copy goes with them — both, or the empty league would be read
@@ -15261,7 +15286,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '03 Nov 06:11 · 8286bfd'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '03 Nov 12:28 · 3620e03'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
@@ -15338,11 +15363,28 @@ const allowedView = v => isMgr() || REF_VIEWS.indexOf(v) >= 0;
 const pinOf = k => String((DB.access && DB.access[k]) || blankDB().access[k]);
 
 let gateSetup = false;                  // nobody on this copy yet: it is asking for an owner, not for a sign-in
+let gateWant = null;                    // and which of the two screens the person has asked for
 function showGate() {
   role = null; me = null;
   gateSetup = !(ROOT.staff || []).length;
-  $('gateTitle').textContent = gateSetup ? 'Choose an owner PIN' : 'Enter your PIN';
-  $('gateCode').hidden = !gateSetup;
+  /* Nothing here but the sample league: this browser has never seen any of
+     ours, so a keypad is asking a question it cannot answer — a fresh copy
+     comes with an Owner and a starting PIN of its own, which is nobody's
+     sign-in and belongs to no competition. It asks for the code instead,
+     and once that has come down — the league, the staff named on it and the
+     PINs they were given, together — it is an ordinary sign-in from then
+     on, on this machine as on every other. */
+  const fresh = !(ROOT.leagues || []).some(l => l && !l.demo);
+  if (!fresh) gateWant = null;              // a league is here: the keypad is the screen again
+  const join = fresh && (gateWant || 'join') === 'join';
+  $('gateTitle').textContent = join ? 'Enter your league code'
+    : gateSetup ? 'Choose an owner PIN' : 'Enter your PIN';
+  $('gateJoin').hidden = !join;
+  $('gatePin').hidden = join;
+  $('gatePad').hidden = join;
+  $('gateCode').hidden = !(gateSetup || fresh);
+  $('gateHaveCode').textContent = join ? 'Setting up a brand new league here'
+    : 'I have a code from another machine';
   $('gateMsg').className = '';
   $('leagueBar').hidden = true;
   $('syncChip').hidden = true;
@@ -15354,7 +15396,7 @@ function showGate() {
   $('gatePin').value = '';
   $('gateMsg').textContent = '';
   $('gate').classList.add('on');
-  setTimeout(() => { try { $('gatePin').focus(); } catch (e) {} }, 60);
+  setTimeout(() => { try { $(join ? 'gateCodeIn' : 'gatePin').focus(); } catch (e) {} }, 60);
 }
 function unlock(person) {
   me = person;
