@@ -6622,6 +6622,8 @@ const slimFx = f => {
   if (f.awayPens != null) o.awayPens = f.awayPens;
   if (attendedIn(f).length) o.attended = attendedIn(f).slice();
   if (f.guestOf && Object.keys(f.guestOf).length) o.guestOf = Object.assign({}, f.guestOf);
+  // who the referee named, which the goals cannot be read back from
+  if (f.mvp) o.mvp = f.mvp;
   const ev = (f.events || []).filter(e => e.type !== 'injury').map(e => e.adj ? [e.type, e.personId || '', e.teamId || '', 1, e.id] : [e.type, e.personId || '', e.teamId || '', 0]);
   if (ev.length) o.ev = ev;
   return o;
@@ -8670,8 +8672,12 @@ function askExtraTime(f, andStart) {
     '<div class="small muted" style="margin-top:6px">Confirm this is the score after both halves, a draw, and extra time starts: 2 × ' + etMin() + ' minutes.</div>',
     [{ label: 'Cancel' }, { label: 'Confirm the draw — extra time', cls: 'ok', fn: () => { setPeriod('ET1', andStart); } }]);
 }
-// fouls are counted per half, as in futsal: extra time carries on from the second half
-const foulHalf = p => p === 'H1' || p === 'BRK' ? 'H1' : 'H2';
+/* Fouls are counted per half, as in futsal: five and the next one is a free
+   kick, and the count starts again at nought in the second half. The break
+   used to go on showing the first half's five, which read as a count that
+   never reset — the half it belonged to was over. It reads nought from the
+   whistle now, and extra time carries on from the second half. */
+const foulHalf = p => p === 'H1' ? 'H1' : 'H2';
 function setPeriod(p, andStart) {
   live.period = p;
   // going into extra time is recorded on the match, so every result line can say "aet"
@@ -9359,7 +9365,7 @@ function resetMatch(f, sure) {
   f.attended = [];
   f.status = 'scheduled'; f.homeGoals = 0; f.awayGoals = 0; f.homePens = null; f.awayPens = null;
   delete f.wo; delete f.offReason; delete f.offAt;
-  ['guestOf', 'manual', 'aet', 'ntH', 'ntA', 'clock', 'openedBy', 'openedWin', 'openedAt', 'fouls', 'ran'].forEach(k => delete f[k]);
+  ['guestOf', 'manual', 'aet', 'ntH', 'ntA', 'clock', 'openedBy', 'openedWin', 'openedAt', 'fouls', 'ran', 'mvp'].forEach(k => delete f[k]);
   if (live.id === f.id) { live.running = false; clearInterval(liveTimer); live = { id: null, running: false, elapsed: 0, half: 1, period: 'H1', t0: 0 }; }
   DB.fixtures = DB.fixtures.filter(x => !drop(x));        // syncFinals makes it again once both semis are won
   if (save() === false) return false;
@@ -9459,6 +9465,34 @@ function finaliseMatch(f) {
   };
   // Only a manager may type a score that disagrees with the events.
   const editable = isMgr();
+  /* Everybody who could have played: each squad in shirt-number order with
+     whoever guested for them, and a word beside anybody who was not ticked
+     in — the referee knows who was on the court, and a list that argues
+     with them is no use. */
+  const mvpPicker = () => {
+    const inSet = new Set(attendedIn(f));
+    const grp = tid => {
+      const t = team(tid);
+      if (!t) return '';
+      const ids = [...new Set((t.players || []).slice().sort((a, b) => (a.number || 99) - (b.number || 99))
+        .map(p => p.personId)
+        .concat(Object.keys(f.guestOf || {}).filter(pid => f.guestOf[pid] === tid)))];
+      const rows = ids.filter(pid => person(pid)).map(pid =>
+        '<option value="' + esc(pid) + '"' + (f.mvp === pid ? ' selected' : '') + '>' +
+        esc(personName(pid)) + (inSet.size && !inSet.has(pid) ? ' — not ticked in' : '') + '</option>');
+      return rows.length ? '<optgroup label="' + esc(teamName(tid)) + '">' + rows.join('') + '</optgroup>' : '';
+    };
+    const g = grp(f.homeId) + grp(f.awayId);
+    return !g ? '' :
+      '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">' +
+        '<div class="small" style="font-weight:600;margin-bottom:5px">Man of the match</div>' +
+        '<select id="fnMvp" style="width:100%">' +
+          '<option value="">Not named — the most goals takes it</option>' + g + '</select>' +
+        '<div class="small muted" style="margin-top:6px">Name somebody and it is theirs, whatever the ' +
+          'score sheet says — a keeper who kept them in it counts the same as a hat-trick. Leave it ' +
+          'unnamed and the most goals in the match takes it, as before.</div>' +
+      '</div>';
+  };
   modal('Finalise result',
     '<div class="row" style="justify-content:center;gap:14px;margin-bottom:12px">' +
       '<b>' + esc(teamName(f.homeId)) + '</b>' +
@@ -9487,6 +9521,7 @@ function finaliseMatch(f) {
         '<input type="number" id="fnPkH" min="0" value="' + pkPre[0] + '" style="width:62px;text-align:center"> – ' +
         '<input type="number" id="fnPkA" min="0" value="' + pkPre[1] + '" style="width:62px;text-align:center"></div>' +
       '<div id="fnKoLine" style="margin-top:9px"></div></div>' : '') +
+    mvpPicker() +
     '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">' +
       '<div class="small" style="font-weight:600;margin-bottom:2px">Matches played</div>' +
       net(f.homeId, 'fnH') + net(f.awayId, 'fnA') + '</div>',
@@ -9533,6 +9568,8 @@ function finaliseMatch(f) {
         if (ko.aet) { f.ntH = ko.ntH; f.ntA = ko.ntA; } else { delete f.ntH; delete f.ntA; }
         f.homePens = ko.pkH; f.awayPens = ko.pkA;
       }
+      const pick = $('fnMvp') ? $('fnMvp').value : (f.mvp || '');
+      if (pick && person(pick)) f.mvp = pick; else delete f.mvp;
       f.manual = editable && (hg !== sNow.h || ag !== sNow.a);
       if (f.status !== 'final') serveSuspensions(f);          // cards become suspensions, and suspensions are served
       f.status = 'final';
@@ -9661,7 +9698,7 @@ function renderResults() {
           (koStrip(f) ? '<div class="rko">' + koStrip(f) + '</div>' : '') +
           '<div class="revs"><div>' + resultLines(f, 'h') + '</div><div>' + resultLines(f, 'a') + '</div></div>' +
           // the most goals in the match makes the MVP; level tallies share it
-          ((m => m ? '<div class="rmvp"><span class="mvp">MVP</span> <b>' + scorerLinks(m) + '</b> · ' + plural(m.goals, 'goal') + '</div>' : '')(
+          ((m => m ? '<div class="rmvp"><span class="mvp">MVP</span> <b>' + scorerLinks(m) + '</b> · ' + mvpGoals(m) + '</div>' : '')(
             f.status === 'final' ? matchMvp(f) : null)) + '</div>';
       }).join('') + '</div></details>';
   }).join('');
@@ -10433,6 +10470,18 @@ function goalsByPlayer(f) {
 }
 function matchMvp(f) {
   if (!bootOn() || !f || f.status !== 'final') return null;
+  /* The referee was there and the tally was not. If they named somebody as
+     the result went in, that is the man of the match: a keeper who kept his
+     side in it, a defender who never gave a yard, anyone the goals cannot
+     see. It counts as an MVP award in their record like any other.
+
+     Nobody named, and it falls back to the goals exactly as it always has —
+     most goals in the match, the losing side's hat-trick over a winner's
+     brace, and a draw settled from a fixed seed. */
+  if (f.mvp && person(f.mvp)) {
+    const g = (goalsByPlayer(f)[f.mvp] || {}).goals || 0;
+    return { ids: [f.mvp], goals: g, ref: true };
+  }
   const by = goalsByPlayer(f), all = Object.keys(by);
   if (!all.length) return null;
   const top = ids => { const g = Math.max(0, ...ids.map(id => by[id].goals));
@@ -10477,7 +10526,11 @@ const scorerNames = t => t.ids.map(id => esc(personName(id))).join(' & ');
    the same number — "2 goals each" — and each wears a different badge, so
    the badge belongs beside the name rather than once at the front. */
 const mvpTeams = m => (m ? m.ids : []).map(id => (personTeam(id) || {}).id).filter(Boolean);
-const mvpGoals = m => plural(m.goals, 'goal') + (m.ids.length > 1 ? ' each' : '');
+/* A referee's pick is explained by the referee, not by a tally — and "0
+   goals" under a goalkeeper's name explains nothing at all. */
+const mvpGoals = m => m.ref
+  ? (m.goals ? plural(m.goals, 'goal') + ' · the referee\'s call' : 'the referee\'s call')
+  : plural(m.goals, 'goal') + (m.ids.length > 1 ? ' each' : '');
 // name with its crest, for whichever surface is asking
 const mvpNamed = (m, mark, join) => m.ids.map(id =>
   (mark ? mark((personTeam(id) || {}).id) : '') + esc(personName(id))).join(join || ', ');
@@ -15286,7 +15339,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '03 Nov 12:28 · 3620e03'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '08 Nov 19:04 · c8c4a41'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
