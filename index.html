@@ -6622,7 +6622,7 @@ const slimFx = f => {
   if (f.awayPens != null) o.awayPens = f.awayPens;
   if (attendedIn(f).length) o.attended = attendedIn(f).slice();
   if (f.guestOf && Object.keys(f.guestOf).length) o.guestOf = Object.assign({}, f.guestOf);
-  // who the referee named, which the goals cannot be read back from
+  // the man of the match, which the goals cannot be read back from
   if (f.mvp) o.mvp = f.mvp;
   const ev = (f.events || []).filter(e => e.type !== 'injury').map(e => e.adj ? [e.type, e.personId || '', e.teamId || '', 1, e.id] : [e.type, e.personId || '', e.teamId || '', 0]);
   if (ev.length) o.ev = ev;
@@ -9467,8 +9467,8 @@ function finaliseMatch(f) {
   const editable = isMgr();
   /* Everybody who could have played: each squad in shirt-number order with
      whoever guested for them, and a word beside anybody who was not ticked
-     in — the referee knows who was on the court, and a list that argues
-     with them is no use. */
+     in — whoever closes the match knows who was on the court, and a list
+     that argues with them is no use. */
   const mvpPicker = () => {
     const inSet = new Set(attendedIn(f));
     const grp = tid => {
@@ -9698,7 +9698,7 @@ function renderResults() {
           (koStrip(f) ? '<div class="rko">' + koStrip(f) + '</div>' : '') +
           '<div class="revs"><div>' + resultLines(f, 'h') + '</div><div>' + resultLines(f, 'a') + '</div></div>' +
           // the most goals in the match makes the MVP; level tallies share it
-          ((m => m ? '<div class="rmvp"><span class="mvp">MVP</span> <b>' + scorerLinks(m) + '</b> · ' + mvpGoals(m) + '</div>' : '')(
+          ((m => m ? '<div class="rmvp"><span class="mvp">MVP</span> <b>' + scorerLinks(m) + '</b>' + mvpAfter(m) + '</div>' : '')(
             f.status === 'final' ? matchMvp(f) : null)) + '</div>';
       }).join('') + '</div></details>';
   }).join('');
@@ -10470,17 +10470,17 @@ function goalsByPlayer(f) {
 }
 function matchMvp(f) {
   if (!bootOn() || !f || f.status !== 'final') return null;
-  /* The referee was there and the tally was not. If they named somebody as
-     the result went in, that is the man of the match: a keeper who kept his
-     side in it, a defender who never gave a yard, anyone the goals cannot
-     see. It counts as an MVP award in their record like any other.
+  /* A match can name its own man of the match, and when it does that is who
+     it is: a keeper who kept his side in it, a defender who never gave a
+     yard, anyone the goals cannot see. It counts in their record like any
+     other award, and nothing anywhere says how it was arrived at.
 
-     Nobody named, and it falls back to the goals exactly as it always has —
+     With nobody named it falls back to the goals exactly as it always has —
      most goals in the match, the losing side's hat-trick over a winner's
      brace, and a draw settled from a fixed seed. */
   if (f.mvp && person(f.mvp)) {
     const g = (goalsByPlayer(f)[f.mvp] || {}).goals || 0;
-    return { ids: [f.mvp], goals: g, ref: true };
+    return { ids: [f.mvp], goals: g };
   }
   const by = goalsByPlayer(f), all = Object.keys(by);
   if (!all.length) return null;
@@ -10526,11 +10526,12 @@ const scorerNames = t => t.ids.map(id => esc(personName(id))).join(' & ');
    the same number — "2 goals each" — and each wears a different badge, so
    the badge belongs beside the name rather than once at the front. */
 const mvpTeams = m => (m ? m.ids : []).map(id => (personTeam(id) || {}).id).filter(Boolean);
-/* A referee's pick is explained by the referee, not by a tally — and "0
-   goals" under a goalkeeper's name explains nothing at all. */
-const mvpGoals = m => m.ref
-  ? (m.goals ? plural(m.goals, 'goal') + ' · the referee\'s call' : 'the referee\'s call')
-  : plural(m.goals, 'goal') + (m.ids.length > 1 ? ' each' : '');
+const mvpGoals = m => plural(m.goals, 'goal') + (m.ids.length > 1 ? ' each' : '');
+/* What is said after the name, where there is anything worth saying. A man
+   of the match who did not score is simply the man of the match: the line
+   stops at his name rather than reading "0 goals" under a goalkeeper, and
+   nowhere does the award explain how it was arrived at. */
+const mvpAfter = (m, sep) => m && m.goals ? (sep || ' · ') + mvpGoals(m) : '';
 // name with its crest, for whichever surface is asking
 const mvpNamed = (m, mark, join) => m.ids.map(id =>
   (mark ? mark((personTeam(id) || {}).id) : '') + esc(personName(id))).join(join || ', ');
@@ -12531,7 +12532,7 @@ function emailHtmlRaw(d, ball, crests) {
   const mvpOf = f => { const m = matchMvp(f);
     return m ? '<div style="font-size:12px;margin-top:4px;color:' + INK + '">' + MVP + ' ' +
       m.ids.map(id => '<b style="white-space:nowrap">' + badge((personTeam(id) || {}).id, 18) + esc(personName(id)) + '</b>').join(', ') +
-      ' &middot; ' + mvpGoals(m) + '</div>' : ''; };
+      mvpAfter(m, ' &middot; ') + '</div>' : ''; };
   const mark = px => ball ? '<img src="' + esc(ball) + '" width="' + px + '" height="' + px +
     '" alt="" style="display:block;border:0;outline:none">' : '';
   // the boot, pointed at the same way the crests are
@@ -13133,7 +13134,7 @@ function publicPageHtml() {
         '<span class="t' + (w === f.awayId ? ' w' : '') + '">' + dot(f.awayId) + '<span class="nm">' + esc(teamName(f.awayId)) + '</span></span></div>' +
       (steps ? '<div class="kon">' + esc(steps).replace(/, /g, ' <i>›</i> ') + '</div>' : '') +
       (!lean && (hs || as) ? '<div class="evs"><span>' + hs + '</span><span>' + as + '</span></div>' : '') +
-      ((m => m ? '<div class="mvp"><span>MVP</span> ' + mvpNamed(m, dot, ' ') + ' &middot; ' + mvpGoals(m) + '</div>' : '')(done ? matchMvp(f) : null)) +
+      ((m => m ? '<div class="mvp"><span>MVP</span> ' + mvpNamed(m, dot, ' ') + mvpAfter(m, ' &middot; ') + '</div>' : '')(done ? matchMvp(f) : null)) +
       '<div class="meta">' + [on ? liveTag(f) : '', isWO(f) ? '<b class="wo">walkover</b>' : '',
         f.date ? esc(fmtDate(f.date)) + (isMoved(f) ? ' <b class="rsx">rescheduled</b>' : '') : s ? '' : 'date to be set',
         f.court ? 'Court ' + esc(f.court) : ''].filter(Boolean).join(' · ') + '</div></div>';
@@ -15339,7 +15340,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '08 Nov 19:04 · c8c4a41'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '10 Nov 08:06 · c84a240'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
