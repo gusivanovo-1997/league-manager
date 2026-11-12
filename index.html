@@ -7599,7 +7599,12 @@ function generateFixtures(keepHistory) {
   if ($('fxFormat').value === 'world') {
     if (teams.length !== WC_TEAMS) return toast('The World Cup format needs exactly ' + WC_TEAMS +
       ' teams — there ' + (teams.length === 1 ? 'is 1' : 'are ' + teams.length) + '.', 'bad');
-    DB.teams.forEach((t, i) => { const row = Math.floor(i / 12), k = i % 12;
+    /* A grouping already set is a grouping somebody meant: a real draw typed
+       in, or a file that carries one. It is kept as long as it is a whole
+       one — twelve groups of exactly four. Otherwise the teams are dealt out
+       down and back as above. */
+    const already = WC_GRPS.every(g => DB.teams.filter(t => t.grp === g).length === 4);
+    if (!already) DB.teams.forEach((t, i) => { const row = Math.floor(i / 12), k = i % 12;
       t.grp = WC_GRPS[row % 2 ? 11 - k : k]; });
     const grp = {};
     WC_GRPS.forEach(g => grp[g] = DB.teams.filter(t => t.grp === g).map(t => t.id));
@@ -15690,7 +15695,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '12 Nov 16:03 · 94689d0'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '12 Nov 16:10 · 89645ea'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
