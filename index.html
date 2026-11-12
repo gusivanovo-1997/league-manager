@@ -14887,27 +14887,44 @@ async function joinFromCode(raw, atGate) {
   const list = (Array.isArray(j) ? j : [j]).filter(x => x && x.u && x.k);
   if (!list.length) { toast('That is not a join code.', 'bad'); return 0; }
   let added = 0, had = 0, open = null;
+  const touched = [];
   list.forEach(x => {
     const already = ROOT.leagues.find(l => (l.publish || {}).url === x.u && (l.publish || {}).key === x.k);
-    if (already) { had++; open = open || already; return; }
+    if (already) { had++; open = open || already; touched.push(already); return; }
     const l = blankLeague();
     l.name = x.n || 'Shared league';
     l.publish = { url: x.u, key: x.k, auto: true, share: true };
     ROOT.leagues.push(l);
     added++; open = open || l;
+    touched.push(l);
   });
   ROOT.active = open.id; bindDB();
-  if (!atGate) role = roleIn(open);
   if (save() === false) return 0;
-  syncLoad();
-  if (atGate) { await syncTick(true); syncLoop(); return added || -1; }
-  paintLeagueBar(); paintAccess(); buildNav(); go('dash'); syncLoop();
-  /* Only the league that is open talks to its web app, so the rest come down
-     as they are opened. Said plainly rather than left to be discovered. */
+  /* Every league the code brought is pulled down now, one after another, and
+     not left until somebody opens it.
+
+     A league that has never synced has no staff list, so nobody has a role in
+     it; and the league bar only offers the leagues you have a role in. So the
+     second competition sat on the tablet, invisible, and could not be opened
+     to fix itself — which looked for all the world like a manager being given
+     two leagues and shown one. The code was handed over deliberately: pulling
+     what it carries is the point of pasting it. */
+  for (let i = 0; i < touched.length; i++) {
+    ROOT.active = touched[i].id; bindDB(); syncLoad();
+    try { await syncTick(true); } catch (e) {}
+  }
+  // and it opens on the first one this person is actually on
+  const mine = me ? touched.filter(l => rolesOf(me)[l.id]) : [];
+  open = mine[0] || open;
+  ROOT.active = open.id; bindDB(); syncLoad();
+  if (!atGate) role = roleIn(open);
+  save();
+  if (atGate) { syncLoop(); return added || -1; }
+  paintLeagueBar(); paintAccess(); buildNav(); go('dash'); liveTicker(); syncLoop();
   toast(!added ? 'Already here — opened ' + leagueName(open) + '.'
     : plural(added, 'league') + ' added' + (had ? ', ' + had + ' already here' : '') +
-      '. ' + leagueName(open) + ' is pulling down now' +
-      (added > 1 ? '; the others pull as you open them.' : '.'), 'ok');
+      '. ' + leagueName(open) + ' is open' +
+      (touched.length > 1 ? '; the others are on the league bar.' : '.'), 'ok');
   return added;
 }
 $('shareJoin').onclick = () => {
@@ -15673,7 +15690,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '12 Nov 15:58 · 70e3fa8'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '12 Nov 16:03 · 94689d0'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
@@ -15712,7 +15729,8 @@ let role = null, me = null;
 const isOwner = () => !!(me && me.owner);
 const isMgr = () => role === 'manager';
 // the owner runs everything; everyone else only the leagues they are named on
-const myLeagues = () => !me ? [] : isOwner() ? ROOT.leagues.slice() : ROOT.leagues.filter(l => rolesOf(me)[l.id]);
+const myLeaguesFor = p => !p ? [] : p.owner ? ROOT.leagues.slice() : ROOT.leagues.filter(l => rolesOf(p)[l.id]);
+const myLeagues = () => myLeaguesFor(me);
 const roleIn = l => !me || !l ? null : isOwner() ? 'manager' : rolesOf(me)[l.id] || null;
 const roleWord = () => isOwner() ? 'owner' : isMgr() ? 'manager' : 'referee';
 const whoLabel = () => !me ? '' : (me.name || '').trim().toLowerCase() === roleWord() ? me.name : me.name + ' · ' + roleWord();
@@ -15785,10 +15803,38 @@ function showGate() {
   $('gate').classList.add('on');
   setTimeout(() => { try { $(join ? 'gateCodeIn' : 'gatePin').focus(); } catch (e) {} }, 60);
 }
+/* Any shared league on this machine that has never pulled anything down.
+   It has no staff list, so nobody has a role in it, so it is on nobody's
+   league bar and cannot be opened to mend itself. Signing in pulls it. */
+const neverPulled = () => (ROOT.leagues || []).filter(l => l && !l.demo &&
+  (l.publish || {}).url && (l.publish || {}).key && (l.publish || {}).share &&
+  !(l.teams || []).length && !(l.fixtures || []).length);
+async function pullQuiet() {
+  const wait = neverPulled(), back = ROOT.active;
+  if (!wait.length) return;
+  for (let i = 0; i < wait.length; i++) {
+    ROOT.active = wait[i].id; bindDB(); syncLoad();
+    try { await syncTick(true); } catch (e) {}
+  }
+  ROOT.active = back; bindDB(); syncLoad(); save();
+  if (me) { role = roleIn(activeLeague()) || role; paintLeagueBar(); paintAccess(); buildNav(); }
+  syncLoop();
+}
 function unlock(person) {
   me = person;
   const mine = myLeagues();
   if (!mine.length) {
+    /* Not on any league here — but a league that has never synced cannot say
+       who is on it yet. Pull those first and let the PIN try again. */
+    if (neverPulled().length) {
+      $('gateMsg').className = ''; $('gateMsg').textContent = 'Fetching your leagues…';
+      pullQuiet().then(() => { me = null; const again = (ROOT.staff || []).find(s => s.id === person.id) || person;
+        if (myLeaguesFor(again).length) { unlock(again); } else {
+          $('gateMsg').className = '';
+          $('gateMsg').textContent = 'You are not on any league yet — ask the owner to add you.'; } });
+      me = null;
+      return;
+    }
     me = null;
     $('gateMsg').textContent = 'You are not on any league yet — ask the owner to add you.';
     return;
