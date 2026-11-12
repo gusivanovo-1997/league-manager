@@ -8973,8 +8973,17 @@ function drawLive() {
   });
   $('liveBody').querySelectorAll('[data-att]').forEach(b => b.onclick = () => {
     const fx = cur(); if (!fx) return;
-    const pid = b.dataset.att, wasGuest = !!(fx.guestOf && fx.guestOf[pid]), now = toggleAttend(fx, pid);
+    const pid = b.dataset.att, wasGuest = !!(fx.guestOf && fx.guestOf[pid]);
+    const wasHurt = !!injuryOf(pid);
+    const now = toggleAttend(fx, pid);
     if (wasGuest) { drawLive(); return; }       // a guest taken off leaves the list
+    /* Ticking somebody in clears the injury they were carrying — they are
+       plainly fit. The row was only being repainted as present, so the
+       injury beside their name stayed on screen along with the greying that
+       says unavailable, and with two hurt players ticked in one after the
+       other it read as though neither had come back. The row is drawn
+       again when the mark goes. */
+    if (wasHurt && !injuryOf(pid)) { drawLive(); return; }
     b.classList.toggle('on', now);
     b.setAttribute('aria-pressed', String(now));
     b.setAttribute('data-tip', now ? 'Here — tap to unmark' : 'Tick them in as they arrive');
@@ -9101,28 +9110,61 @@ const INJ_ICON = '<i class="injic" aria-hidden="true"><svg viewBox="0 0 24 24">'
   '<rect x="1.5" y="1.5" width="21" height="21" rx="6" fill="#e3262d" stroke="#9e1218" stroke-width="1.2"/>' +
   '<rect x="3" y="2.8" width="18" height="8.4" rx="4.2" fill="#fff" opacity=".16"/>' +
   '<path d="M9.7 5.4h4.6v4.3h4.3v4.6h-4.3v4.3H9.7v-4.3H5.4V9.7h4.3z" fill="#fff" stroke="#b5161d" stroke-width=".6" stroke-linejoin="round"/></svg></i>';
+/* The ones a club actually writes down, in alphabetical order so the eye
+   goes straight to the word rather than reading the whole list. Anything
+   that is not here is typed in, which keeps this the length somebody will
+   read rather than a medical index. */
+const INJ_TYPES = ['Achilles', 'Ankle', 'Back', 'Calf', 'Concussion', 'Cut', 'Dead leg',
+  'Elbow', 'Foot', 'Fracture', 'Groin', 'Hamstring', 'Hand', 'Head', 'Hip', 'Illness',
+  'Knee', 'Neck', 'Ribs', 'Shoulder', 'Thigh', 'Wrist'];
 const injuryOf = pid => { const p = person(pid), j = p && p.injury;
   if (!j) return null;
   const back = j.weeks ? addDays(j.at, 7 * j.weeks) : null;
   return back && back <= todayISO() ? null : Object.assign({ back }, j); };
+/* What it says beside the name. Where the injury has been named it is the
+   injury: "Hamstring" tells a manager picking a squad something that the
+   word "injured" never did. Where it has not, it is still "injured", and
+   the weeks follow either way. */
+const injWord = j => j.type || 'injured';
+const injShort = j => injWord(j) + (j.weeks ? ' · ' + j.weeks + 'w' : '');
+const injWhy = j => (j.type ? j.type + ' — ' : 'Injured — ') +
+  (j.weeks ? 'out ' + plural(j.weeks, 'week') + ', back ' + fmtDate(j.back) : 'the weeks out have not been set');
 const injPill = pid => { const j = injuryOf(pid);
-  return j ? ' <span class="pill injp" data-inj="' + pid + '" data-tip="' + (j.weeks ? 'Out ' + plural(j.weeks, 'week') + ' — back ' + fmtDate(j.back) : 'Injured — set the weeks out') + '">' +
-    INJ_ICON + ' ' + (j.weeks ? 'out ' + j.weeks + 'w' : 'injured') + '</span>' : ''; };
+  return j ? ' <span class="pill injp" data-inj="' + pid + '" data-tip="' + esc(injWhy(j)) + '">' +
+    INJ_ICON + ' ' + esc(injShort(j)) + '</span>' : ''; };
 const injuriesOpen = () => DB.people.filter(p => { const j = injuryOf(p.id); return j && !j.weeks; }).length;
 function editInjury(pid) {
   if (!role) return;
   const p = person(pid); if (!p) return;
   const j = p.injury || {};
+  const t0 = j.type || '', listed = INJ_TYPES.indexOf(t0) >= 0, other = !!t0 && !listed;
   modal('Injury — ' + personName(pid),
-    '<div class="grid g2"><div class="field"><label>Injured on</label><input type="date" id="injAt" value="' + esc(j.at || todayISO()) + '"></div>' +
+    '<div class="field"><label>What is it</label>' +
+      '<select id="injType">' +
+        '<option value=""' + (t0 ? '' : ' selected') + '>Not said</option>' +
+        INJ_TYPES.map(t => '<option' + (t === t0 ? ' selected' : '') + '>' + esc(t) + '</option>').join('') +
+        '<option value="*"' + (other ? ' selected' : '') + '>Something else…</option></select>' +
+      '<input id="injOther" maxlength="28" placeholder="what it is" value="' + (other ? esc(t0) : '') + '"' +
+        ' style="margin-top:7px' + (other ? '' : ';display:none') + '">' +
+      '<div class="small muted" style="margin-top:6px">It shows beside their name wherever the squad is ' +
+        'listed — the match screen, the Teams tab and their own page.</div></div>' +
+    '<div class="grid g2" style="margin-top:10px"><div class="field"><label>Injured on</label><input type="date" id="injAt" value="' + esc(j.at || todayISO()) + '"></div>' +
     '<div class="field"><label>Weeks out</label><input type="number" id="injWk" min="1" max="52" value="' + (j.weeks || '') + '" placeholder="how many?"></div></div>',
     [{ label: 'Cancel' }].concat(p.injury ? [{ label: 'Fit again', cls: 'ok', fn: () => { delete p.injury; save(); render(); toast(personName(pid) + ' is fit again.', 'ok'); } }] : [])
       .concat([{ label: 'Save', cls: 'accent', fn: () => {
         const at = $('injAt').value || todayISO(), wk = Math.round(+$('injWk').value) || null;
-        p.injury = Object.assign({}, p.injury || {}, { at, weeks: wk });
+        const sel = $('injType').value;
+        const type = (sel === '*' ? ($('injOther').value || '') : sel).trim().slice(0, 28);
+        p.injury = Object.assign({}, p.injury || {}, { at, weeks: wk, type });
+        if (!type) delete p.injury.type;
         save(); render();
-        toast(personName(pid) + (wk ? ' out for ' + plural(wk, 'week') + ' — back ' + fmtDate(addDays(at, 7 * wk)) + '.' : ' marked injured.'), 'ok');
+        toast(personName(pid) + ' — ' + (type || 'injured').toLowerCase() +
+          (wk ? ', out for ' + plural(wk, 'week') + ', back ' + fmtDate(addDays(at, 7 * wk)) + '.' : ', weeks out not set yet.'), 'ok');
       } }]));
+  // the free-text box only exists for the things the list does not have
+  const swap = () => { const o = $('injType').value === '*';
+    $('injOther').style.display = o ? '' : 'none'; if (o) $('injOther').focus(); };
+  if ($('injType')) $('injType').onchange = swap;
 }
 /* ── suspensions ────────────────────────────────────────────────────────
    A red card is a match, and it wipes the yellows with it — a player who
@@ -9167,8 +9209,7 @@ function unavailOf(pid) {
   const s = suspOf(pid);
   if (s) return { kind: 'susp', word: s.games > 1 ? 'suspended · ' + s.games : 'suspended', why: suspWhy(s) };
   const j = injuryOf(pid);
-  if (j) return { kind: 'inj', word: j.weeks ? 'out ' + j.weeks + 'w' : 'injured',
-    why: j.weeks ? 'Injured — back ' + fmtDate(j.back) : 'Injured — the weeks out have not been set' };
+  if (j) return { kind: 'inj', word: injShort(j), why: injWhy(j) };
   return null;
 }
 const availPill = pid => suspPill(pid) + injPill(pid);
@@ -9291,7 +9332,10 @@ function addEvent(f, type, which, pid) {
     if (p) p.injury = { at: f.date && f.date <= todayISO() ? f.date : todayISO(), weeks: null, fid: f.id };
   }
   syncScore(f); save(); drawLive();
-  if (type === 'injury' && pid) toast(personName(pid) + ' injured — set the weeks out on the Teams tab.', 'bad');
+  /* The referee saw it happen and knows what it was. Asking on the spot is
+     the only moment anybody does know, so the card opens here rather than
+     sending somebody to the Teams tab later with "injured" and no more. */
+  if (type === 'injury' && pid) { toast(personName(pid) + ' injured.', 'bad'); setTimeout(() => editInjury(pid), 80); }
   if (type === 'goal' || type === 'own') {
     flashGoal(type === 'own' ? (which === 'h' ? 'a' : 'h') : which);
     if (pid) {
@@ -15340,7 +15384,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '10 Nov 08:06 · c84a240'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '12 Nov 15:08 · e6e03a1'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
