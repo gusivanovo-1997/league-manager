@@ -14232,6 +14232,16 @@ async function syncTick(force) {
     if (changed) {
       syncQuiet = true;
       try { save(); } finally { syncQuiet = false; }
+      /* A league joined a moment ago had nobody on it yet, so the person who
+         pasted the code was standing in it with no role and no tabs. Their
+         place in it comes down with the staff list, which is THIS pull: the
+         moment it lands they are the manager they were made. Only ever
+         granted here, never taken away — a stale list must not sign somebody
+         out in the middle of a match. */
+      if (me && !role) {
+        const r = roleIn(activeLeague());
+        if (r) { role = r; paintLeagueBar(); paintAccess(); buildNav(); go(currentView || 'dash'); }
+      }
       if (role) { render(); liveTicker(); }
     }
   } finally {
@@ -14447,6 +14457,19 @@ const joinCode = () => { const one = codeOf(activeLeague());
    able to reach. */
 const allCode = () => { const set = ROOT.leagues.map(codeOf).filter(Boolean);
   return set.length ? 'FUTSALX.' + packCode(JSON.stringify(set)) : ''; };
+/* And the code for ONE person: every league they have been given a role in,
+   and not one more.
+
+   A manager who runs two competitions was being handed the code for
+   whichever league happened to be open, so their tablet only ever had that
+   one. The roles were right on the owner's machine — both of them, saved and
+   synced — but a league that is not ON a device cannot be opened from it, so
+   the second competition simply was not there to switch to. Nor could they
+   add it themselves: pasting a code needed the owner. This is what the owner
+   hands over now, once, and it brings the lot. */
+const staffCode = s => { const set = ROOT.leagues.filter(l => rolesOf(s)[l.id]).map(codeOf).filter(Boolean);
+  return set.length ? (set.length > 1 ? 'FUTSALX.' : 'FUTSAL1.') +
+    packCode(JSON.stringify(set.length > 1 ? set : set[0])) : ''; };
 function paintShare() {
   const c = pubCfg(), el = $('shareNote');
   if (!el) return;
@@ -14627,7 +14650,12 @@ async function joinFromCode(raw, atGate) {
   return added;
 }
 $('shareJoin').onclick = () => {
-  if (!requireOwner('Joining a shared league')) return;
+  /* Anybody signed in may add a league from a code. The code IS the
+     credential — it is the web app's address and key, handed over
+     deliberately — and what they can do once the league is here is still
+     decided by the role the league's own staff list gives them. Owner-only
+     meant a manager given a second competition had no way of reaching it. */
+  if (!role) return;
   const raw = prompt('Paste the code you were given — one league, or all of yours:');
   if (raw) joinFromCode(raw, false);
 };
@@ -15384,7 +15412,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '12 Nov 15:08 · e6e03a1'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '12 Nov 15:50 · b861730'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
@@ -15708,6 +15736,8 @@ function roleSummary(s) {
   return parts.length ? parts.join(' · ') : 'no league yet';
 }
 const CHEV = '<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>';
+const LINK_ICON = '<svg viewBox="0 0 24 24"><path d="M9.4 14.6a4 4 0 0 0 5.7 0l3.1-3.1a4 4 0 0 0-5.7-5.7l-1.3 1.3"/>' +
+  '<path d="M14.6 9.4a4 4 0 0 0-5.7 0l-3.1 3.1a4 4 0 0 0 5.7 5.7l1.3-1.3"/></svg>';
 const EYE = '<svg viewBox="0 0 24 24"><path d="M1.6 12S5.6 5.2 12 5.2 22.4 12 22.4 12 18.4 18.8 12 18.8 1.6 12 1.6 12z"/><circle cx="12" cy="12" r="3.1"/></svg>';
 function paintStaff() {
   const q = stfQ.trim().toLowerCase();
@@ -15736,6 +15766,8 @@ function paintStaff() {
         '<div class="stf-pin"><input data-sfp="' + esc(s.id) + '" type="password" value="' + esc(s.pin || '') +
           '" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="PIN">' +
           '<button class="btn ico stf-eye" data-sfeye="' + esc(s.id) + '" title="Show this PIN">' + EYE + '</button></div>' +
+        (s.owner || fixed(s) ? '' :
+          '<button class="btn ico" data-sfcode="' + esc(s.id) + '" title="Copy their join code — every league they are on">' + LINK_ICON + '</button>') +
         (s.owner ? '<span class="pill acc">owner</span>' : fixed(s) ? '<span class="pill acc">you</span>'
           : '<button class="btn sm bad" data-sfdel="' + esc(s.id) + '" title="Remove">\u00d7</button>') +
       '</div>' +
@@ -15751,6 +15783,19 @@ function paintStaff() {
   const keep = (okMsg) => { if (save() === false) return; paintAccess(); if (okMsg) toast(okMsg, 'ok'); };
   $('stfList').querySelectorAll('[data-sfx]').forEach(b => b.onclick = () => {
     stfOpen[b.dataset.sfx] = !stfOpen[b.dataset.sfx]; paintStaff();
+  });
+  // one code for everything this person runs, however many that is
+  $('stfList').querySelectorAll('[data-sfcode]').forEach(b => b.onclick = () => {
+    const s = find(b.dataset.sfcode); if (!s) return;
+    const on = ROOT.leagues.filter(l => rolesOf(s)[l.id]);
+    const code = staffCode(s);
+    if (!code) return toast(!on.length ? (s.name || 'They') + ' is not on any league yet — give them one below.'
+      : 'None of ' + (s.name || 'their') + '\'s leagues is shared yet — turn sharing on in Share & publish.', 'bad');
+    const n = on.filter(l => codeOf(l)).length;
+    copyPlain(code).then(ok => toast(ok
+      ? (s.name || 'Their') + '\'s code copied — ' + plural(n, 'league') + ' in it' +
+        (n < on.length ? ' (' + (on.length - n) + ' not shared yet)' : '') + '. They paste it once and have the lot.'
+      : 'Could not copy: ' + code, ok ? 'ok' : 'bad'));
   });
   // a PIN is covered until its own eye is pressed, and covered again on the next repaint
   $('stfList').querySelectorAll('[data-sfeye]').forEach(b => b.onclick = () => {
