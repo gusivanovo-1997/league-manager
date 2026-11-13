@@ -7743,15 +7743,30 @@ function generateFixtures(keepHistory) {
        of every one of them starting again at the first throw-in and landing
        three matches on the same court at once. */
     const oneDay = gap === 0;
-    let slotNo = 0;
+    /* The courts fill ACROSS the groups, and a wave is one match from every
+       group. With four courts and a first throw-in at eight, the opening
+       match of groups A, B, C and D kicks off at eight; E, F, G and H at
+       nine; I, J, K and L at ten — and only when all twelve have played does
+       group A's second match come round.
+
+       The wave is what makes that true whatever the court count: twelve
+       matches take ceil(12 / courts) slots, and the next wave starts on a
+       fresh slot even if that leaves a court or two standing for one turn.
+       Without it, eight courts had A to D starting their second match while
+       I to L had not played their first.
+
+       Going down a group instead — both of A's matches, then both of B's —
+       would put a group's own two games on at the same moment on different
+       courts, which is the one thing a group stage must not do until the
+       last matchday. */
+    const waveSlots = Math.ceil(WC_GRPS.length / courts);
     pat.forEach((day, r) => {
       const d = new Date(startDate + 'T00:00:00');
       d.setDate(d.getDate() + (oneDay ? 0 : r * gap));
       const dstr = isoOf(d), onCourt = {};
-      let i = 0;
-      WC_GRPS.forEach(g => day.forEach(pr => {
-        const s = oneDay ? Math.floor(slotNo / courts) : Math.floor(i / courts);
-        i++; slotNo++;
+      const dayBase = oneDay ? r * day.length * waveSlots : 0;
+      day.forEach((pr, w) => WC_GRPS.forEach((g, gi) => {
+        const s = dayBase + w * waveSlots + Math.floor(gi / courts);
         onCourt[s] = (onCourt[s] || 0) + 1;
         fx.push({ id: uid(), stage: 'regular', round: r + 1, grp: g,
           homeId: grp[g][pr[0]], awayId: grp[g][pr[1]], date: dstr,
@@ -8067,14 +8082,14 @@ function renderFixtures() {
   Object.keys(nightOf).forEach(r => { const c = nightOf[r]; nightOf[r] = Object.keys(c).sort((a, b) => c[b] - c[a] || (!a) - (!b) || a.localeCompare(b))[0]; });
   // the night's games in kick-off order, then any moved game after them
   const skey = f => (f.date || '') === nightOf[f.round] ? '0|' + (f.time || '') : '1|' + (f.date || '') + (f.time || '');
-  /* A World Cup matchday is twelve groups playing at once, so the schedule
-     runs down the groups in order rather than straight down the clock: the
-     night reads as Group A, then Group B, which is how anybody looking for
-     their own side reads it. */
+  /* A World Cup matchday is groups playing side by side, so the schedule
+     reads straight down the clock — which is the order the day is actually
+     run — and the Group column says whose match each one is. Sorting by
+     group instead listed the same handful of kick-off times over and over,
+     once per group. */
   const wcS = isWorld();
-  show.sort((a, b) => a.round - b.round ||
-    (wcS ? String(a.grp || '').localeCompare(String(b.grp || '')) : 0) ||
-    skey(a).localeCompare(skey(b)));
+  show.sort((a, b) => a.round - b.round || skey(a).localeCompare(skey(b)) ||
+    String(a.grp || '').localeCompare(String(b.grp || '')));
   show.forEach(f => {
     if (f.round !== last) {
       if (last !== null) html += '</table></div>';
@@ -15972,7 +15987,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '13 Nov 17:00 · 12c392e'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '13 Nov 17:17 · 138f3cb'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
