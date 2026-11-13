@@ -3827,6 +3827,9 @@ function attendRounds() {
     r.fx.sort((a, b) => when(a).localeCompare(when(b)));
     r.date = r.fx[0].date || '';
     r.label = (r.stage === 'regular' ? rdName(r.round) : stageLabel(r.stage)) + (r.date ? ' · ' + fmtDate(r.date) : '');
+    // a matchday of a World Cup is twelve groups playing at once: say which
+    if (isWorld()) r.fx.sort((a, b) => String(a.grp || '').localeCompare(String(b.grp || '')) ||
+      String(a.time || '').localeCompare(String(b.time || '')));
     r.played = r.fx.every(f => f.status === 'final');
     r.live = r.fx.some(f => f.status === 'live' || f.id === live.id);
     r.players = r.fx.reduce((t, f) => t + attendedIn(f).length, 0);
@@ -5847,7 +5850,15 @@ function cupRoundName(round) {
    team always meets a group winner, and nobody ever meets a side from their
    own group. Those rules decide it here too, applied to the eight thirds in
    the order they finished. */
-const isWorld = () => DB.season.format === 'world';
+/* What a competition IS is settled by the draw on the table, not only by a
+   setting that something else could have changed since. A World Cup draw
+   stamps every group match with its group and every tie with its round, so
+   it can say so for itself: the groups go on showing as groups even if the
+   format box is knocked back to League + finals by a save on the Settings
+   page, and a league redrawn as a league stops being one the moment the new
+   draw replaces the old fixtures. */
+const isWorld = () => DB.season.format === 'world' ||
+  (DB.fixtures || []).some(f => f && (f.grp || f.wc));
 const WC_GRPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
 const WC_GRD = 3;                                  // matchdays in the group stage
 const WC_TEAMS = 48;
@@ -7695,7 +7706,7 @@ function generateFixtures(keepHistory) {
      list in no order at all is no worse off. */
   if ($('fxFormat').value === 'world') {
     if (teams.length !== WC_TEAMS) return toast('The World Cup format needs exactly ' + WC_TEAMS +
-      ' teams — there ' + (teams.length === 1 ? 'is 1' : 'are ' + teams.length) + '.', 'bad');
+      ' teams — there ' + (teams.length === 1 ? 'is 1' : 'are ' + teams.length) + '. Nothing was drawn.', 'bad');
     /* A grouping already set is a grouping somebody meant: a real draw typed
        in, or a file that carries one. It is kept as long as it is a whole
        one — twelve groups of exactly four. Otherwise the teams are dealt out
@@ -8027,21 +8038,30 @@ function renderFixtures() {
   Object.keys(nightOf).forEach(r => { const c = nightOf[r]; nightOf[r] = Object.keys(c).sort((a, b) => c[b] - c[a] || (!a) - (!b) || a.localeCompare(b))[0]; });
   // the night's games in kick-off order, then any moved game after them
   const skey = f => (f.date || '') === nightOf[f.round] ? '0|' + (f.time || '') : '1|' + (f.date || '') + (f.time || '');
-  show.sort((a, b) => a.round - b.round || skey(a).localeCompare(skey(b)));
+  /* A World Cup matchday is twelve groups playing at once, so the schedule
+     runs down the groups in order rather than straight down the clock: the
+     night reads as Group A, then Group B, which is how anybody looking for
+     their own side reads it. */
+  const wcS = isWorld();
+  show.sort((a, b) => a.round - b.round ||
+    (wcS ? String(a.grp || '').localeCompare(String(b.grp || '')) : 0) ||
+    skey(a).localeCompare(skey(b)));
   show.forEach(f => {
     if (f.round !== last) {
       if (last !== null) html += '</table></div>';
       html += '<div class="tbl-wrap fxsec ' + secCls(sec++) + '"><div class="row" style="margin:2px 0 6px">' +
-        '<b>Round ' + f.round + '</b><span class="muted small">' + fmtDate(nightOf[f.round]) + '</span>' +
+        '<b>' + esc(rdName(f.round)) + '</b><span class="muted small">' + fmtDate(nightOf[f.round]) + '</span>' +
         byeChip('R' + f.round) +
         '<div class="spacer"></div>' + roundTools('R' + f.round) + '</div>' +
-        '<table><tr><th>Time</th><th>Court</th><th>Home</th><th class="num">Score</th><th>Away</th><th>Status</th><th></th></tr>';
+        '<table><tr><th>Time</th><th>Court</th>' + (wcS ? '<th>Group</th>' : '') +
+        '<th>Home</th><th class="num">Score</th><th>Away</th><th>Status</th><th></th></tr>';
       last = f.round;
     }
     html += '<tr' + resAttr(f) + '><td class="mono">' + esc(f.time || '') +
       ((f.date || '') !== nightOf[f.round] ? ' <span class="pill warn">' + esc(f.date ? fmtDate(f.date) : 'no date') + '</span>' : '') +
       (isMoved(f) ? ' ' + RSX : '') +
       '</td><td>' + esc(f.court || '—') + '</td>' +
+      (wcS ? '<td class="mono muted">' + esc(f.grp || (f.wc ? '—' : '')) + '</td>' : '') +
       '<td>' + crest(f.homeId) + '' + esc(teamName(f.homeId)) + '</td>' +
       '<td class="num"><b>' + scoreCell(f) + '</b></td>' +
       '<td>' + crest(f.awayId) + '' + esc(teamName(f.awayId)) + '</td>' +
@@ -8193,6 +8213,18 @@ function walkover(id) {
 /* A plain-English description of the draw the current settings would produce. */
 function drawSummary() {
   const n = DB.teams.length;
+  if ($('fxFormat') && $('fxFormat').value === 'world') {
+    /* Said here rather than only in a toast after the button is pressed: a
+       World Cup is the one format that will not draw at all with the wrong
+       number of teams, and finding that out from a message that fades is
+       the kind of thing that reads as nothing having happened. */
+    const ok = n === WC_TEAMS;
+    return '<span class="' + (ok ? '' : 'bad') + '"><b>' + n + '</b> of <b>' + WC_TEAMS + '</b> teams' +
+      (ok ? ' — ready: twelve groups of four, 72 group matches over ' + WC_GRD +
+            ' matchdays, then the last 32 down to the final (104 in all).'
+          : n < WC_TEAMS ? ' — add ' + (WC_TEAMS - n) + ' more, or pick another format.'
+          : ' — ' + (n - WC_TEAMS) + ' too many, or pick another format.') + '</span>';
+  }
   if (n < 2) return '<span class="muted">Add at least two teams.</span>';
   const reps = Math.max(1, +$('fxRounds').value || 2);
   const rounds = (n % 2 ? n : n - 1) * reps;
@@ -15804,7 +15836,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '13 Nov 16:15 · 63ee1ab'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '13 Nov 16:44 · da5e18e'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
