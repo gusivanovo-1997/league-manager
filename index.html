@@ -15695,7 +15695,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '12 Nov 16:10 · 89645ea'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '13 Nov 12:34 · 7b321ae'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
@@ -15814,6 +15814,37 @@ function showGate() {
 const neverPulled = () => (ROOT.leagues || []).filter(l => l && !l.demo &&
   (l.publish || {}).url && (l.publish || {}).key && (l.publish || {}).share &&
   !(l.teams || []).length && !(l.fixtures || []).length);
+/* Who may open a league is kept in that league's own shared copy, and only
+   the league that is open talks to its web app. So giving somebody a second
+   competition saved the role on this machine and told that competition
+   nothing at all: their tablet pulled a staff list that had never heard of
+   them, had no role in it, and so never offered it on the league bar. One
+   competition in the dropdown — usually whichever happened to be open on the
+   machine that did the assigning.
+
+   Every league whose staff list has just changed is sent now, each in turn,
+   and the one that was open is put back. */
+let staffBusy = false;
+async function syncStaffTo(ids) {
+  const want = [...new Set(ids || [])].filter(id => {
+    const l = leagueById(id), c = l && l.publish;
+    return l && !l.demo && c && c.url && c.key && c.share && id !== ROOT.active;
+  });
+  if (!want.length || staffBusy) return;
+  staffBusy = true;
+  const back = ROOT.active;
+  try {
+    for (let i = 0; i < want.length; i++) {
+      ROOT.active = want[i]; bindDB(); syncLoad();
+      try { await syncTick(true); } catch (e) {}
+    }
+  } finally {
+    ROOT.active = back; bindDB(); syncLoad(); staffBusy = false;
+    syncLoop(); paintSync();
+  }
+}
+// everywhere one person's access could have changed: all the leagues they are on
+const staffLeagues = s => Object.keys(rolesOf(s));
 async function pullQuiet() {
   const wait = neverPulled(), back = ROOT.active;
   if (!wait.length) return;
@@ -16123,6 +16154,7 @@ function paintStaff() {
     s.name = i.value.trim() || s.name;
     if (me && me.id === s.id) $('roleName').textContent = whoLabel();
     keep('Saved.');
+    syncStaffTo(staffLeagues(s));            // their name is in every league they are on
   });
   $('stfList').querySelectorAll('[data-sfp]').forEach(i => i.onchange = () => {
     const s = find(i.dataset.sfp); if (!s) return;
@@ -16130,29 +16162,37 @@ function paintStaff() {
     if (!/^\d{4,8}$/.test(v)) { i.value = s.pin; return toast('A PIN is 4 to 8 digits.', 'bad'); }
     if ((ROOT.staff || []).some(x => x !== s && String(x.pin) === v)) { i.value = s.pin; return toast('Somebody already has that PIN.', 'bad'); }
     s.pin = v; keep('PIN saved.');
+    syncStaffTo(staffLeagues(s));            // a PIN is their key to every one of them
   });
   $('stfList').querySelectorAll('[data-sfr]').forEach(sel => sel.onchange = () => {
     const s = find(sel.dataset.sfr); if (!s) return;
     if (!isOwner() && !canTouch(s)) return;
     s.roles = s.roles || {};
+    const was = staffLeagues(s);
     if (sel.value) s.roles[sel.dataset.lg] = sel.value; else delete s.roles[sel.dataset.lg];
+    // the league just given or taken away has to be told, open or not
+    const tell = [...new Set(was.concat(staffLeagues(s), [sel.dataset.lg]))];
     /* A manager only ever sees people who are on their leagues alone, so
        taking the last one away would leave somebody with a PIN and nowhere
        to use it, and nobody but the owner able to see them. They go. */
     if (!isOwner() && !Object.keys(s.roles).length) {
       delete stfOpen[s.id];
       ROOT.staff = ROOT.staff.filter(x => x !== s);
-      return keep((s.name || 'They') + ' no longer has access.');
+      keep((s.name || 'They') + ' no longer has access.');
+      return syncStaffTo(tell);
     }
     keep('Saved.');
+    syncStaffTo(tell);
   });
   $('stfList').querySelectorAll('[data-sfdel]').forEach(b => b.onclick = () => {
     const s = find(b.dataset.sfdel); if (!s) return;
     if (me && me.id === s.id) return toast('You cannot remove yourself.', 'bad');
     if (!isOwner() && !canTouch(s)) return toast('They are on another league too — that is the owner\'s to undo.', 'bad');
     if (!confirm('Remove ' + (s.name || 'this person') + '?')) return;
+    const tell = staffLeagues(s);
     delete stfOpen[s.id];
     ROOT.staff = ROOT.staff.filter(x => x !== s); keep('Removed.');
+    syncStaffTo(tell);                       // every league they were on, not just this one
   });
 }
 $('btnNewLeague').onclick = () => newLeague();
