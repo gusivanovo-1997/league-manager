@@ -14986,19 +14986,24 @@ function staffMerge(list) {
   });
 }
 const deviceId = DEVICE;                 // the same id the live screen stamps matches with
-let SY = { lg: '', rev: 0, shadow: null, busy: false, again: false, state: 'off', err: '', at: 0, claims: {}, fin: {}, pull: 0, push: 0 };
+/* SY.rfin — which fixtures the SHARED copy is known to hold as finished.
+   Not what this device holds: what the other end has. It is the one thing
+   worth being certain about, so it is kept on its own rather than inferred
+   from a fingerprint, and anything missing from it that is finished here
+   is sent again on the next tick. */
+let SY = { lg: '', rev: 0, shadow: null, busy: false, again: false, state: 'off', err: '', at: 0, claims: {}, fin: {}, rfin: {}, pull: 0, push: 0 };
 
 const syncSlot = () => SYNCKEY + '.' + (ROOT.active || '');
 const syncOn = () => { const c = pubCfg(); return !!(c.url && c.key && c.share && !DB.demo); };
 function syncLoad() {
-  SY = { lg: ROOT.active, rev: 0, shadow: null, busy: false, again: false, state: 'off', err: '', at: 0, claims: {}, fin: {}, pull: 0, push: 0 };
+  SY = { lg: ROOT.active, rev: 0, shadow: null, busy: false, again: false, state: 'off', err: '', at: 0, claims: {}, fin: {}, rfin: {}, pull: 0, push: 0 };
   try {
     const s = JSON.parse(localStorage.getItem(syncSlot()) || 'null');
-    if (s && s.shadow) { SY.rev = s.rev || 0; SY.shadow = s.shadow; SY.at = s.at || 0; SY.fin = s.fin || {}; }
+    if (s && s.shadow) { SY.rev = s.rev || 0; SY.shadow = s.shadow; SY.at = s.at || 0; SY.fin = s.fin || {}; SY.rfin = s.rfin || {}; }
   } catch (e) {}
 }
 function syncStore() {
-  try { localStorage.setItem(syncSlot(), JSON.stringify({ rev: SY.rev, shadow: SY.shadow, at: SY.at, fin: SY.fin })); } catch (e) {}
+  try { localStorage.setItem(syncSlot(), JSON.stringify({ rev: SY.rev, shadow: SY.shadow, at: SY.at, fin: SY.fin, rfin: SY.rfin })); } catch (e) {}
 }
 /* One short hash per record: enough to see what this tablet has changed.
    'own' is skipped because records written while the owner-priority rule
@@ -15075,14 +15080,26 @@ function syncDiff() {
     (now[n] || []).forEach(x => {
       if (!x || !x.id) return;
       seen[x.id] = 1;
-      // the shared copy has this result in, and what is here is older than the news of it
-      if (n === 'fixtures' && SY.fin[x.id] && x.status !== 'final' && !(+x.edAt > SY.fin[x.id])) { stale.push(x.id); return; }
+      /* The shared copy has this result in and this device does not. That
+         is not an edit to send: it is a device out of step, whatever its
+         clock says. The one thing that IS an edit is somebody pressing
+         reopen, and that leaves a stamp. So anything else is refused, and
+         the device asks for the shared copy whole instead — which brings
+         the result back and closes the match here. */
+      if (n === 'fixtures' && x.status !== 'final' && (SY.rfin[x.id] || SY.fin[x.id]) && !(+x.reopenAt > 0)) { stale.push(x.id); return; }
       /* A fixture this device holds open that carries its own seal is a
          fixture this device has not finished applying: it is never sent. */
       if (n === 'fixtures' && sealed(x) && x.status !== 'final') { stale.push(x.id); return; }
-      if ((a[n] || {})[x.id] !== syncHash(x)) {
+      /* A result this device holds that the shared copy is not known to
+         hold goes up whatever the fingerprints say. This is the backstop:
+         if anything at all ever goes wrong with the bookkeeping again, the
+         next tick notices the shared copy is missing a result and sends
+         it, instead of both sides quietly agreeing to forget it. */
+      const owed = n === 'fixtures' && sealed(x) && !SY.rfin[x.id];
+      if (owed || (a[n] || {})[x.id] !== syncHash(x)) {
         delete x.own;                               // the mark the owner-priority rule left behind
-        s[x.id] = x; any = true;
+        s[x.id] = JSON.parse(JSON.stringify(x));    // a copy: see above
+        any = true;
       }
     });
     Object.keys(a[n] || {}).forEach(id => { if (!seen[id]) { d.push(id); any = true; } });
@@ -15115,8 +15132,8 @@ function noteFinals(list, kept) {
   const now = Date.now();
   (list || []).forEach(f => {
     if (!f || !f.id || (kept && kept.indexOf(f.id) >= 0)) return;
-    if (f.status === 'final') { if (!SY.fin[f.id]) SY.fin[f.id] = now; }
-    else delete SY.fin[f.id];
+    if (f.status === 'final') { if (!SY.fin[f.id]) SY.fin[f.id] = now; SY.rfin[f.id] = 1; }
+    else { delete SY.fin[f.id]; delete SY.rfin[f.id]; }
   });
 }
 function shadowApply(p, kept) {
@@ -15126,8 +15143,14 @@ function shadowApply(p, kept) {
   const stuck = id => kept && kept.indexOf(id) >= 0;
   SYNC_LISTS.forEach(n => {
     const s = (p.set || {})[n];
-    if (s) { SY.shadow[n] = SY.shadow[n] || {}; Object.keys(s).forEach(id => { if (!stuck(id)) SY.shadow[n][id] = syncHash(s[id]); }); }
-    ((p.del || {})[n] || []).forEach(id => { if (SY.shadow[n] && !stuck(id)) delete SY.shadow[n][id]; });
+    if (s) { SY.shadow[n] = SY.shadow[n] || {}; Object.keys(s).forEach(id => {
+      if (stuck(id)) return;
+      SY.shadow[n][id] = syncHash(s[id]);
+      // s[id] is the copy that was sent, so this is the truth about the other end
+      if (n === 'fixtures') { if (s[id].status === 'final') SY.rfin[id] = 1; else delete SY.rfin[id]; }
+    }); }
+    ((p.del || {})[n] || []).forEach(id => { if (SY.shadow[n] && !stuck(id)) { delete SY.shadow[n][id];
+      if (n === 'fixtures') delete SY.rfin[id]; } });
   });
   if (p.meta) Object.keys(p.meta).forEach(k => SY.shadow.meta[k] = syncHash(p.meta[k]));
 }
@@ -15155,8 +15178,14 @@ function docApply(p, keep) {
     /* What is sealed here is not replaced by a copy that is not, unless the
        copy carries a later decision to reopen it. */
     if (sealed(have) && coming && !sealed(coming) && !(+coming.reopenAt > +have.finAt)) return true;
-    if (have && have.status === 'final' && coming && coming.status !== 'final' &&
-        !(+coming.edAt > +(have.edAt || 0))) return true;
+    /* A confirmed result is reopened by somebody pressing the button and
+       by nothing else. That press stamps reopenAt; anything arriving
+       without one — an older copy, a device that never heard, a clock that
+       is wrong — is refused, whatever its edAt says and whoever sent it. */
+    if (have && have.status === 'final' && coming && coming.status !== 'final') {
+      const meant = +coming.reopenAt > 0 && (!(+have.finAt > 0) || +coming.reopenAt > +have.finAt);
+      if (!meant) return true;
+    }
     const bag = keep && (keep.set || {})[n];
     const ours = bag ? bag[id] : undefined;
     if (ours === undefined) return false;
@@ -15298,6 +15327,7 @@ async function syncTick(force) {
          on one device was wiped from all of them. */
       const bare = !(DB.teams || []).length && !(DB.fixtures || []).length;
       SY.shadow = shadowOf(r.doc);
+      SY.rfin = {};                                  // the shared copy, as it actually stands
       noteFinals(r.doc.fixtures);
       // what the shared copy no longer has is gone — but only if this tablet
       // knew the shared copy; anything unsent here is kept either way
@@ -15852,7 +15882,7 @@ async function takeShared() {
   try { localStorage.removeItem(syncSlot()); } catch (e) {}
   syncLoad();                        // and with the stored picture gone, nothing left here reads as unsent
   SY.shadow = shadowOf(r.doc);
-  SY.fin = {}; noteFinals(r.doc.fixtures);
+  SY.fin = {}; SY.rfin = {}; noteFinals(r.doc.fixtures);
   SY.rev = r.rev || 0;
   SY.claims = r.claims || {};
   docApply(docAsPatch(r.doc, true), null);
@@ -15894,7 +15924,7 @@ async function sendMine() {
   if (!w || !w.ok) return toast('Could not send: ' + ((w && w.error) || 'no answer') + '.', 'bad');
   SY.rev = w.rev || 0;
   SY.shadow = shadowOf(syncDoc());
-  SY.fin = {}; noteFinals(DB.fixtures);
+  SY.fin = {}; SY.rfin = {}; noteFinals(DB.fixtures);
   SY.state = 'ok'; SY.at = Date.now(); SY.err = '';
   SY.claims = w.claims || SY.claims;
   syncStore(); syncLoop(); paintSync();
@@ -16566,7 +16596,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '14 Nov 06:31 · 22bb3d5'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '14 Nov 07:21 · e63c0ac'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
