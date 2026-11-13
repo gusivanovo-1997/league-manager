@@ -1422,6 +1422,9 @@ td:has(>.tmv),td.pos{white-space:nowrap}
 /* the data tab: each thing you can do, said in full, and the two that
    cannot be undone fenced off together */
 /* the two halves of sharing: the tablet that has the league, and the one that wants it */
+/* hidden means hidden: a display rule of its own otherwise beats the
+   browser's [hidden], and a box told to go away stays on the screen */
+.shbox[hidden],.btn[hidden],.note[hidden],.shbox span[hidden]{display:none}
 .shbox{display:flex;flex-direction:column;gap:8px;align-items:flex-start;padding:13px;border-radius:11px;
   border:1px solid var(--line);background:var(--card)}
 .shbox b{font-size:calc(13px * var(--fs))}
@@ -2613,11 +2616,13 @@ tspan.gstar{fill:var(--gold)}
 
     <div class="card" id="cardTablets">
       <h3>3 · Share this league between tablets</h3>
+      <div class="note" id="shareMgrNote" hidden style="margin:0 0 12px">Handing the codes out is the
+        owner's. Pasting one you have been given is yours — <b>Join a shared league</b> below.</div>
       <label class="row small" style="gap:7px;margin:0 0 10px"><input type="checkbox" id="pubShare">
         <b>share this league</b> — every tablet reads and writes the same copy through the web app</label>
       <div class="note" id="shareNote" style="margin:0 0 12px"></div>
       <div class="grid g2">
-        <div class="shbox">
+        <div class="shbox" id="shboxRuns">
           <b>This tablet runs the league</b>
           <span class="small muted">Hand this code to the other tablet. It carries the address and the key —
             treat it like a password.</span>
@@ -2635,9 +2640,10 @@ tspan.gstar{fill:var(--gold)}
           <b>This tablet is joining one</b>
           <span class="small muted">On the other tablet, open this tab, press <b>Join a shared league</b>
             and paste the code. It appears in the league switcher and starts syncing at once.</span>
-          <div class="row"><button class="btn sm" id="shareJoin">Join a shared league…</button>
+          <div class="row"><button class="btn sm" id="shareNow2">Sync now</button></div>
+          <div class="row"><button class="btn sm accent" id="shareJoin">Join a shared league…</button>
             <button class="btn sm bad" id="shareTake">Take the shared copy</button></div>
-          <span class="small muted">When this machine and the others have fallen out of step, one of them
+          <span class="small muted" id="shareTakeNote">When this machine and the others have fallen out of step, one of them
             has to give in. <b>Take the shared copy</b> throws away what is here and pulls the shared one
             down. The opposite — <b>Send this copy up</b> — is on the live page card above, where a
             manager can reach it too. The address and the key are kept either way.</span>
@@ -3441,9 +3447,16 @@ function paintCrests() {
    just been chosen from a file or is already on a team and wants tidying —
    several of the supplied badges are a round crest sitting on the white
    square it was drawn on, and that square shows at the four corners. */
-function crestFromImage(img) {
-      const k = Math.min(1, 480 / Math.max(img.naturalWidth, img.naturalHeight));
-      const W = Math.max(1, Math.round(img.naturalWidth * k)), H = Math.max(1, Math.round(img.naturalHeight * k));
+function crestFromImage(img, opt) {
+      const vec = !!(opt && opt.vector), force = !!(opt && opt.force);
+      /* An SVG has no pixels of its own. Left to itself a browser hands one
+         whatever default size it feels like — often 300×150 — and the badge
+         was then being rasterised at that and scaled back up, which is what
+         made an uploaded flag come out soft and smeared. A vector is drawn
+         big instead, because it costs nothing to draw it big. */
+      const nW = img.naturalWidth || 300, nH = img.naturalHeight || 150;
+      const k = vec ? 480 / Math.max(nW, nH) : Math.min(1, 480 / Math.max(nW, nH));
+      const W = Math.max(1, Math.round(nW * k)), H = Math.max(1, Math.round(nH * k));
       const c = document.createElement('canvas'); c.width = W; c.height = H;
       const x = c.getContext('2d'); x.drawImage(img, 0, 0, W, H);
       const d = x.getImageData(0, 0, W, H), a = d.data;
@@ -3478,7 +3491,26 @@ function crestFromImage(img) {
           ref = [0, 1, 2].map(ch => same.reduce((s, c) => s + c[ch], 0) / same.length); }
       });
       const dist = i => away(i, ref);
-      const plain = agreed >= 3;
+      /* What counts as a backdrop worth taking out: white, black, or a grey
+         near enough to either — and only on a roughly square picture.
+
+         A COLOUR that the corners agree on is not a backdrop, it is the
+         badge. Morocco's flag is red with a green star, Switzerland's red
+         with a white cross, Brazil's green with a yellow diamond — taking
+         "the colour in the corners" out of those left the star, the cross
+         and the diamond floating on nothing, and the trim that follows then
+         blew that fragment up to fill the whole frame. That is the whole of
+         what looked like a distorted upload.
+
+         Squareness is what separates a badge sitting on a white square from
+         a flag that happens to be mostly white: Japan's flag is a red disc
+         on white, and it is twice as wide as it is tall. A badge is drawn
+         square. Take the backdrop out on the badge card overrides the shape
+         test for the odd wide badge, but never the colour one. */
+      const mx = Math.max(ref[0], ref[1], ref[2]), mn = Math.min(ref[0], ref[1], ref[2]);
+      const paper = (mx - mn) <= 30 && (mn >= 200 || mx <= 64);
+      const squarish = Math.max(W, H) / Math.min(W, H) <= 1.25;
+      const plain = agreed >= 3 && paper && (squarish || force);
       if (plain) {
         const T1 = 40, T2 = 90, N = W * H, R = Math.max(2, Math.round(Math.max(W, H) * 0.013));
         const fg = new Uint8Array(N), wall = new Uint8Array(N), tmp = new Uint8Array(N);
@@ -3527,7 +3559,9 @@ function makeCrest(file) {
   return new Promise((res, rej) => {
     const url = URL.createObjectURL(file), img = new Image();
     img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('not a picture')); };
-    img.onload = () => { URL.revokeObjectURL(url); try { res(crestFromImage(img)); } catch (e) { rej(e); } };
+    img.onload = () => { URL.revokeObjectURL(url);
+      try { res(crestFromImage(img, { vector: /svg/i.test(file.type || '') || /\.svg$/i.test(file.name || '') })); }
+      catch (e) { rej(e); } };
     img.src = url;
   });
 }
@@ -3536,7 +3570,7 @@ function tidyCrest(src) {
   return new Promise((res, rej) => {
     const img = new Image();
     img.onerror = () => rej(new Error('not a picture'));
-    img.onload = () => { try { res(crestFromImage(img)); } catch (e) { rej(e); } };
+    img.onload = () => { try { res(crestFromImage(img, { force: true })); } catch (e) { rej(e); } };
     img.src = src;
   });
 }
@@ -3555,8 +3589,9 @@ function editCrest(tid) {
   };
   modal('Badge — ' + t.name,
     '<div style="text-align:center;margin-bottom:12px">' + crest(tid, 'xl') + '</div>' +
-    '<div class="small muted" style="text-align:center;line-height:1.7">A square picture works best — a PNG with a see-through background, ' +
-      'or any badge on a plain black or white backdrop (that backdrop is taken out).' +
+    '<div class="small muted" style="text-align:center;line-height:1.7">A PNG with a see-through background, a flag, or a ' +
+      'square badge on a plain black or white backdrop — that backdrop is taken out, a coloured one is left alone, ' +
+      'because on a flag the colour is the flag.' +
       (t.logo ? '<br>If this badge still shows its square corners, <b>Take the backdrop out</b> runs that over it again.' : '') + '</div>' +
     '<input type="file" id="crestFile" accept="image/*" style="display:none">',
     [{ label: 'Remove — grey shield', cls: 'bad', fn: () => set('', 'Badge removed — ' + t.name + ' shows the grey shield.') }]
@@ -14786,7 +14821,17 @@ function renderPublish() {
      tablet. A manager publishes to them; only the owner sets them. */
   const own = isOwner();
   $('cardWebApp').hidden = !own;
-  $('cardTablets').hidden = !own;
+  /* A manager runs a competition; they are the ones handed a code and told
+     to put it on their own tablet. The whole card used to be the owner's, so
+     there was nowhere for them to paste it — and a manager given a second
+     competition had no way of reaching it at all. The card is theirs now;
+     handing codes OUT, and throwing this copy away for the shared one, are
+     still the owner's. */
+  $('cardTablets').hidden = !isMgr();
+  $('shboxRuns').hidden = !own;
+  $('shareMgrNote').hidden = own;
+  $('shareTake').hidden = !own;
+  $('shareTakeNote').hidden = !own;        // all about a button a manager has not got
   $('pubOwnerNote').hidden = own;
   fill('pubUrl', c.url);
   $('pubAuto').checked = c.auto;
@@ -15036,10 +15081,12 @@ async function sendMine() {
     : 'The shared copy is now this machine\'s. The other tablets take it within a few seconds.', stuck ? 'bad' : 'ok');
 }
 $('shareSend').onclick = sendMine;
-$('shareNow').onclick = () => {
+const syncNowClick = () => {
   if (!syncOn()) return toast('This league is not shared.', 'bad');
   syncTick(true); toast('Syncing…');
 };
+$('shareNow').onclick = syncNowClick;
+$('shareNow2').onclick = syncNowClick;
 
 PUB_READY = true;
 
@@ -15695,7 +15742,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '13 Nov 12:34 · 7b321ae'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '13 Nov 16:12 · 8b0cfa6'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
