@@ -2252,6 +2252,11 @@ tspan.gstar{fill:var(--gold)}
            other figure worth a glance: who is actually scoring them. -->
       <div class="card" id="dashFinalsCard" style="display:none"><h3 class="goldtxt">Finals</h3><div id="dashFinals" data-nostar></div></div>
     </div>
+    <!-- Where the knockout card lives while the groups are still being
+         played. Once the last 32 is drawn it moves to the top of the page,
+         because from that moment it is the first thing anybody opens Home
+         to look at; this stays behind to mark the way back. -->
+    <div id="dashKoHome" hidden></div>
     <div class="grid g2">
       <div class="card"><h3>Next match night</h3><div id="dashNext" data-nostar></div></div>
       <div class="card"><h3>Last time out</h3><div id="dashLast" data-nostar></div></div>
@@ -5813,6 +5818,18 @@ function renderDash() {
   const strip = brk ? '' : finalsStrip();
   $('dashFinalsCard').querySelector('h3').textContent = isWorld() ? 'The knockout' : isCup() ? 'The cup' : 'Finals';
   $('dashFinalsCard').style.display = brk || strip ? '' : 'none';
+  /* The groups are the story until the last 32 is drawn. After that the
+     bracket is, so it goes to the top of Home and takes the whole width —
+     a bracket in a half-width card at the foot of the page is a bracket
+     nobody scrolls to. */
+  const koNow = isWorld() && DB.fixtures.some(f => (f.round || 0) > WC_GRD);
+  const koWrap = $('dashFinalsCard').parentElement, koHome = $('dashKoHome');
+  if (koWrap && koHome && koHome.parentElement) {
+    const sec = koHome.parentElement, top = $('dashOff');
+    if (koNow) { if (koWrap.previousElementSibling !== top) sec.insertBefore(koWrap, top.nextSibling); }
+    else if (koWrap.nextElementSibling !== koHome) sec.insertBefore(koWrap, koHome);
+    $('dashFinalsCard').style.gridColumn = koNow ? '1 / -1' : '';
+  }
   $('dashFinals').innerHTML = brk || strip;
 
   // a goal nobody was named for counts for the team, but it is not a scorer
@@ -6122,9 +6139,11 @@ function wcBracketHtml(opt) {
   const right = wcCols(102).slice().reverse().map(colHtml).join('');
   const fin = byM[104], p3 = byM[103], champ = fin ? winnerOf(fin) : null;
   const mid = '<div class="wcol wmid"><div class="wch">Final</div>' + box(104) +
-    '<div class="wtro">🏆<div class="wtn">' +
-      (champ ? esc(teamName(champ)) : '<span class="wtbd">the trophy</span>') + '</div>' +
-      '<div class="wtl">' + (champ ? 'Champion' : 'Still up for grabs') + '</div></div>' +
+    /* Until somebody wins it there is no name to put here, and two lines of
+       grey text saying so are a caption on an empty space. The trophy on its
+       own says the same thing without having to be read. */
+    '<div class="wtro">🏆' + (champ ? '<div class="wtn">' + esc(teamName(champ)) + '</div>' +
+      '<div class="wtl">Champion</div>' : '') + '</div>' +
     (p3 ? '<div class="wp3"><div class="wch">Third place</div>' + box(103) + '</div>' : '') + '</div>';
   const body = '<div class="wbrk' + (opt.mini ? ' mini' : '') + '"><div class="wbrkin">' +
     '<div class="wside">' + left + '</div>' + mid +
@@ -13423,6 +13442,10 @@ function emailHtmlRaw(d, ball, crests) {
     });
   }
 
+  /* Where the bracket goes once there is one: at the top of the email,
+     above what is on next and how the last round went, because once the
+     knockout is under way it is the first thing anybody opens this for. */
+  const koAt = A.length;
   /* ── first: who plays who next ── */
   if (d.nextFx.length) {
     const nx = d.nextFx.slice().sort((a, b) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || '')) || koSort(a, b));
@@ -13500,8 +13523,13 @@ function emailHtmlRaw(d, ball, crests) {
     /* The bracket first: the one picture that answers what everybody
        actually wants to know, which is how far their side has to go. The
        list of ties under it keeps the scores. */
-    A.push(H2('The road to the trophy'));
-    A.push(mailBracket(DIM, LINE, INK, PAPER, TILE));
+    /* With the knockout under way the bracket goes further than first — it
+       goes to the top of the email, above the results and the groups. */
+    const brkPic = id => badge(id, 16) ||
+      '<span style="color:' + esc((team(id) || {}).colour || '#8a8279') + ';font-size:11px">&#9679;</span>';
+    const brkOut = [H2('The road to the trophy'), mailBracket(DIM, LINE, INK, PAPER, TILE, brkPic)];
+    if (DB.fixtures.some(f => (f.round || 0) > WC_GRD)) A.splice(koAt, 0, brkOut[0], brkOut[1]);
+    else { A.push(brkOut[0]); A.push(brkOut[1]); }
     const ko = mailKo(DIM, LINE, INK);
     if (ko) { A.push(H2('The knockout, round by round')); A.push(ko); }
     A.push(H2(ko ? 'How the groups finished' : 'Groups'));
@@ -13965,7 +13993,7 @@ function wcKoRounds() {
    Drawn from the moment the groups start, like the page's: until the last
    32 exists the slots show who would be in them if the groups finished
    tonight. */
-function mailBracket(DIM, LINE, INK, PAPER, TILE) {
+function mailBracket(DIM, LINE, INK, PAPER, TILE, crest) {
   const byM = {}; DB.fixtures.forEach(f => { if (f.m) byM[f.m] = f; });
   const seeds = wcSeeds();
   let guessed = false;
@@ -13981,8 +14009,11 @@ function mailBracket(DIM, LINE, INK, PAPER, TILE) {
       const win = w && w === id;
       const nm = id ? esc(teamName(id)) : 'to be decided';
       return '<tr>' +
-        (code ? '<td style="padding:2px 4px 2px 0;font:700 8px/1.2 Arial,sans-serif;color:' + DIM +
+        (code ? '<td style="padding:2px 3px 2px 0;font:700 8px/1.2 Arial,sans-serif;color:' + DIM +
           ';white-space:nowrap">' + esc(wcSlotLabel(slot)) + '</td>' : '') +
+        // the crest, the same badge the rest of the email uses
+        (crest ? '<td width="18" style="width:18px;padding:2px 4px 2px 0;line-height:0">' +
+          (id ? crest(id) : '') + '</td>' : '') +
         '<td style="padding:2px 0;font-size:10.5px;line-height:1.3;color:' + (id ? INK : DIM) +
           (win ? ';font-weight:700' : '') + '">' + nm + '</td>' +
         '<td style="padding:2px 0 2px 4px;font-size:10.5px;text-align:right;color:' + INK +
@@ -14030,8 +14061,8 @@ function mailBracket(DIM, LINE, INK, PAPER, TILE) {
         DIM + ';margin-bottom:6px">The final</div>' +
       '<div style="max-width:230px;margin:0 auto">' + tie(104) + '</div>' +
       '<div style="font-size:22px;line-height:1;margin:8px 0 2px">&#127942;</div>' +
-      '<div style="font-size:12.5px;font-weight:800;color:' + (champ ? '#b84309' : DIM) + '">' +
-        (champ ? esc(teamName(champ)) : 'the trophy') + '</div>' +
+      (champ ? '<div style="font-size:12.5px;font-weight:800;color:#b84309">' +
+        (crest ? crest(champ) + ' ' : '') + esc(teamName(champ)) + '</div>' : '') +
     '</td></tr></table>';
   const body = half(101) + mid + half(102);
   const note = guessed
@@ -14223,11 +14254,16 @@ function publicPageHtml() {
   const notes = cancelNotes();
   const offBox = notes.length ? '<div class="cxbox">' + notes.map(x =>
     '<div class="cxl' + (x.off ? '' : ' mv') + '">' + esc(cancelLine(x)) + '</div>').join('') + '</div>' : '';
+  /* The same on the page: once there is a bracket it leads the dashboard,
+     above the night's results and the groups, instead of closing it. */
+  const koHtml = koRows();
+  const koTop = isWorld() && DB.fixtures.some(f => (f.round || 0) > WC_GRD);
   const dash = offBox + champ + (pods ? '<div class="pods">' + pods.map(podium).join('') + '</div>' : '') +
     '<div class="tiles">' + won.concat(d.snapshot).map(s => '<div class="tile' + (s[4] ? ' ' + s[4] : '') + '"><span>' + esc(s[0]) + '</span><b>' +
       (s[0] === 'Golden Boot' && s[3] ? BOOT_ICON : '') +
       (s[0] === 'Golden Boot' ? '' : s[5] && s[5].length ? s[5].map(dot).join('') : s[3] ? dot(s[3]) : '') + esc(s[1]) + '</b>' +
       '<em>' + esc(s[2]) + '</em></div>').join('') + '</div>' +
+    (koTop ? koHtml : '') +
     (live.length ? h2('Live now', live) + grid(live) : '') +
     /* A match being played belongs under Live now and nowhere else. It used
        to sit in the round's list of games to come as well, so the same
@@ -14248,7 +14284,7 @@ function publicPageHtml() {
         '</table></div>' : empty('No teams yet.')) + '</div>') +
       (!bootOn() ? '' : '<div>' + h2('Golden Boot') + (scorers.length ? '<div class="tw"><table>' + scRows(scorers.slice(0, 10)) + '</table></div>'
         : empty('No goals logged yet.')) + '</div>') + '</div>' +
-    koRows();
+    (koTop ? '' : koHtml);
 
   /* ── the full table, with form ── */
   const formOf = id => '<span class="fm">' + teamForm(id, 5, true).map(x => '<a href="#m' + esc(x.id) + '" class="' + x.r + '" data-go="' + esc(x.id) + '" title="' + esc(x.t) + '">' + x.r + '</a>').join('') + '</span>';
@@ -16438,7 +16474,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '13 Nov 20:33 · bad3d54'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '13 Nov 21:43 · 1f6f841'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
