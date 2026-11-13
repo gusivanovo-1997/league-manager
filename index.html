@@ -12908,7 +12908,11 @@ function bulletinParts() {
   const named = boots[0] || null;
   const snapshot = [
     // [label, value, note, the team whose badge goes with it]
-    ['Leader', st.length && st[0].P ? st[0].name : '—', st.length && st[0].P ? st[0].Pts + ' pts from ' + st[0].P : 'no games played',
+    /* A World Cup has no leader: twelve groups are twelve separate races, and
+       nobody is top of anything that spans them. What the overall table does
+       say is which side has played best so far, so that is what it is called. */
+    [isWorld() ? 'Best performing team' : 'Leader',
+      st.length && st[0].P ? st[0].name : '—', st.length && st[0].P ? st[0].Pts + ' pts from ' + st[0].P : 'no games played',
       st.length && st[0].P ? st[0].id : null],
     // goals logged without a player still count for the team, but a row
     // called "Unattributed" must not be announced as the leading scorer
@@ -13429,7 +13433,11 @@ function emailText(d) {
       padL(r.y + 'Y', 4) + padL(r.r ? r.r + 'R' : '', 4) + (r.susp ? '  suspension due' : '')));
   }
   L.push('', 'SEASON SUMMARY', rule);
-  grandWinners().concat(d.snapshot).forEach(s => L.push(pad(s[0] + ':', 17) + s[1] + (s[2] ? '  (' + s[2] + ')' : '')));
+  /* the label column is as wide as the widest label, so a long one such as
+     "Best performing team" does not knock a single row out of line */
+  const tiles = grandWinners().concat(d.snapshot);
+  const lw = Math.max(17, ...tiles.map(s => String(s[0]).length + 2));
+  tiles.forEach(s => L.push(pad(s[0] + ':', lw) + s[1] + (s[2] ? '  (' + s[2] + ')' : '')));
   if (pubCfg().url && !DB.demo) L.push('', 'SEE MORE - the dashboard, every result, the fixtures and the stats, updated live:', pubCfg().url);
   if (d.thanks) L.push('', 'THANK YOU', rule, d.thanks);
   L.push('', rule, (d.sender.name || 'The organisers') + (d.sender.email ? ' - ' + d.sender.email : ''),
@@ -15992,7 +16000,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '13 Nov 17:42 · b4ae90b'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '13 Nov 19:16 · 2aabeff'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
