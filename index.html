@@ -1428,11 +1428,11 @@ td:has(>.tmv),td.pos{white-space:nowrap}
 .leaguecard[hidden]{display:none}
 /* the groups on Home: twelve small tables that fit side by side on a
    computer, two up on a tablet and one on a phone */
-.wcgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.wcgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:10px}
 .wcg{border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:var(--chip)}
 .wcgt{font:700 10.5px/1 ui-monospace,Consolas,monospace;letter-spacing:2px;text-transform:uppercase;
   color:var(--dim);padding:8px 10px 7px;background:var(--panel)}
-.wcr{display:grid;grid-template-columns:16px 20px 1fr 20px 24px;align-items:center;gap:6px;
+.wcr{display:grid;grid-template-columns:16px 20px 1fr 22px 22px 22px 26px 26px;align-items:center;gap:5px;
   padding:5px 10px;font-size:calc(12.5px * var(--fs));border-top:1px solid var(--line)}
 .wcr .crest{width:18px;height:18px}
 .wcp{color:var(--dim);font-variant-numeric:tabular-nums;text-align:center}
@@ -1441,6 +1441,61 @@ td:has(>.tmv),td.pos{white-space:nowrap}
 .wcpt{font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
 .wcr.q{box-shadow:inset 3px 0 0 var(--gold)}
 .wcr.q3{box-shadow:inset 3px 0 0 var(--silver)}
+.wcrh{display:grid;grid-template-columns:16px 20px 1fr 22px 22px 22px 26px 26px;align-items:center;gap:5px;
+  padding:4px 10px;font:700 9px/1 ui-monospace,Consolas,monospace;letter-spacing:.8px;text-transform:uppercase;
+  color:var(--dim);border-top:1px solid var(--line)}
+.wcrh span:nth-child(n+4){text-align:right}
+/* the knockout bracket: two halves and the trophy between them. Every size
+   inside it is an em, and the em is a share of the width the bracket is
+   given, so the whole road to the trophy fits whatever it is put in — a
+   full page, half a page, or the card on Home — instead of running off the
+   right-hand edge the way a fixed-width bracket does. Only a phone has to
+   scroll it, and even then it scrolls a readable bracket. */
+.wbrk{overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch;container-type:inline-size}
+.wbrkin{display:flex;align-items:stretch;gap:.75em;min-width:880px;padding:2px;
+  font-size:calc(clamp(8.8px,1.02cqw,12px) * var(--fs))}
+.wside{display:flex;gap:.8em;flex:1 1 0;min-width:0}
+.wcol{display:flex;flex-direction:column;flex:1 1 0;min-width:0}
+.wcol.wmid{flex:0 0 13.5em;justify-content:center;align-items:center;text-align:center}
+.wch{font:700 .8em/1 ui-monospace,Consolas,monospace;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--dim);text-align:center;padding:0 0 .7em}
+.wsl{flex:1 0 auto;display:flex;align-items:center;position:relative;min-height:4em}
+.wside .wcol:not(:first-child) .wsl::before{content:'';position:absolute;left:-.9em;top:50%;
+  width:.8em;border-top:1px solid var(--line2)}
+.wside.rt .wcol:not(:last-child) .wsl::before{left:auto;right:-.9em}
+.wbx{width:100%;border:1px solid var(--line2);border-radius:.75em;background:var(--chip);overflow:hidden}
+.wbx.done{border-color:var(--line2);background:var(--panel)}
+.wbx.soon{border-style:dashed;opacity:.9}
+.wbx.live{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc) inset}
+.wbt{display:grid;grid-template-columns:1.9em 1.5em 1fr 1.7em;align-items:center;gap:.25em;
+  padding:.42em .5em;font-size:1em;min-width:0}
+.wbt+.wbt{border-top:1px solid var(--line)}
+.wbs{font:700 .74em/1 ui-monospace,Consolas,monospace;color:var(--dim);text-align:center}
+.wbc{display:flex;align-items:center}
+.wbx .crest{width:1.35em;height:1.35em}
+.wbn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wbt.tbd .wbn{color:var(--dim)}
+.wbt.w{font-weight:700}
+.wbt.w .wbn{color:var(--gold)}
+.wbg{font-variant-numeric:tabular-nums;font-weight:700;text-align:right}
+.wbg em{font-style:normal;font-size:.78em;color:var(--dim);margin-left:2px}
+.wbg em::after{content:'p'}
+.wbd{font-size:.8em;color:var(--dim);padding:.25em .6em;border-top:1px solid var(--line);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wtro{font-size:2.9em;line-height:1;margin:.3em 0 .1em}
+.wtn{font-size:1.2em;font-weight:700;color:var(--gold);margin-top:.25em;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wtn .wtbd{color:var(--dim);font-weight:400}
+.wtl{font:700 .72em/1 ui-monospace,Consolas,monospace;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--dim);margin-top:.45em}
+.wp3{width:100%;margin-top:1.3em;padding-top:1em;border-top:1px solid var(--line)}
+.wbnote{color:var(--dim);font-size:12px;line-height:1.6;margin-top:8px}
+.wbnote b{color:var(--ink)}
+/* narrow: the seed labels step aside so the names keep their room */
+@container (max-width:1040px){.wbrkin .wbs{display:none}
+  .wbrkin .wbt{grid-template-columns:1.5em 1fr 1.7em}}
+.wbrk.mini .wbrkin{min-width:860px;font-size:calc(clamp(8.4px,.98cqw,11px) * var(--fs))}
+.wbrk.mini .wbd{display:none}
 .shbox{display:flex;flex-direction:column;gap:8px;align-items:flex-start;padding:13px;border-radius:11px;
   border:1px solid var(--line);background:var(--card)}
 .shbox b{font-size:calc(13px * var(--fs))}
@@ -3070,6 +3125,7 @@ let lastRaw = null;
 function save() {
   XL.sig = null;                                  // a career read from another league is no longer current
   if (!storageOk) { unsaved = true; return; }
+  if (typeof sealFinals === 'function') sealFinals();   // a confirmed result is confirmed, before anything reads it
   if (typeof cupAdvance === 'function') cupAdvance();   // a cup: the winners meet in the next round
   if (typeof worldAdvance === 'function') worldAdvance();  // a World Cup: the groups feed the last 32, and on
   if (typeof autoFinals === 'function') autoFinals();   // the season is over: draw the semis
@@ -3205,7 +3261,49 @@ function liveFinishedElsewhere() {
   live = { id: null, running: false, elapsed: 0, half: 1, period: 'H1', t0: 0 };
   toast('That match was finished on another tablet \u2014 it is closed here too.');
 }
+/* ── a result, once confirmed, is confirmed ──────────────────────────────
+   The oldest bug in the shared league: a round played and closed on one
+   tablet turned up open again on a phone, and from there went back up over
+   everybody else's copy, so the table, the stats and the live page all came
+   undone. Every fix for it so far has been a rule about WHO is believed —
+   and a rule about who is believed can always be got round by a device that
+   has lost its place.
+
+   So the result is no longer a rule. It is a fact ON the record, and it
+   travels with the record to every device there is:
+
+     f.finAt     the moment the result was confirmed, by whoever confirmed it
+     f.reopenAt  the moment a manager deliberately put it back on the schedule
+
+   A fixture is SEALED while finAt is the later of the two. A sealed fixture
+   is final — here, on the phone, in the table, on the published page —
+   whatever its status field happens to say when it arrives, because the
+   only thing that can unseal it is somebody choosing to, and that choice
+   carries its own stamp. A device that has never heard the result holds a
+   copy with no seal at all, and an unsealed copy can never stand over a
+   sealed one.
+
+   The seal is put back on below on every save, every time something comes
+   down from the shared copy, and every time a league is opened. */
+function sealed(f) { return !!f && +f.finAt > 0 && !(+f.reopenAt > +f.finAt); }
+function sealFinals() {
+  let n = 0;
+  (DB.fixtures || []).forEach(f => {
+    if (!f) return;
+    // a result confirmed before this rule existed, or on a device that has
+    // not been updated: stamp it now so it travels from here on
+    if (f.status === 'final' && !(+f.finAt > 0)) { f.finAt = +f.edAt > 0 ? +f.edAt : Date.now(); n++; return; }
+    if (sealed(f) && f.status !== 'final') {
+      f.status = 'final';
+      delete f.clock; delete f.openedAt; delete f.openedBy; delete f.openedWin;
+      if (live.id === f.id) { live.running = false; try { clearInterval(liveTimer); } catch (e) {} }
+      n++;
+    }
+  });
+  return n;
+}
 function dropStaleLive() {
+  sealFinals();                        // whatever else happened, a confirmed result is still confirmed
   const lf = live.id && DB.fixtures.find(f => f.id === live.id);
   if (live.id && (!lf || (lf.status !== 'live' && lf.status !== 'final'))) {
     clearInterval(liveTimer);
@@ -5536,11 +5634,19 @@ function dashGroups() {
   const blk = g => {
     const rows = by[g] || [];
     if (!rows.length) return '';
+    /* played, scored, conceded, difference, points — the whole row, because
+       a group of four is decided on all of them and half of them is a
+       table you have to go somewhere else to finish reading. */
     return '<div class="wcg"><div class="wcgt">Group ' + g + '</div>' +
+      '<div class="wcrh"><span></span><span></span><span></span><span>P</span><span>GF</span>' +
+      '<span>GA</span><span>GD</span><span>Pts</span></div>' +
       rows.map((r, i) => '<div class="wcr' + (i < 2 ? ' q' : i === 2 ? ' q3' : '') + '">' +
         '<span class="wcp">' + (i + 1) + '</span>' + crest(r.id) +
         '<span class="wcn">' + esc(r.name) + '</span>' +
         '<span class="wcpl">' + r.P + '</span>' +
+        '<span class="wcpl">' + r.GF + '</span>' +
+        '<span class="wcpl">' + r.GA + '</span>' +
+        '<span class="wcpl">' + (r.GD > 0 ? '+' : '') + r.GD + '</span>' +
         '<span class="wcpt">' + r.Pts + '</span></div>').join('') + '</div>';
   };
   const made = WC_GRPS.map(blk).join('');
@@ -5699,7 +5805,11 @@ function renderDash() {
      all; but once the finals exist Home shows the bracket itself rather
      than a list of the same eight matches — the same picture as the Finals
      tab, smaller, with nothing to press. */
-  const brk = !isCup() && !leagueOnly() && DB.fixtures.some(f => f.stage !== 'regular') ? bracketHtml(true) : '';
+  /* A World Cup shows its bracket from the first whistle of the group
+     stage, not from the moment the last 32 is drawn: half the point of a
+     bracket is seeing the road ahead while you can still change it. */
+  const brk = isWorld() ? (DB.teams.length ? bracketHtml(true) : '')
+    : !isCup() && !leagueOnly() && DB.fixtures.some(f => f.stage !== 'regular') ? bracketHtml(true) : '';
   const strip = brk ? '' : finalsStrip();
   $('dashFinalsCard').querySelector('h3').textContent = isWorld() ? 'The knockout' : isCup() ? 'The cup' : 'Finals';
   $('dashFinalsCard').style.display = brk || strip ? '' : 'none';
@@ -5936,6 +6046,106 @@ function wcAllocThirds(slots, thirds) {
   };
   return walk(0) ? out : null;
 }
+/* ────────────────── the knockout, drawn as a bracket ──────────────────
+   A list of sixteen ties answers "who plays who" and nothing else. What a
+   tournament actually looks like is two halves that cannot meet until the
+   final: one run down the left, one down the right, the trophy between
+   them. So the knockout is drawn that way — and drawn from the moment the
+   groups start, with the sides currently 1st, 2nd and best-third standing
+   in their slots, so everybody can see the road they are heading for
+   before a ball is kicked in it. */
+const WC_FEED = (() => { const o = {};
+  Object.keys(WC_ON).forEach(r => WC_ON[r].forEach(t => o[t[0]] = [t[1], t[2]])); return o; })();
+const WC_MRD = (() => { const o = {};
+  WC_R32.forEach(t => o[t.m] = WC_GRD + 1);
+  Object.keys(WC_ON).forEach(r => WC_ON[r].forEach(t => o[t[0]] = +r)); return o; })();
+const WC_CODE = (() => { const o = {}; WC_R32.forEach(t => o[t.m] = [t.h, t.a]); return o; })();
+/* the column of ties that feeds a match, then the one that feeds those, and
+   so on back to the last 32: [R32 x8, R16 x4, QF x2, SF x1] */
+function wcCols(root) {
+  const cols = []; let cur = [root];
+  while (cur.length) { cols.unshift(cur); const nx = [];
+    cur.forEach(m => { const f = WC_FEED[m]; if (f) nx.push(f[0], f[1]); }); cur = nx; }
+  return cols;
+}
+/* Who would be in each last-32 slot if the groups finished as they stand.
+   The same rules the real draw uses, so the projection is the draw: the
+   thirds are handed out best-placed first and never to a side from their
+   own group. */
+function wcSeeds() {
+  const { by, thirds } = wcTables();
+  const slots = WC_R32.filter(t => t.a === '3').map(t => t.h.slice(1));
+  const got = wcAllocThirds(slots, thirds.slice(0, 8)) || [];
+  let si = 0; const out = {};
+  const pick = code => code === '3' ? ((got[si++] || {}).id || null)
+    : (((by[code.slice(1)] || [])[+code[0] - 1] || {}).id || null);
+  WC_R32.forEach(t => { const hid = pick(t.h); out[t.m] = { h: hid, a: pick(t.a) }; });
+  return out;
+}
+const wcSlotLabel = c => c === '3' ? '3rd' : c;
+/* opt.dot  — how a crest is drawn (the tool and the published page differ)
+   opt.mini — Home's smaller copy */
+function wcBracketHtml(opt) {
+  opt = opt || {};
+  const dot = opt.dot || (id => crest(id, 'sm'));
+  const byM = {}; DB.fixtures.forEach(f => { if (f.m) byM[f.m] = f; });
+  const seeds = wcSeeds();
+  let guessed = false;
+  const box = m => {
+    const f = byM[m], code = WC_CODE[m];
+    const proj = !f && WC_MRD[m] === WC_GRD + 1 ? seeds[m] : null;
+    if (proj && (proj.h || proj.a)) guessed = true;
+    const hid = f ? f.homeId : proj ? proj.h : null;
+    const aid = f ? f.awayId : proj ? proj.a : null;
+    const w = f ? winnerOf(f) : null;
+    const done = !!f && f.status === 'final';
+    const pens = done && f.homePens != null && f.homeGoals === f.awayGoals;
+    const side = (id, lab, g, p) => '<div class="wbt' + (w && w === id ? ' w' : '') + (id ? '' : ' tbd') + '">' +
+      '<span class="wbs">' + esc(lab || '') + '</span>' +
+      '<span class="wbc">' + (id ? dot(id) : '') + '</span>' +
+      '<span class="wbn">' + (id ? esc(teamName(id)) : 'to be decided') + '</span>' +
+      '<span class="wbg">' + (done ? g + (pens ? '<em>' + p + '</em>' : '') : '') + '</span></div>';
+    return '<div class="wsl"><div class="wbx' + (done ? ' done' : '') + (f ? '' : ' soon') + '">' +
+      side(hid, code ? wcSlotLabel(code[0]) : '', f ? f.homeGoals : 0, f ? f.homePens : 0) +
+      side(aid, code ? wcSlotLabel(code[1]) : '', f ? f.awayGoals : 0, f ? f.awayPens : 0) +
+      (f && f.date ? '<div class="wbd">' + esc(fmtDate(f.date)) + (f.time ? ' · ' + esc(f.time) : '') +
+        (f.court ? ' · court ' + esc(f.court) : '') + '</div>' : '') +
+      '</div></div>';
+  };
+  const colHtml = ms => '<div class="wcol"><div class="wch">' +
+    esc(WC_RNAME[WC_MRD[ms[0]]] || '') + '</div>' + ms.map(box).join('') + '</div>';
+  const left = wcCols(101).map(colHtml).join('');
+  const right = wcCols(102).slice().reverse().map(colHtml).join('');
+  const fin = byM[104], p3 = byM[103], champ = fin ? winnerOf(fin) : null;
+  const mid = '<div class="wcol wmid"><div class="wch">Final</div>' + box(104) +
+    '<div class="wtro">🏆<div class="wtn">' +
+      (champ ? esc(teamName(champ)) : '<span class="wtbd">the trophy</span>') + '</div>' +
+      '<div class="wtl">' + (champ ? 'Champion' : 'Still up for grabs') + '</div></div>' +
+    (p3 ? '<div class="wp3"><div class="wch">Third place</div>' + box(103) + '</div>' : '') + '</div>';
+  const body = '<div class="wbrk' + (opt.mini ? ' mini' : '') + '"><div class="wbrkin">' +
+    '<div class="wside">' + left + '</div>' + mid +
+    '<div class="wside rt">' + right + '</div></div></div>';
+  /* Which round is actually on, said in the tournament's own words, because
+     "round 6" means nothing and "quarter-finals, winners into the semis"
+     means everything. */
+  const kos = DB.fixtures.filter(f => (f.round || 0) > WC_GRD);
+  const open = kos.filter(f => f.status !== 'final' && !isOff(f)).map(f => f.round);
+  const now = open.length ? Math.min.apply(null, open) : 0;
+  const nm = r => WC_RNAME[r] || ('Round ' + r);
+  const onward = r => r >= 8 ? 'lift the trophy' : 'go through to the ' + nm(r + 1).toLowerCase();
+  const where = !kos.length ? ''
+    : now ? '<b>' + esc(nm(now)) + ' \u2014 ' + kos.filter(f => f.round === now).length +
+        ' ties.</b> Winners ' + onward(now) + '. '
+    : '<b>The knockout is complete.</b> ';
+  const note = guessed
+    ? 'The last 32 as it would be drawn if the groups finished tonight, with the sides lying first, ' +
+      'second and best-third standing in the slots the rules would give them. Nobody meets a side from ' +
+      'their own group, and it moves with every result until the groups are done.'
+    : 'Two halves of sixteen. Four wins takes a side from here to the final, and the two halves ' +
+      'cannot meet before it.';
+  return body + '<div class="wbnote">' + where + note + '</div>';
+}
+
 /* ══════════════ REGISTRATIONS ══════════════ */
 function matchExisting(sub) {
   const e = normEmail(sub.email), ph = normPhone(sub.phone);
@@ -8246,6 +8456,7 @@ function walkover(id) {
         delete fx.wo;
       } else {
         fx.status = 'final'; fx.wo = who;
+        fx.finAt = Date.now(); delete fx.reopenAt;
         fx.homeGoals = who === fx.homeId ? g : 0;
         fx.awayGoals = who === fx.awayId ? g : 0;
         fx.homePens = null; fx.awayPens = null;
@@ -9725,6 +9936,10 @@ function resetMatch(f, sure) {
   DB.people.forEach(p => { if (p.injury && p.injury.fid === f.id) delete p.injury; });   // hurt in a match that never happened
   f.attended = [];
   f.status = 'scheduled'; f.homeGoals = 0; f.awayGoals = 0; f.homePens = null; f.awayPens = null;
+  /* Breaking the seal, on purpose, with the moment it was done — so this
+     stands over the result everywhere, and nowhere else can quietly put the
+     result back. */
+  f.reopenAt = Date.now(); delete f.finAt;
   delete f.wo; delete f.offReason; delete f.offAt;
   ['guestOf', 'manual', 'aet', 'ntH', 'ntA', 'clock', 'openedBy', 'openedWin', 'openedAt', 'fouls', 'ran', 'mvp'].forEach(k => delete f[k]);
   if (live.id === f.id) { live.running = false; clearInterval(liveTimer); live = { id: null, running: false, elapsed: 0, half: 1, period: 'H1', t0: 0 }; }
@@ -9934,6 +10149,7 @@ function finaliseMatch(f) {
       f.manual = editable && (hg !== sNow.h || ag !== sNow.a);
       if (f.status !== 'final') serveSuspensions(f);          // cards become suspensions, and suspensions are served
       f.status = 'final';
+      f.finAt = Date.now(); delete f.reopenAt;               // the seal: this result now travels with the record
       delete f.clock;
       live.running = false; clearInterval(liveTimer);
       // let go of the match first, so the redraw shows the picker and not an armed board
@@ -10726,6 +10942,8 @@ function recordHonour() {
    you run the matches from it, and Home, where it is the same picture at
    a smaller size with nothing to press. */
 function bracketHtml(mini) {
+  // a World Cup is not four named ties off a table; it is a 32-team bracket
+  if (isWorld()) return '<div class="brk' + (mini ? ' mini' : '') + '">' + wcBracketHtml({ mini: mini }) + '</div>';
   const lo = leagueOnly();
   const get = s => DB.fixtures.find(f => f.stage === s);
   const sf1 = get('SF1'), sf2 = get('SF2'), fin = get('F'), p3 = get('P3');
@@ -10809,9 +11027,19 @@ function renderFinals() {
   const recBtn = () => isMgr() ? '<button class="btn ok sm" style="margin-top:10px" data-rechon>' +
     (DB.honours.some(hh => +hh.year === +DB.season.year && String(hh.season).toLowerCase() === String(DB.season.name).toLowerCase())
       ? 'Update the roll of honour' : 'Add to roll of honour') + '</button>' : '';
-  $('finalsAdminCard').style.display = isMgr() && !lo ? '' : 'none';
+  $('finalsAdminCard').style.display = isMgr() && !lo && !isWorld() ? '' : 'none';
   $('finals3rd').checked = !!DB.finals3rd;
   $('bracket').innerHTML = bracketHtml(false);
+  if (isWorld()) {
+    const done = wcGroupsDone(), drawn = DB.fixtures.some(f => (f.round || 0) === WC_GRD + 1);
+    $('finalsNote').innerHTML = drawn
+      ? 'The last 32 is drawn. Thirty-two sides, two halves of sixteen, and they can only meet in the final. ' +
+        'A drawn knockout tie is settled by the penalty shoot-out on the match screen.'
+      : done
+      ? 'The groups are complete — save the competition and the last 32 draws itself.'
+      : 'The group stage is still on. The bracket below is the draw as it would fall if the groups ' +
+        'finished tonight: top two of each group, and the eight best third-placed sides.';
+  } else
   $('finalsNote').innerHTML = lo ? '' : sf1 ?
       'Locked from the table: gold <b>1st v 4th</b> and <b>2nd v 3rd</b>' + (sv1 ? ', silver <b>5th v 8th</b> and <b>6th v 7th</b>' : '') +
       '. Semi winners meet in their final. A drawn match is settled by the penalty shoot-out on the match screen.'
@@ -12809,7 +13037,21 @@ function seasonPhase() {
   return { reg, rounds, maxRound, lastPlayedRound, nextRound, finals, champion, grand, mode,
     remaining: reg.filter(f => f.status !== 'final' && !isOff(f)).length };
 }
+/* "Round 4 of 8" is true of a World Cup and tells nobody anything. Once the
+   groups are done the competition has names of its own, and the headline
+   uses them: the last 32, the last 16, the quarters, the semis, the final. */
+function wcHeadline(ph) {
+  if (ph.mode === 'wrap') return teamName(ph.champion) + ' are champions';
+  const r = ph.lastPlayedRound || 0, nx = ph.nextRound || 0;
+  const nm = x => WC_RNAME[x] || ('Matchday ' + x);
+  if (!r && !nx) return 'The draw is out';
+  if (r > WC_GRD) return nm(r) + (nx > r ? ' done — ' + nm(nx) + ' next' : ' under way');
+  if (nx > WC_GRD) return 'The group stage is complete — ' + nm(nx) + ' is drawn';
+  if (!r) return 'The group stage starts';
+  return r >= WC_GRD ? 'Group stage — the last matchday' : 'Group stage · matchday ' + r + ' of ' + WC_GRD;
+}
 function headlineFor(ph) {
+  if (isWorld()) return wcHeadline(ph);
   const of = 'Round ' + ph.lastPlayedRound + (ph.maxRound ? ' of ' + ph.maxRound : '');
   return { preseason: 'Season update',
     mid: ph.lastPlayedRound ? of : 'The draw is out',
@@ -12822,6 +13064,12 @@ function headlineFor(ph) {
    field still overrides it. */
 function subjectFor(ph) {
   const base = DB.season.name;
+  if (isWorld()) {
+    const r = ph.lastPlayedRound || 0;
+    return base + ' - ' + (ph.mode === 'wrap' ? 'champions'
+      : r > WC_GRD ? (WC_RNAME[r] || 'round ' + r).toLowerCase()
+      : 'matchday ' + (r || 1));
+  }
   if (ph.mode === 'wrap') return base + ' - champions';
   if (ph.mode === 'finals') return base + ' - finals';
   if (ph.mode === 'regDone') return base + ' - regular season complete';
@@ -12900,7 +13148,8 @@ function bulletinParts() {
     : ph.nextRound ? ph.reg.filter(f => on(f) && f.round <= ph.nextRound) : [];
   const rset = list => [...new Set(list.map(roundKey))];
   const lr = rset(lastFx), nr = rset(nextFx);
-  const name = k => k === 'SEMI' ? 'Semi-final' : k === 'FINAL' ? 'Finals' : 'Round ' + k.slice(1);
+  // "Round of 32 results", not "Round 4 results"
+  const name = k => k === 'SEMI' ? 'Semi-final' : k === 'FINAL' ? 'Finals' : rdName(+k.slice(1));
   const lastTitle = lr.length === 1 ? name(lr[0]) + ' results' : lr.every(k => !/^R/.test(k)) ? 'Finals results' : 'Latest results';
   const nextTitle = nr.length === 1 ? (nr[0] === 'SEMI' ? 'Semi-finals' : name(nr[0])) + ' — who plays who' : 'Coming up';
   const scorers = scorerTable().filter(r => r.personId).slice(0, 10), cards = cardTable();   // the top ten named scorers
@@ -13244,7 +13493,14 @@ function emailHtmlRaw(d, ball, crests) {
   }
 
   if (d.opt.table && d.st.length && isWorld()) {
-    A.push(H2('Groups'));
+    /* The bracket first: the one picture that answers what everybody
+       actually wants to know, which is how far their side has to go. The
+       list of ties under it keeps the scores. */
+    A.push(H2('The road to the trophy'));
+    A.push(mailBracket(DIM, LINE, INK, PAPER, TILE));
+    const ko = mailKo(DIM, LINE, INK);
+    if (ko) { A.push(H2('The knockout, round by round')); A.push(ko); }
+    A.push(H2(ko ? 'How the groups finished' : 'Groups'));
     A.push(mailGroups(DIM, LINE, INK));
   } else if (d.opt.table && d.st.length && !isCup()) {
     A.push(H2('Table'));
@@ -13408,11 +13664,25 @@ function emailText(d) {
   }
   if (d.opt.table && d.st.length && isWorld()) {
     const { by, thirds } = wcTables();
-    L.push('', 'GROUPS', rule);
+    const kr = wcKoRounds();
+    if (kr.length) {
+      L.push('', 'THE KNOCKOUT', rule);
+      kr.forEach(r => { L.push(r.name.toUpperCase());
+        r.fx.forEach(f => { const w = winnerOf(f), done = f.status === 'final';
+          const nm = id => id ? teamName(id) : 'to be decided';
+          const mk = id => (w && w === id ? '* ' : '  ') + nm(id);
+          L.push('  ' + pad(mk(f.homeId), 24) +
+            (done ? padL(f.homeGoals + '-' + f.awayGoals, 5) : padL('v', 5)) + '  ' + mk(f.awayId).trim()); });
+        L.push(''); });
+    }
+    L.push('', kr.length ? 'HOW THE GROUPS FINISHED' : 'GROUPS', rule);
     WC_GRPS.forEach(g => { const rows = by[g] || []; if (!rows.length) return;
       L.push('Group ' + g);
+      L.push('  ' + pad('', 4) + pad('', 24) + padL('P', 3) + padL('GF', 4) + padL('GA', 4) +
+        padL('GD', 4) + padL('Pts', 5));
       rows.forEach((r, i) => L.push('  ' + pad((i + 1) + '.', 4) + pad(r.name, 24) +
-        padL(r.P, 3) + padL((r.GD > 0 ? '+' : '') + r.GD, 4) + padL(r.Pts, 5) + (i < 2 ? '  through' : i === 2 ? '  third' : ''))); });
+        padL(r.P, 3) + padL(r.GF, 4) + padL(r.GA, 4) + padL((r.GD > 0 ? '+' : '') + r.GD, 4) +
+        padL(r.Pts, 5) + (i < 2 ? '  through' : i === 2 ? '  third' : ''))); });
     if (thirds.length) L.push('', 'Best thirds (eight go through): ' +
       thirds.slice(0, 8).map(r => r.name).join(', '));
   } else if (d.opt.table && d.st.length && !isCup()) {
@@ -13605,19 +13875,22 @@ const perGame = r => { const g = r.personId ? attendCount(r.personId) : 0; retur
    the same order. */
 function pubGroups(st, full) {
   const { by, thirds } = wcTables();
-  const dot = id => '<span class="cr" data-t="' + esc(id) + '"></span>';
+  // data-c, the attribute the page's crest rules are written against: with
+  // data-t the group tables showed the blank shield for every team
+  const dot = id => '<span class="cr' + (logoOf(id) ? '' : ' none') + '" data-c="' + esc(id) + '"></span>';
   const blk = g => {
     const rows = by[g] || [];
     if (!rows.length) return '';
     return '<div class="pgrp"><h3>Group ' + g + '</h3><table>' +
       '<tr><th class="n">#</th><th>Team</th><th class="n">P</th>' +
       (full ? '<th class="n hs">W</th><th class="n hs">D</th><th class="n hs">L</th>' : '') +
-      '<th class="n">GD</th><th class="n">Pts</th></tr>' +
+      '<th class="n">GF</th><th class="n">GA</th><th class="n">GD</th><th class="n">Pts</th></tr>' +
       rows.map((r, i) => '<tr class="' + (i < 2 ? 'qg' : i === 2 ? 'qs' : '') + '">' +
         '<td class="n dim">' + (i + 1) + '</td>' +
         '<td class="tm">' + dot(r.id) + esc(r.name) + '</td>' +
         '<td class="n">' + r.P + '</td>' +
         (full ? [r.W, r.D, r.L].map(v => '<td class="n hs">' + v + '</td>').join('') : '') +
+        '<td class="n">' + r.GF + '</td><td class="n">' + r.GA + '</td>' +
         '<td class="n">' + ((r.GD > 0 ? '+' : '') + r.GD) + '</td>' +
         '<td class="n"><b>' + r.Pts + '</b></td></tr>').join('') + '</table></div>';
   };
@@ -13642,16 +13915,150 @@ function mailGroups(DIM, LINE, INK) {
       'text-transform:uppercase;color:' + DIM + ';margin:0 0 5px">Group ' + g + '</div>' +
       '<table role="presentation" cellpadding="0" cellspacing="0" border="0" ' +
       'style="width:100%;border-collapse:collapse;font-size:13px;color:' + INK + '">' +
+      '<tr style="font:700 10px/1 Arial,sans-serif;letter-spacing:.8px;color:' + DIM + '">' +
+        cell('', false) + cell('', false) + cell('P', true) + cell('GF', true) + cell('GA', true) +
+        cell('GD', true) + cell('PTS', true) + '</tr>' +
       rows.map((r, i) => '<tr>' +
         cell('<span style="color:' + DIM + '">' + (i + 1) + '</span>', false) +
         cell(esc(r.name) + (i < 2 ? ' <span style="color:' + DIM + ';font-size:11px">through</span>'
           : i === 2 ? ' <span style="color:' + DIM + ';font-size:11px">third</span>' : ''), false) +
-        cell(r.P, true) + cell((r.GD > 0 ? '+' : '') + r.GD, true) + cell(r.Pts, true, true) +
+        cell(r.P, true) + cell(r.GF, true) + cell(r.GA, true) +
+        cell((r.GD > 0 ? '+' : '') + r.GD, true) + cell(r.Pts, true, true) +
         '</tr>').join('') + '</table></div>';
   }).join('');
   return out + (thirds.length ? '<div style="font-size:12.5px;color:' + DIM + ';line-height:1.6">' +
     'Eight best third-placed sides go through. As it stands: <b style="color:' + INK + '">' +
     thirds.slice(0, 8).map(r => esc(r.name)).join(', ') + '</b>.</div>' : '');
+}
+/* The bracket is a picture, and a picture built out of flex columns is not
+   something to send to Outlook. The email gets the same information as a
+   plain list, round by round, in the order the tournament plays them. */
+function wcKoRounds() {
+  const ko = DB.fixtures.filter(f => (f.round || 0) > WC_GRD)
+    .sort((a, b) => (a.round || 0) - (b.round || 0) || (a.m || 0) - (b.m || 0));
+  const out = [];
+  ko.forEach(f => {
+    const k = f.wc || WC_RNAME[f.round] || ('Round ' + f.round);
+    let row = out.find(x => x.name === k);
+    if (!row) out.push(row = { name: k, fx: [] });
+    row.fx.push(f);
+  });
+  return out;
+}
+/* ── the road to the trophy, in an email ─────────────────────────────────
+   The page draws the bracket as two halves facing each other across the
+   trophy. An email cannot: its body is 600 points wide and a 48-team
+   bracket laid out side by side is twice that, so it would arrive as a
+   smear of three-letter stumps.
+
+   What it CAN do is tables with rowspans, which every client back to
+   Outlook 2007 renders properly. So the two halves are stacked instead of
+   faced: the top half's road to the final, the trophy, then the other
+   half's road to it. Each half still reads left to right exactly as the
+   page draws it — last 32, last 16, quarter, semi — and the two still
+   cannot meet before the final, which the note underneath says plainly.
+
+   Drawn from the moment the groups start, like the page's: until the last
+   32 exists the slots show who would be in them if the groups finished
+   tonight. */
+function mailBracket(DIM, LINE, INK, PAPER, TILE) {
+  const byM = {}; DB.fixtures.forEach(f => { if (f.m) byM[f.m] = f; });
+  const seeds = wcSeeds();
+  let guessed = false;
+  const tie = m => {
+    const f = byM[m], code = WC_CODE[m];
+    const proj = !f && WC_MRD[m] === WC_GRD + 1 ? seeds[m] : null;
+    if (proj && (proj.h || proj.a)) guessed = true;
+    const hid = f ? f.homeId : proj ? proj.h : null;
+    const aid = f ? f.awayId : proj ? proj.a : null;
+    const w = f ? winnerOf(f) : null;
+    const done = !!f && f.status === 'final';
+    const row = (id, slot, g, p) => {
+      const win = w && w === id;
+      const nm = id ? esc(teamName(id)) : 'to be decided';
+      return '<tr>' +
+        (code ? '<td style="padding:2px 4px 2px 0;font:700 8px/1.2 Arial,sans-serif;color:' + DIM +
+          ';white-space:nowrap">' + esc(wcSlotLabel(slot)) + '</td>' : '') +
+        '<td style="padding:2px 0;font-size:10.5px;line-height:1.3;color:' + (id ? INK : DIM) +
+          (win ? ';font-weight:700' : '') + '">' + nm + '</td>' +
+        '<td style="padding:2px 0 2px 4px;font-size:10.5px;text-align:right;color:' + INK +
+          (win ? ';font-weight:700' : '') + '">' +
+          (done ? g + (f.homePens != null && f.homeGoals === f.awayGoals ? '<span style="color:' + DIM +
+            ';font-size:8.5px"> (' + p + 'p)</span>' : '') : '') + '</td></tr>';
+    };
+    return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;' +
+      'border-collapse:collapse;border:1px solid ' + LINE + ';border-radius:6px;background:' +
+      (done ? TILE : PAPER) + '">' +
+      '<tr><td style="padding:4px 6px"><table role="presentation" cellpadding="0" cellspacing="0" ' +
+      'border="0" style="width:100%;border-collapse:collapse">' +
+      row(hid, code ? code[0] : '', f ? f.homeGoals : 0, f ? f.homePens : 0) +
+      row(aid, code ? code[1] : '', f ? f.awayGoals : 0, f ? f.awayPens : 0) +
+      '</table></td></tr></table>';
+  };
+  const head = t => '<td style="padding:0 3px 6px;font:700 8.5px/1 Arial,sans-serif;letter-spacing:1.4px;' +
+    'text-transform:uppercase;color:' + DIM + ';text-align:center">' + t + '</td>';
+  /* one half: eight last-32 ties down the page, each round beside the ties
+     that feed it, held in the middle of them by a rowspan */
+  const half = root => {
+    const cols = wcCols(root);                       // [R32 x8, R16 x4, QF x2, SF x1]
+    const rows = [];
+    for (let i = 0; i < 8; i++) {
+      const cells = [];
+      cols.forEach((ms, c) => {
+        const every = 8 / ms.length;                 // 1, 2, 4, 8
+        if (i % every) return;
+        cells.push('<td rowspan="' + every + '" valign="middle" style="padding:3px">' +
+          tie(ms[i / every]) + '</td>');
+      });
+      rows.push('<tr>' + cells.join('') + '</tr>');
+    }
+    return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" ' +
+      'style="width:100%;border-collapse:collapse;table-layout:fixed">' +
+      '<tr>' + ['Last 32', 'Last 16', 'Quarters', 'Semi'].map(head).join('') + '</tr>' +
+      rows.join('') + '</table>';
+  };
+  const fin = byM[104], champ = fin ? winnerOf(fin) : null;
+  const mid = '<table role="presentation" cellpadding="0" cellspacing="0" border="0" ' +
+    'style="width:100%;border-collapse:collapse;margin:14px 0"><tr>' +
+    '<td style="text-align:center;padding:10px 0;border-top:1px solid ' + LINE +
+      ';border-bottom:1px solid ' + LINE + '">' +
+      '<div style="font:700 9px/1 Arial,sans-serif;letter-spacing:2px;text-transform:uppercase;color:' +
+        DIM + ';margin-bottom:6px">The final</div>' +
+      '<div style="max-width:230px;margin:0 auto">' + tie(104) + '</div>' +
+      '<div style="font-size:22px;line-height:1;margin:8px 0 2px">&#127942;</div>' +
+      '<div style="font-size:12.5px;font-weight:800;color:' + (champ ? '#b84309' : DIM) + '">' +
+        (champ ? esc(teamName(champ)) : 'the trophy') + '</div>' +
+    '</td></tr></table>';
+  const body = half(101) + mid + half(102);
+  const note = guessed
+    ? 'The last 32 as it would be drawn if the groups finished tonight &mdash; and nobody meets a side ' +
+      'from their own group.'
+    : 'Two halves of sixteen. They can only meet in the final.';
+  return body + '<div style="font-size:12px;color:' + DIM + ';line-height:1.6;margin-top:8px">' +
+    note + '</div>';
+}
+function mailKo(DIM, LINE, INK) {
+  const rounds = wcKoRounds();
+  if (!rounds.length) return '';
+  const cell = (v, right, bold) => '<td style="padding:5px 4px;border-bottom:1px solid ' + LINE +
+    (right ? ';text-align:center' : '') + (bold ? ';font-weight:700' : '') + '">' + v + '</td>';
+  return rounds.map(r => '<div style="margin:0 0 14px"><div style="font:700 11px/1 Arial,sans-serif;' +
+    'letter-spacing:1.6px;text-transform:uppercase;color:' + DIM + ';margin:0 0 5px">' + esc(r.name) + '</div>' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" ' +
+    'style="width:100%;border-collapse:collapse;font-size:13px;color:' + INK + '">' +
+    r.fx.map(f => {
+      const w = winnerOf(f), done = f.status === 'final';
+      const nm = id => id ? esc(teamName(id)) : '<span style="color:' + DIM + '">to be decided</span>';
+      const bold = id => w && w === id ? '<b>' + nm(id) + '</b>' : nm(id);
+      return '<tr>' + cell(bold(f.homeId), false) +
+        cell(done ? '<b>' + f.homeGoals + '&ndash;' + f.awayGoals + '</b>' +
+          (f.homePens != null && f.homeGoals === f.awayGoals ? ' <span style="color:' + DIM + '">(' +
+            f.homePens + '&ndash;' + f.awayPens + 'p)</span>' : '')
+          : '<span style="color:' + DIM + '">v</span>', true) +
+        cell(bold(f.awayId), false) + '</tr>';
+    }).join('') + '</table></div>').join('') +
+    '<div style="font-size:12.5px;color:' + DIM + ';line-height:1.6">Two halves of sixteen — ' +
+    'they can only meet in the final. The full bracket is on the competition page.</div>';
 }
 function publicPageHtml() {
   const d = bulletinParts(), ph = d.ph, st = d.st, ko = !leagueOnly();
@@ -13746,9 +14153,17 @@ function publicPageHtml() {
           .sort((a, b) => a.round - b.round || String(a.time || '').localeCompare(String(b.time || '')))
       : ['SF1', 'SF2', 'F', 'P3', 'SV1', 'SV2', 'SVF', 'SV3']
           .map(s => DB.fixtures.find(x => x.stage === s)).filter(x => x && (x.homeId || x.awayId));
-    if (!ko.length) return '';
+    if (!ko.length && !isWorld()) return '';
     const side = id => id ? dot(id) + esc(teamName(id)) : '<span class="dim">to be decided</span>';
-    return h2(isWorld() ? 'The knockout' : isCup() ? 'The cup' : 'Finals') + '<div class="tw"><table>' + ko.map(f => {
+    /* The bracket first, because it is the one picture that answers the
+       question everybody actually has: what is the road to the trophy, and
+       who is standing on it. The list of ties underneath keeps the dates,
+       the courts and the scores. */
+    const brk = isWorld() ? h2('The road to the trophy') +
+      '<style>' + PUB_BRK_CSS + '</style><div class="tw pad">' +
+      wcBracketHtml({ dot: dot }) + '</div>' : '';
+    if (!ko.length) return brk;
+    return brk + h2(isWorld() ? 'The knockout' : isCup() ? 'The cup' : 'Finals') + '<div class="tw"><table>' + ko.map(f => {
       const done = f.status === 'final', w = done ? winnerOf(f) : null;
       const bold = (id, s) => w && w === id ? '<b>' + s + '</b>' : s;
       return '<tr style="--tc:' + tc(f.homeId) + '"><td class="sub dim">' +
@@ -13950,6 +14365,9 @@ function publicPageHtml() {
     // split, so the browser reading THIS page never mistakes them for the end of its own script
     '<scr' + 'ipt>(' + pubClient.toString() + ')();</scr' + 'ipt></body></html>');
 }
+/* the bracket's own styles, kept out of the page's main sheet so the two
+   can be read apart; the class names are the ones the tool uses */
+const PUB_BRK_CSS = ".wbrk{overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch;container-type:inline-size}\n.wbrkin{display:flex;align-items:stretch;gap:.75em;min-width:880px;padding:2px;font-size:clamp(8.8px,1.02cqw,12px)}\n.wside{display:flex;gap:.8em;flex:1 1 0;min-width:0}\n.wcol{display:flex;flex-direction:column;flex:1 1 0;min-width:0}\n.wcol.wmid{flex:0 0 13.5em;justify-content:center;align-items:center;text-align:center}\n.wch{font:700 .8em/1 Consolas,monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);text-align:center;padding:0 0 .7em}\n.wsl{flex:1 0 auto;display:flex;align-items:center;position:relative;min-height:4em}\n.wside .wcol:not(:first-child) .wsl::before{content:'';position:absolute;left:-.9em;top:50%;width:.8em;border-top:1px solid var(--line)}\n.wside.rt .wcol:not(:last-child) .wsl::before{left:auto;right:-.9em}\n.wbx{width:100%;border:1px solid var(--line);border-radius:.75em;background:var(--card);overflow:hidden}\n.wbx.done{background:var(--card2)}\n.wbx.soon{border-style:dashed;opacity:.92}\n.wbt{display:grid;grid-template-columns:1.9em 1.5em 1fr 1.7em;align-items:center;gap:.25em;padding:.42em .5em;font-size:1em;min-width:0}\n.wbt+.wbt{border-top:1px solid var(--line)}\n.wbs{font:700 .74em/1 Consolas,monospace;color:var(--dim);text-align:center}\n.wbc{display:flex;align-items:center}\n.wbx .cr{width:1.35em;height:1.35em;margin:0}\n.wbn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.wbt.tbd .wbn{color:var(--dim)}\n.wbt.w{font-weight:800}\n.wbt.w .wbn{color:#f0cf6a}\n.wbg{font-variant-numeric:tabular-nums;font-weight:800;text-align:right}\n.wbg em{font-style:normal;font-size:.78em;color:var(--dim);margin-left:2px}\n.wbg em::after{content:'p'}\n.wbd{font-size:.8em;color:var(--dim);padding:.25em .6em;border-top:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.wtro{font-size:2.9em;line-height:1;margin:.3em 0 .1em}\n.wtn{font-size:1.2em;font-weight:800;color:#f0cf6a;margin-top:.25em;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.wtn .wtbd{color:var(--dim);font-weight:400}\n.wtl{font:700 .72em/1 Consolas,monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);margin-top:.45em}\n.wp3{width:100%;margin-top:1.3em;padding-top:1em;border-top:1px solid var(--line)}\n.wbnote{color:var(--dim);font-size:12.5px;line-height:1.6;margin-top:8px}\n.wbnote b{color:var(--ink)}\n@container (max-width:1040px){.wbrkin .wbs{display:none}.wbrkin .wbt{grid-template-columns:1.5em 1fr 1.7em}}";
 const PUB_CSS = ":root{--hue:#ff8a3d;--bg:#0e0f12;--card:#1b1c21;--card2:#22232a;--line:#30313a;--ink:#f4f2f0;--dim:#9c9ca6;--acc:#ff8a3d;--bad:#ff5f5f;\n  --grad:linear-gradient(135deg,#ff8a3d 0%,#ff5c00 100%);\n  --goldm:linear-gradient(135deg,#fff3b0 0%,#f2cc4d 24%,#b8860b 52%,#f7dc6f 74%,#9a6b00 100%);\n  --silverm:linear-gradient(135deg,#ffffff 0%,#d9dde3 26%,#9ba3ae 52%,#eef1f4 74%,#7d8590 100%);\n  --bronzem:linear-gradient(135deg,#ffe2c4 0%,#e4a46a 26%,#a8622c 52%,#f2c08f 74%,#80461c 100%)}\n*{box-sizing:border-box}[hidden]{display:none!important}\nbody{margin:0;color:var(--ink);font:15px/1.5 \"Segoe UI\",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;\n  background:radial-gradient(60% 40% at 12% 0%,rgba(255,122,26,.16),transparent 62%),radial-gradient(50% 36% at 92% 8%,rgba(255,60,0,.1),transparent 62%),var(--bg);background-attachment:fixed}\n.wrap{max-width:1000px;margin:0 auto;padding:0 16px}\nheader{padding:20px 0 16px;background:linear-gradient(180deg,#0a0807,#140d09);color:var(--hue);\n  box-shadow:0 10px 30px -18px currentColor}\n.brand{display:flex;align-items:center;gap:14px}.bt{min-width:0}\n.ring{flex:0 0 auto;width:62px;height:62px;padding:3px;border:3px solid currentColor;border-radius:50%;display:grid;place-items:center;box-shadow:0 0 18px -4px currentColor}\n.ring img{width:100%;height:100%;border-radius:50%;display:block;animation:spin 26s linear infinite}\nheader small{letter-spacing:3px;font:700 11px/1 Consolas,monospace;color:inherit;text-shadow:0 0 12px currentColor;text-transform:uppercase}\nheader small i{color:var(--dim);font-style:normal;font-weight:400;text-shadow:none}\nh1{margin:5px 0 2px;font-size:25px;line-height:1.2;color:var(--ink)}header p{margin:0;color:var(--dim)}\n.upd{color:var(--dim);font-size:12.5px;margin-top:6px}\n.lvp{display:inline-block;background:var(--bad);color:#fff;border-radius:999px;padding:1px 9px;font-weight:800;font-size:11px;letter-spacing:1px;margin-right:8px;animation:pulse 1.6s infinite}\nnav{position:sticky;top:0;z-index:5;padding:10px 0;background:rgba(14,15,18,.92);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}\n/* the tabs sit in a rounded frame, and the frame is what carries the colour\n   the ball is turning through — a shape rather than a rule across the page */\n.tabs{display:flex;gap:4px;width:max-content;max-width:100%;overflow-x:auto;scrollbar-width:none;padding:5px;\n  border:2px solid var(--hue);border-radius:16px;background:var(--card);\n  box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 24px -10px var(--hue),inset 0 1px 0 rgba(255,255,255,.05)}\n.tabs::-webkit-scrollbar{display:none}\nnav button{font:inherit;font-size:14px;font-weight:600;color:var(--dim);background:none;border:0;border-radius:10px;padding:8px 16px;cursor:pointer;white-space:nowrap}\nnav button.on{color:#1d0f05;background:linear-gradient(135deg,#f99c5a 0%,#ec7731 100%);box-shadow:0 6px 16px -9px rgba(236,119,49,.8)}\nmain{padding-top:4px!important;padding-bottom:36px!important}\nh2{display:flex;align-items:center;gap:8px;font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);margin:26px 0 10px}\nh2::before{content:'';width:3px;height:13px;border-radius:2px;background:var(--grad);flex:0 0 auto}\nh2 .dt{letter-spacing:.3px;text-transform:none;font-weight:400;margin-left:4px}\nh2.g{color:#f0cf6a}h2.g::before{background:var(--goldm)}h2.s{color:#d3d8df}h2.s::before{background:var(--silverm)}\n.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}\n.m{border:1px solid var(--line);border-radius:14px;padding:11px 13px;\n  background:linear-gradient(90deg,color-mix(in srgb,var(--hc) 16%,transparent),transparent 34%,transparent 66%,color-mix(in srgb,var(--ac) 16%,transparent)),var(--card);\n  box-shadow:inset 3px 0 0 var(--hc),inset -3px 0 0 var(--ac),0 8px 22px -14px rgba(0,0,0,.7)}\n.m.on{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad) inset}\n.m.gold{border-color:#c9a33a;background:linear-gradient(160deg,rgba(242,204,77,.18),var(--card) 62%)}\n.m.silver{border-color:#9aa1ad;background:linear-gradient(160deg,rgba(220,225,232,.13),var(--card) 62%)}\n.m.bronze{border-color:#b8743a;background:linear-gradient(160deg,rgba(201,132,72,.17),var(--card) 62%)}\n.stg{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;border-radius:999px;padding:2px 10px;margin-bottom:8px;color:#241a00;background:var(--goldm)}\n.silver .stg{color:#1c2026;background:var(--silverm)}.bronze .stg{color:#2a1406;background:var(--bronzem)}\n.pods{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:16px}\n.pod{border:1px solid #c9a33a;border-radius:16px;padding:14px 14px 0;background:linear-gradient(180deg,rgba(242,204,77,.12),var(--card) 70%)}\n.pod.silver{border-color:#9aa1ad;background:linear-gradient(180deg,rgba(220,225,232,.1),var(--card) 70%)}\n.ph{text-align:center;font-size:12px;letter-spacing:1.6px;text-transform:uppercase;font-weight:800;color:#f0cf6a;margin-bottom:8px}.pod.silver .ph{color:#d3d8df}\n.pw{display:grid;grid-template-columns:1fr 1.12fr 1fr;align-items:end;gap:8px}.pc{text-align:center;min-width:0}\n.pm{font-size:26px;line-height:1.1}.pn{font-weight:700;font-size:13.5px;margin:4px 0;overflow-wrap:anywhere}\n.ps{border-radius:10px 10px 0 0;padding-top:6px;margin-top:6px}.ps b{font-size:24px;color:rgba(0,0,0,.55)}\n.p1 .ps{height:104px;background:var(--goldm)}.p2 .ps{height:76px;background:var(--silverm)}.p3 .ps{height:54px;background:var(--bronzem)}\n.mr{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px}\n.t{display:flex;align-items:center;min-width:0;white-space:nowrap}.t.h{justify-content:flex-end}.t.w{font-weight:800}\n.t .nm{overflow:hidden;text-overflow:ellipsis;min-width:0}.t .cr{flex:0 0 auto}\n.sc{font-weight:800;font-size:21px;font-variant-numeric:tabular-nums;white-space:nowrap}.sc i{font-style:normal;color:var(--dim);margin:0 5px}\n.sc.v{font-size:14px;color:var(--acc)}\n.cr{display:inline-block;width:24px;height:24px;margin:-4px 7px -3px;vertical-align:middle;background:center/contain no-repeat}\n.cr.none{background-image:url(\"data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 40 44%27%3E%3Cpath d=%27M20 2 36 7v13c0 11-7 18-16 22C11 38 4 31 4 20V7z%27 fill=%27%23363a44%27 stroke=%27%2359606d%27 stroke-width=%272%27/%3E%3Cpath d=%27M20 8.5 30.5 12v8c0 7.6-4.5 12.6-10.5 15.5C14 32.6 9.5 27.6 9.5 20v-8z%27 fill=%27none%27 stroke=%27%234b515d%27 stroke-width=%271.3%27/%3E%3Ccircle cx=%2720%27 cy=%2721%27 r=%275%27 fill=%27none%27 stroke=%27%23626977%27 stroke-width=%271.5%27/%3E%3C/svg%3E\")}\n.sub .cr{width:16px;height:16px;margin-left:0}.pn .cr{display:block;width:50px;height:50px;margin:0 auto 4px}.p1 .pn .cr{width:62px;height:62px}\ntd .cr{margin-left:0}\n.kon{text-align:center;color:#f0b44c;font-weight:700;font-size:12.5px;margin-top:5px}.kon i{font-style:normal;color:var(--dim);margin:0 3px}\n.evs{display:grid;grid-template-columns:1fr 1fr;gap:14px;color:var(--dim);font-size:12.5px;margin-top:6px}.evs>span:first-child{text-align:right}.evs b{color:var(--ink)}\n.evs .ev{display:block;line-height:1.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}\n.evs .ev i{font-style:normal;color:var(--dim);font-variant-numeric:tabular-nums;margin-right:5px}\n.evs .ev::before{content:'';display:inline-block;vertical-align:-1px;margin-right:5px}\n.evs .ev.goal::before,.evs .ev.own::before{width:11px;height:11px;vertical-align:-2px;background:url(\"data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Ccircle cx=%278%27 cy=%278%27 r=%277.2%27 fill=%27%23f7f5f2%27 stroke=%27%231f2026%27 stroke-width=%271.3%27/%3E%3Cpath d=%27M8 3.9 11.1 6.2 9.9 9.9H6.1L4.9 6.2Z%27 fill=%27%231f2026%27/%3E%3Cg stroke=%27%231f2026%27 stroke-width=%271.25%27 stroke-linecap=%27round%27%3E%3Cpath d=%27M8 3.9V1.2%27/%3E%3Cpath d=%27M4.9 6.2 2.2 5.1%27/%3E%3Cpath d=%27M11.1 6.2 13.8 5.1%27/%3E%3Cpath d=%27M6.1 9.9 4.7 12.8%27/%3E%3Cpath d=%27M9.9 9.9 11.3 12.8%27/%3E%3C/g%3E%3C/svg%3E\") center/contain no-repeat}\n.evs .ev.own::before{opacity:.5}\n.evs .ev.yellow::before{width:7px;height:10px;border-radius:1px;background:#f2c14e}\n.evs .ev.red::before{width:7px;height:10px;border-radius:1px;background:#d9483f}\n.evs .ev.yellow,.evs .ev.red{color:var(--dim)}\n.meta{text-align:center;color:var(--dim);font-size:12px;margin-top:6px}.lv{color:var(--bad)}\n.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:16px}\n.tile{position:relative;overflow:hidden;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,0)),var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 13px 11px 16px}\n.tile::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--grad)}\n.tile:nth-child(even){border-color:rgba(255,138,61,.35);background:linear-gradient(180deg,rgba(255,138,61,.14),rgba(255,138,61,.03)),var(--card)}\n.tile span{display:block;font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim)}\n.tile b{display:flex;align-items:center;font-size:19px;margin-top:2px;min-width:0}\n.tile b .cr{flex:0 0 auto;width:26px;height:26px;margin:0 8px 0 0}\n.tile.gold{border-color:#c9a33a;background:linear-gradient(160deg,rgba(242,204,77,.2),var(--card) 70%)}.tile.gold::before{background:var(--goldm)}.tile.gold span{color:#f0cf6a}\n.tile.silver{border-color:#9aa1ad;background:linear-gradient(160deg,rgba(220,225,232,.14),var(--card) 70%)}.tile.silver::before{background:var(--silverm)}.tile.silver span{color:#d3d8df}\n.mvp{text-align:center;font-size:12.5px;margin-top:6px;color:var(--ink)}.mvp span{font-size:10px;font-weight:800;letter-spacing:1.2px;color:#1d0f05;background:#f3a06b;border-radius:999px;padding:1px 7px;margin-right:2px}.tile em{font-style:normal;color:var(--dim);font-size:12px}\n.two{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}\n.tw{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 10px;box-shadow:0 8px 22px -14px rgba(0,0,0,.7)}.tw.pad{padding:12px}\ntable{width:100%;border-collapse:collapse;font-size:14px}\nth{font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);text-align:left;padding:8px 6px;border-bottom:2px solid var(--line);white-space:nowrap}\ntd{padding:8px 6px;border-bottom:1px solid var(--line)}tr:last-child td{border-bottom:0}\ntd.tm{box-shadow:inset 3px 0 0 var(--tc,transparent);background:linear-gradient(90deg,color-mix(in srgb,var(--tc,transparent) 20%,transparent),transparent 85%);padding-left:10px}\ntd:has(>.tmv){white-space:nowrap}\n.tmv{display:inline-flex;align-items:center;justify-content:center;width:1em;height:1em;margin-left:4px;vertical-align:-2px}\n.tmv svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}\n.tmv.up{color:#2f9e63}.tmv.dn{color:#d9483f}.tmv.dn svg{transform:rotate(180deg)}.tmv.same{color:var(--dim);font-weight:700}\n.n{text-align:right;font-variant-numeric:tabular-nums}.dim{color:var(--dim)}.sub{font-size:12px;color:var(--dim)}\ntr.qg td:first-child{box-shadow:inset 3px 0 #e2b93b}tr.qs td:first-child{box-shadow:inset 3px 0 #b9c0ca}\n.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(230px,100%),1fr));gap:10px}\n@media (min-width:430px){.pgrid{grid-template-columns:repeat(auto-fill,minmax(min(230px,48%),1fr))}}\n.pgrp{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 12px 8px}\n.pgrp h3{margin:10px 0 2px;font:700 11px/1 Consolas,monospace;letter-spacing:2px;text-transform:uppercase;color:var(--dim)}\n.pgrp table{font-size:13px}\n.pgrp td,.pgrp th{padding:6px 4px}\n.legend{display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--dim);font-size:12px;margin-top:8px}\n.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}.lg{background:var(--goldm)}.ls{background:var(--silverm)}\n.fm a{text-decoration:none;cursor:pointer}.fm{display:inline-flex;gap:3px}.fm i,.fm a{width:20px;height:20px;border-radius:6px;font:800 10.5px/20px sans-serif;text-align:center;font-style:normal;color:#fff}\n.fm a{display:inline-block;width:20px;height:20px;border-radius:6px;font:800 10.5px/20px sans-serif;text-align:center;color:#fff}.fm .W{background:#2f9e63}.fm .D{background:#6b6c75}.fm .L{background:#d9483f}\n.gboot{display:inline-block;width:1.35em;height:1.35em;vertical-align:-.34em;margin-right:5px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}\n.gboot img{display:block;width:100%;height:100%;object-fit:contain}\ntd.n .gboot{margin:0}\n.tile b .gboot{flex:0 0 auto}\n.pg{font-size:12.5px;white-space:nowrap}.barc{width:30%}.bar{height:8px;background:var(--line);border-radius:4px}.bar i{display:block;height:8px;border-radius:4px;background:var(--acc)}\n.champ{text-align:center;margin-top:16px;padding:18px;border-radius:16px;border:1px solid #c9a33a;background:linear-gradient(160deg,rgba(242,204,77,.22),var(--card) 70%)}\n.champ span{display:block;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--dim)}\n.champ b{display:block;font:700 28px/1.25 Georgia,serif;background:var(--goldm);-webkit-background-clip:text;background-clip:text;color:transparent;margin-top:4px}\n.champ em{display:block;font-style:normal;color:#f0b44c;font-weight:700;font-size:13px;margin-top:4px}\n.rtot{color:var(--dim);font-size:13px;margin:0 0 6px}.rtot b{color:var(--ink);font-size:20px;margin-right:2px}.rtot span{color:#f2b81c;font-weight:700}.ravg{position:relative;height:170px;display:flex;align-items:flex-end;gap:6px;padding-top:18px;padding-left:34px}\n.ravg div{flex:1 1 0;min-width:0;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center}\n.ravg i{display:block;width:100%;max-width:34px;border-radius:5px 5px 0 0;background:var(--grad)}.ravg em{font-style:normal;font-size:11px;color:var(--dim)}\n.avl{position:absolute;left:0;right:0;border-top:1.5px dashed #8a8b94;font-weight:400}.avl span{position:absolute;left:0;top:-9px;width:30px;text-align:left;font-size:12px;line-height:16px;font-weight:800;color:#f2b81c;background:var(--card)}\n.ravg-x{display:flex;gap:6px;margin-top:4px;padding-left:34px}.ravg-x span{flex:1 1 0;min-width:0;text-align:center;font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden}\n.ravg em{white-space:nowrap}\n@media (max-width:640px){.ravg,.ravg-x{gap:3px}.ravg em{font-size:9px}.ravg-x span{font-size:9px}.ravg{height:150px}}\n.empty{color:var(--dim);padding:16px;text-align:center;background:var(--card);border:1px dashed var(--line);border-radius:14px;margin-top:16px}\n.note{color:var(--dim);font-size:13px;margin-top:12px}\n.rsec{border:1px solid #3a3b44;border-radius:16px;padding:2px 12px 12px;margin-top:14px;background:linear-gradient(180deg,#26272d,#202126)}\n.rsec.b{background:linear-gradient(180deg,rgba(255,138,61,.13),rgba(255,138,61,.04)),var(--bg);border-color:rgba(255,138,61,.35)}\n.rsec.ko{background:linear-gradient(180deg,rgba(242,204,77,.13),rgba(242,204,77,.03));border-color:rgba(242,204,77,.45)}\n.rsec.semi{background:linear-gradient(180deg,rgba(176,196,222,.16),rgba(176,196,222,.04));border-color:rgba(176,196,222,.5)}\n.rsec h2{margin:14px 0 12px}\n.rforms{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:8px}\n.rform{position:relative;overflow:hidden;display:flex;align-items:center;gap:9px;padding:8px 10px 8px 12px;border-radius:11px;border:1px solid var(--line);border-left:4px solid var(--tc);background:var(--card)}\n.rform::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,var(--tc),transparent 72%);opacity:.2;pointer-events:none}\n.rform>*{position:relative}.rform .cr{margin:0}\n.rfn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;font-size:14px}\n.rfc{display:flex;gap:4px;flex:0 0 auto}\n.rfc .fc{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:11.5px;color:#fff;text-decoration:none}\n.rfc .W{background:#2f9e63}.rfc .D{background:#6b6c75}.rfc .L{background:#d9483f}.rfc .n{border:1px dashed var(--line)}\n.rfc .au{box-shadow:0 0 0 2px #ffc53d}.rfc .sv{box-shadow:0 0 0 2px #c9d1db}\n.m.hit{animation:hit 1.8s ease-out}\n@keyframes hit{0%,40%{box-shadow:0 0 0 3px #f99c5a,0 0 26px rgba(249,156,90,.6)}100%{box-shadow:none}}\n/* a team's titles: the crown and the number, once */\nspan.gstar{display:inline-flex;align-items:baseline;gap:2px;margin-left:5px;white-space:nowrap;letter-spacing:0;text-transform:none;font-weight:800;color:#f2cc4d;vertical-align:-2px}\n.gcrown{display:inline-block;width:1.12em;height:1.12em;align-self:center}\n.gcrown svg{width:100%;height:100%;display:block}\n/* a round that is not being played, said once at the top of the page */\n.cxbox{margin:16px 0 4px;display:grid;gap:7px}\n.cxl{border:1px solid #ff8a80;border-left:6px solid #ff5247;border-radius:12px;padding:13px 16px;font-size:14.5px;font-weight:700;\n  color:#fff;background:linear-gradient(180deg,#cf342a,#8e1a13);box-shadow:0 0 0 1px rgba(0,0,0,.45),0 14px 32px -16px rgba(255,82,71,.9)}\n.cxl:before{content:'\\26A0\\FE0F';margin-right:9px}\n.cxl.mv{border-color:#ffd98a;border-left-color:#f2b81c;color:#2a1e00;background:linear-gradient(180deg,#ffd978,#e9a900);box-shadow:none}\n.cxl.mv:before{content:'\\1F4C5'}\n.rsx{color:#ff6a60;font-weight:800;font-size:.8em;letter-spacing:.6px;text-transform:uppercase;white-space:nowrap}\n.m.offm{opacity:.75;border-style:dashed}\n.offtag{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;\n  border-radius:999px;padding:2px 10px;margin-bottom:8px;color:#2a0b0b;background:#ff9a9a}\n.meta .wo{color:#f2cc4d}\n.gt{color:var(--ink)}\n.st{color:var(--ink)}\n.bt3{color:var(--ink)}\n.curch{display:inline-block;white-space:nowrap;font-size:11px;font-weight:700;color:#ffc53d;border:1px solid rgba(255,197,61,.6);background:rgba(255,197,61,.12);border-radius:999px;padding:1px 8px;margin-left:4px}\ndetails.rsec>summary{list-style:none;cursor:pointer;-webkit-user-select:none;user-select:none}\ndetails.rsec>summary::-webkit-details-marker{display:none}\ndetails.rsec>summary h2::after{content:'';width:8px;height:8px;margin-left:auto;border-right:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:rotate(-45deg);transition:transform .2s;flex:0 0 auto}\ndetails.rsec[open]>summary h2::after{transform:rotate(45deg)}\ndetails.rsec:not([open]){padding-bottom:2px}\n.rtag{font-size:10px;letter-spacing:1px;padding:1px 8px;border-radius:999px;margin-left:8px;background:#3a3b44;color:var(--ink)}\n.rtag.nx{background:#f3a06b;color:#1d0f05}.rtag.ls{background:#d6d3ce;color:#1d0f05}\n@media (max-width:640px){.two{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.hs{display:none}h1{font-size:22px}.ring{width:52px;height:52px}\n  .m{padding:10px 9px}.mr{gap:6px}.t{font-size:13.5px}.sc{font-size:18px}.sc i{margin:0 3px}.t .cr{width:20px;height:20px;margin:0 5px}.mr .gstar{display:none}}\n@keyframes hue{0%,100%{color:#ff5700}12.5%{color:#ff8500}25%{color:#ff924d}37.5%{color:#00a8a8}50%{color:#9ad3da}62.5%{color:#d6d3ce}75%{color:#ada69c}87.5%{color:#e66414}}\n@keyframes spin{to{transform:rotate(360deg)}}\n@keyframes pulse{50%{opacity:.55}}\n@media (prefers-reduced-motion:reduce){.ring img{animation:none}}";
 /* The page's own script, sent as its source text. It runs on the page, never
    in this tool: the tabs, "updated 3 min ago", and — when it is served by the
@@ -14530,6 +14948,9 @@ function syncDiff() {
       seen[x.id] = 1;
       // the shared copy has this result in, and what is here is older than the news of it
       if (n === 'fixtures' && SY.fin[x.id] && x.status !== 'final' && !(+x.edAt > SY.fin[x.id])) { stale.push(x.id); return; }
+      /* A fixture this device holds open that carries its own seal is a
+         fixture this device has not finished applying: it is never sent. */
+      if (n === 'fixtures' && sealed(x) && x.status !== 'final') { stale.push(x.id); return; }
       if ((a[n] || {})[x.id] !== syncHash(x)) {
         delete x.own;                               // the mark the owner-priority rule left behind
         s[x.id] = x; any = true;
@@ -14602,11 +15023,19 @@ function docApply(p, keep) {
        back out because a device that never heard about it sent its own older
        copy of the fixture up. */
     const have = n === 'fixtures' ? (DB.fixtures || []).find(x => x && x.id === id) : null;
+    /* What is sealed here is not replaced by a copy that is not, unless the
+       copy carries a later decision to reopen it. */
+    if (sealed(have) && coming && !sealed(coming) && !(+coming.reopenAt > +have.finAt)) return true;
     if (have && have.status === 'final' && coming && coming.status !== 'final' &&
         !(+coming.edAt > +(have.edAt || 0))) return true;
     const bag = keep && (keep.set || {})[n];
     const ours = bag ? bag[id] : undefined;
     if (ours === undefined) return false;
+    /* And the other way: a sealed result coming down beats whatever this
+       device is still holding open — unless this device is the one that
+       reopened it, after the result was confirmed. */
+    if (n === 'fixtures' && sealed(coming) && !sealed(ours) &&
+        !(+ours.reopenAt > +coming.finAt)) return false;
     if (n === 'fixtures' && coming && coming.status === 'final' && (!ours || ours.status !== 'final')) return false;
     /* Both machines have changed this record. The later change is the one
        that stands — the same answer on both of them, whoever made it and
@@ -14784,6 +15213,11 @@ async function syncTick(force) {
       } else { bad = true; SY.state = w.off ? 'off' : 'err'; SY.err = w.error || ''; }
     }
     if (!bad) { SY.state = 'ok'; SY.err = ''; SY.at = Date.now(); }
+    /* Before the live page is built from it: a result that came down is a
+       result, whatever status arrived with it. Without this the owner's
+       phone could publish a page announcing matches as live that had been
+       played and closed hours earlier on somebody else's tablet. */
+    if (changed && sealFinals()) { changed = true; }
     syncStore();
     // everything of ours is up and everything of theirs is down: the live page
     // can be built now, and it will match whatever the other tablets build
@@ -16000,7 +16434,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '13 Nov 19:16 · 2aabeff'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '13 Nov 20:30 · 0564a26'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
