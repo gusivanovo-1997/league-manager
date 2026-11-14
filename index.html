@@ -2415,6 +2415,8 @@ tspan.gstar{fill:var(--gold)}
           <option value="finals">League + finals (gold 1–4, silver 5–8)</option>
           <option value="league">League only — pontos corridos, no finals</option>
           <option value="cup">Knockout cup — lose and you are out</option>
+          <option value="groups">Groups → knockout — Copa style, top two go through</option>
+          <option value="ko">Knockout bracket — 4, 8, 16 or 32 teams, seeded</option>
           <option value="world">World Cup — 48 teams, 12 groups of 4</option></select></div>
       </div>
       <div class="row">
@@ -2869,6 +2871,8 @@ tspan.gstar{fill:var(--gold)}
           <option value="finals">League + finals (gold 1–4, silver 5–8)</option>
           <option value="league">League only — pontos corridos, no finals</option>
           <option value="cup">Knockout cup — lose and you are out</option>
+          <option value="groups">Groups → knockout — Copa style, top two go through</option>
+          <option value="ko">Knockout bracket — 4, 8, 16 or 32 teams, seeded</option>
           <option value="world">World Cup — 48 teams, 12 groups of 4</option></select></div>
       </div>
       <!-- Some competitions do not count who scored: a social league where
@@ -5661,7 +5665,7 @@ function dashGroups() {
     return '<div class="wcg"><div class="wcgt">Group ' + g + '</div>' +
       '<div class="wcrh"><span></span><span></span><span></span><span></span><span>P</span><span>GF</span>' +
       '<span>GA</span><span>GD</span><span>Pts</span></div>' +
-      rows.map((r, i) => '<div class="wcr' + (i < 2 ? ' q' : i === 2 ? ' q3' : '') + '">' +
+      rows.map((r, i) => '<div class="wcr' + (i < 2 ? ' q' : i === 2 && WC_THIRDS ? ' q3' : '') + '">' +
         '<span class="wcp">' + (i + 1) + '</span>' +
         '<span class="wcmv">' + moveMark(mv, r.id) + '</span>' + crest(r.id) +
         '<span class="wcn">' + esc(r.name) + '</span>' +
@@ -5671,12 +5675,16 @@ function dashGroups() {
         '<span class="wcpl">' + (r.GD > 0 ? '+' : '') + r.GD + '</span>' +
         '<span class="wcpt">' + r.Pts + '</span></div>').join('') + '</div>';
   };
+  if (!WC_GRPS.length) return '<div class="small muted">A straight knockout has no table —' +
+    ' the bracket is the competition.</div>';
   const made = WC_GRPS.map(blk).join('');
   if (!made) return '<div class="empty">Add teams to see the groups.</div>';
   const t3 = thirds.slice(0, 8).map(r => esc(r.name)).join(', ');
   return '<div class="wcgrid">' + made + '</div>' +
     '<div class="small muted" style="margin-top:10px;line-height:1.7">' +
-      '<b>Top two</b> of each group go through, and the <b>eight best thirds</b> join them.' +
+      '<b>Top two</b> of each group go through' +
+      (WC_THIRDS ? ', and the <b>eight best thirds</b> join them.'
+        : ' to the <b>' + esc(wcKo1()) + '</b>.') +
       (thirds.length ? '<br>Third place as it stands: ' + t3 +
         (cutPts ? ' <span class="muted">— the cut is on ' + cutPts.Pts + ' pt' +
           (cutPts.Pts === 1 ? '' : 's') + '</span>' : '') : '') + '</div>';
@@ -6009,30 +6017,155 @@ function cupRoundName(round) {
    format box is knocked back to League + finals by a save on the Settings
    page, and a league redrawn as a league stops being one the moment the new
    draw replaces the old fixtures. */
-const isWorld = () => DB.season.format === 'world' ||
+/* The three formats that run on the group-and-bracket machinery: the World
+   Cup, a Copa-style group stage into a bracket, and a straight bracket with
+   no groups at all. They differ only in the numbers trBuild() works out. */
+const TR_FMT = ['world', 'groups', 'ko'];
+const isWorld = () => TR_FMT.indexOf(DB.season.format) >= 0 ||
   (DB.fixtures || []).some(f => f && (f.grp || f.wc));
-const WC_GRPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
-const WC_GRD = 3;                                  // matchdays in the group stage
 const WC_TEAMS = 48;
-/* The last 32 as the 2026 bracket draws it. '1E' is the winner of group E,
-   '2C' the runner-up of C, '3' a third-placed side to be allocated. The home
-   name is the one the bracket puts first: a group winner wherever there is
-   one, otherwise the earlier group's runner-up. */
-const WC_R32 = [
-  { m: 73, h: '2A', a: '2B' }, { m: 74, h: '1E', a: '3' }, { m: 75, h: '1F', a: '2C' },
-  { m: 76, h: '1C', a: '2F' }, { m: 77, h: '1I', a: '3' }, { m: 78, h: '2E', a: '2I' },
-  { m: 79, h: '1A', a: '3' }, { m: 80, h: '1L', a: '3' }, { m: 81, h: '1D', a: '3' },
-  { m: 82, h: '1G', a: '3' }, { m: 83, h: '2K', a: '2L' }, { m: 84, h: '1H', a: '2J' },
-  { m: 85, h: '1B', a: '3' }, { m: 86, h: '1J', a: '2H' }, { m: 87, h: '1K', a: '3' },
-  { m: 88, h: '2D', a: '2G' }];
-// and every round after it: [match, feeder, feeder]
-const WC_ON = {
-  5: [[89, 74, 77], [90, 73, 75], [91, 76, 78], [92, 79, 80],
-      [93, 83, 84], [94, 81, 82], [95, 86, 88], [96, 85, 87]],
-  6: [[97, 89, 90], [98, 93, 94], [99, 91, 92], [100, 95, 96]],
-  7: [[101, 97, 98], [102, 99, 100]],
-  8: [[104, 101, 102]] };
-const WC_RNAME = { 4: 'Round of 32', 5: 'Round of 16', 6: 'Quarter-finals', 7: 'Semi-finals', 8: 'Final' };
+/* ══ THE SHAPE OF A TOURNAMENT ═══════════════════════════════════════════
+   A group stage feeding a knockout is one machine with a few numbers in it:
+   how many groups there are, how many matchdays they play, who meets whom in
+   the first tie, and what each round after that is called. The 2026 World Cup
+   is one setting of those numbers. A Copa-style competition — eight groups of
+   four, top two through to the last 16 — is another. A straight bracket with
+   no group stage at all is a third. Everything downstream (the group tables,
+   the bracket, the fixture sheet, the bulletin, the published page, the
+   advance from one round to the next) reads the numbers instead of knowing
+   which competition it is looking at.
+
+   The ties are numbered the way the World Cup numbers them, counting back
+   from the final: 104 is the final, 103 the third-place play-off, 101-102 the
+   semis, 97-100 the quarters, 89-96 the last 16, 73-88 the last 32. A smaller
+   tournament starts further down that list, so a final is recognisable by its
+   number whatever the competition — which is what lets the podium, the
+   bracket and the bulletin stay as they are. */
+const TR_LVL = [[104], [101, 102], [97, 98, 99, 100],
+  [89, 90, 91, 92, 93, 94, 95, 96],
+  [73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88]];
+const TR_RN = n => n >= 16 ? 'Round of 32' : n >= 8 ? 'Round of 16' : n >= 4 ? 'Quarter-finals'
+  : n >= 2 ? 'Semi-finals' : 'Final';
+const TR_TN = n => n >= 16 ? 'Round of 32' : n >= 8 ? 'Round of 16' : n >= 4 ? 'Quarter-final'
+  : n >= 2 ? 'Semi-final' : 'Final';
+/* the three maps every reader wants, worked out once from the ties themselves */
+function trFinish(s) {
+  s.FEED = {}; s.MRD = {}; s.CODE = {};
+  s.FIRST.forEach(t => { s.MRD[t.m] = s.GRD + 1; if (t.h && t.a) s.CODE[t.m] = [t.h, t.a]; });
+  Object.keys(s.ON).forEach(r => s.ON[r].forEach(t => {
+    s.FEED[t[0]] = [t[1], t[2]]; s.MRD[t[0]] = +r; }));
+  return s;
+}
+/* The 2026 World Cup, as it was actually played. '1E' is the winner of group
+   E, '2C' the runner-up of C, '3' a third-placed side to be allocated. The
+   home name is the one the bracket puts first: a group winner wherever there
+   is one, otherwise the earlier group's runner-up. */
+const TR_WC = trFinish({
+  GRPS: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'], GRD: 3, THIRDS: 8, P3: 1, QUAL: 2,
+  FIRST: [
+    { m: 73, h: '2A', a: '2B' }, { m: 74, h: '1E', a: '3' }, { m: 75, h: '1F', a: '2C' },
+    { m: 76, h: '1C', a: '2F' }, { m: 77, h: '1I', a: '3' }, { m: 78, h: '2E', a: '2I' },
+    { m: 79, h: '1A', a: '3' }, { m: 80, h: '1L', a: '3' }, { m: 81, h: '1D', a: '3' },
+    { m: 82, h: '1G', a: '3' }, { m: 83, h: '2K', a: '2L' }, { m: 84, h: '1H', a: '2J' },
+    { m: 85, h: '1B', a: '3' }, { m: 86, h: '1J', a: '2H' }, { m: 87, h: '1K', a: '3' },
+    { m: 88, h: '2D', a: '2G' }],
+  // and every round after it: [match, feeder, feeder]
+  ON: { 5: [[89, 74, 77], [90, 73, 75], [91, 76, 78], [92, 79, 80],
+            [93, 83, 84], [94, 81, 82], [95, 86, 88], [96, 85, 87]],
+        6: [[97, 89, 90], [98, 93, 94], [99, 91, 92], [100, 95, 96]],
+        7: [[101, 97, 98], [102, 99, 100]],
+        8: [[104, 101, 102]] },
+  RNAME: { 4: 'Round of 32', 5: 'Round of 16', 6: 'Quarter-finals', 7: 'Semi-finals', 8: 'Final' },
+  TIE: { 4: 'Round of 32', 5: 'Round of 16', 6: 'Quarter-final', 7: 'Semi-final', 8: 'Final' },
+  LAST: 8 });
+/* Any other tournament, built from what the draw wrote on the season:
+   g groups, grd matchdays, the top q of each group through — or, with no
+   groups at all, a straight bracket of n teams.
+
+   The halves are what make a bracket a bracket: the ties for groups A, C, E
+   and G go down the left, B, D, F and H down the right, and a group's winner
+   and runner-up are therefore always in opposite halves. Nobody can meet the
+   side they came through their own group with until the final. */
+function trBuild(t) {
+  const L = 'ABCDEFGHIJKLMNOP'.split('');
+  const g = +t.g || 0, grd = +t.grd || 0, q = +t.q || 2;
+  const Q = Math.max(4, g ? g * q : (+t.n || 0));
+  let dep = 0; while (dep < TR_LVL.length - 1 && Math.pow(2, dep + 1) < Q) dep++;
+  const FIRST = [], order = [];
+  for (let i = 0; i < g; i += 2) order.push(i);
+  for (let i = 1; i < g; i += 2) order.push(i);
+  if (g) order.forEach((gi, k) => FIRST.push({ m: TR_LVL[dep][k], h: '1' + L[gi], a: '2' + L[gi ^ 1] }));
+  else TR_LVL[dep].forEach(m => FIRST.push({ m }));
+  const ON = {}, RNAME = {}, TIE = {};
+  for (let d = dep; d >= 0; d--) {
+    const r = grd + 1 + (dep - d), n = TR_LVL[d].length;
+    RNAME[r] = TR_RN(n); TIE[r] = TR_TN(n);
+    if (d < dep) ON[r] = TR_LVL[d].map((m, j) => [m, TR_LVL[d + 1][j * 2], TR_LVL[d + 1][j * 2 + 1]]);
+  }
+  return trFinish({ GRPS: L.slice(0, g), GRD: grd, THIRDS: 0, P3: !!DB.finals3rd, QUAL: q,
+    FIRST, ON, RNAME, TIE, LAST: grd + 1 + dep });
+}
+/* How many groups a given number of teams makes. The bracket has to come out
+   a power of two, so the group count does too: two groups make the semi-
+   finals, four the quarters, eight the last 16, sixteen the last 32. A group
+   is three, four or five teams — fewer is not a group and more is a league. */
+const trGroupsFor = n => [16, 8, 4, 2].find(k => n >= k * 3 && n <= k * 5) || 0;
+/* The order a bracket is seeded in: 1 plays the lowest seed, and the top two
+   are as far apart as the draw can put them. [1,4,2,3] for four, [1,8,4,5,
+   2,7,3,6] for eight, and so on by folding the list each time. */
+function trSeedOrder(n) {
+  let a = [1];
+  while (a.length < n) { const m = a.length * 2 + 1, b = [];
+    a.forEach(x => { b.push(x, m - x); }); a = b; }
+  return a;
+}
+/* One round-robin, by the circle method: the first team stands still and the
+   rest turn round it. An odd group gets a phantom, and whoever draws it sits
+   that matchday out. Home and away alternate so nobody has a run of either. */
+function trRR(n) {
+  const a = []; for (let i = 0; i < n; i++) a.push(i);
+  if (n % 2) a.push(-1);
+  const m = a.length, out = [];
+  for (let r = 0; r < m - 1; r++) {
+    const pr = [];
+    for (let i = 0; i < m / 2; i++) { const x = a[i], y = a[m - 1 - i];
+      if (x >= 0 && y >= 0) pr.push(r % 2 ? [y, x] : [x, y]); }
+    out.push(pr);
+    a.splice(1, 0, a.pop());
+  }
+  return out;
+}
+// what the first knockout round is called, in the middle of a sentence
+const wcKo1 = () => String(WC_RNAME[WC_GRD + 1] || 'knockout').toLowerCase();
+/* The shape of the competition on the table now. Cached against the draw it
+   belongs to, because every reader below asks for it many times a render. */
+let TRC = null;
+function TRN() {
+  if (typeof DB === 'undefined' || !DB || !DB.season) return TR_WC;
+  const sg = (DB.season.format || '') + '|' + (DB.season.draw || '') + '|' +
+    (DB.teams || []).length + '|' + (DB.fixtures || []).length + '|' + !!DB.finals3rd;
+  if (TRC && TRC.sg === sg) return TRC;
+  let t = DB.season.tr;
+  /* A format box set by hand with no draw behind it still has to mean
+     something: the groups on the table say how many there are, and with no
+     groups at all it is a straight bracket of however many teams there are. */
+  if (!t && DB.season.format !== 'world' && TR_FMT.indexOf(DB.season.format) >= 0) {
+    const gs = [...new Set((DB.fixtures || []).map(f => f.grp).filter(Boolean))];
+    t = gs.length
+      ? { g: gs.length, grd: Math.max.apply(null, (DB.fixtures || []).filter(f => f.grp).map(f => +f.round || 1).concat([1])), q: 2 }
+      : { g: 0, grd: 0, n: (DB.teams || []).length };
+  }
+  TRC = (!t || t.wc) ? TR_WC : trBuild(t);
+  TRC.sg = sg;
+  return TRC;
+}
+/* The old names, kept because a hundred readers use them, now answering for
+   whichever tournament is on the table rather than only for the World Cup. */
+[['WC_GRPS', 'GRPS'], ['WC_GRD', 'GRD'], ['WC_R32', 'FIRST'], ['WC_ON', 'ON'],
+ ['WC_RNAME', 'RNAME'], ['WC_TIE', 'TIE'], ['WC_FEED', 'FEED'], ['WC_MRD', 'MRD'],
+ ['WC_CODE', 'CODE'], ['WC_LAST', 'LAST'], ['WC_THIRDS', 'THIRDS'], ['WC_P3', 'P3'],
+ ['WC_QUAL', 'QUAL']]
+  .forEach(([nm, k]) => Object.defineProperty(window, nm, { get: () => TRN()[k] }));
 const wcRoundName = r => r <= WC_GRD ? 'Group stage · matchday ' + r : (WC_RNAME[r] || 'Round ' + r);
 /* One answer to "what is this round called", for every surface that asks.
    A league says Round 4; a World Cup says Quarter-finals, and saying
@@ -6046,7 +6179,6 @@ const wcGroupOf = tid => (team(tid) || {}).grp || '';
    name of its own and "round 6" is not it: a referee opening the quarter-
    final wants the board to say quarter-final. The single name is also the
    singular one, because a box on the bracket is one tie, not the round. */
-const WC_TIE = { 4: 'Round of 32', 5: 'Round of 16', 6: 'Quarter-final', 7: 'Semi-final', 8: 'Final' };
 const wcTieName = f => !f ? '' : f.m === 103 ? 'Third-place play-off'
   : (f.round || 0) <= WC_GRD ? 'Group stage · matchday ' + f.round
   : (WC_TIE[f.round] || 'Round ' + f.round);
@@ -6086,7 +6218,10 @@ function wcTables() {
   st.forEach(r => { const g = wcGroupOf(r.id); if (by[g]) by[g].push(r); });
   WC_GRPS.forEach(g => by[g].forEach((r, i) => r.gpos = i + 1));
   const mv = wcMoves(by);
-  const thirds = WC_GRPS.map(g => by[g][2]).filter(Boolean)
+  /* Only a competition that takes best third-placed sides has a table of
+     them. Where the top two go through and nobody else does, this is empty
+     and every surface that would have shown it shows nothing. */
+  const thirds = !WC_THIRDS ? [] : WC_GRPS.map(g => by[g][2]).filter(Boolean)
     .sort((a, b) => b.Pts - a.Pts || b.GD - a.GD || b.GF - a.GF || String(a.name).localeCompare(b.name));
   thirds.forEach((r, i) => r.tpos = i + 1);
   return { by, thirds, mv };
@@ -6121,12 +6256,6 @@ function wcAllocThirds(slots, thirds) {
    groups start, with the sides currently 1st, 2nd and best-third standing
    in their slots, so everybody can see the road they are heading for
    before a ball is kicked in it. */
-const WC_FEED = (() => { const o = {};
-  Object.keys(WC_ON).forEach(r => WC_ON[r].forEach(t => o[t[0]] = [t[1], t[2]])); return o; })();
-const WC_MRD = (() => { const o = {};
-  WC_R32.forEach(t => o[t.m] = WC_GRD + 1);
-  Object.keys(WC_ON).forEach(r => WC_ON[r].forEach(t => o[t[0]] = +r)); return o; })();
-const WC_CODE = (() => { const o = {}; WC_R32.forEach(t => o[t.m] = [t.h, t.a]); return o; })();
 /* the column of ties that feeds a match, then the one that feeds those, and
    so on back to the last 32: [R32 x8, R16 x4, QF x2, SF x1] */
 function wcCols(root) {
@@ -6144,7 +6273,9 @@ function wcSeeds() {
   const slots = WC_R32.filter(t => t.a === '3').map(t => t.h.slice(1));
   const got = wcAllocThirds(slots, thirds.slice(0, 8)) || [];
   let si = 0; const out = {};
-  const pick = code => code === '3' ? ((got[si++] || {}).id || null)
+  /* A bracket with no group stage has no codes to read: its ties carry the
+     teams themselves, so there is nothing to project. */
+  const pick = code => !code ? null : code === '3' ? ((got[si++] || {}).id || null)
     : (((by[code.slice(1)] || [])[+code[0] - 1] || {}).id || null);
   WC_R32.forEach(t => { const hid = pick(t.h); out[t.m] = { h: hid, a: pick(t.a) }; });
   return out;
@@ -7089,9 +7220,21 @@ function seasonSnapshot(given) {
   const row = pid => pl[pid] || (pl[pid] = { n: personName(pid), P: 0, G: 0, H: 0, Y: 0, R: 0, M: 0, RM: 0, t: [] });
   const addTeam = (r, tid) => { if (tid && r.t.indexOf(tid) < 0) r.t.push(tid); };
   const when = f => (f.date || '9999') + (f.time || '') + (STAGE_TIER[f.stage] || 0);
+  /* Who played. The sheet of ticks where there is one; otherwise the two
+     squads, because a match that was played was played by somebody, and a
+     competition that keeps no attendance should not leave every player of
+     every team on nought games for ever. The ticks win wherever they exist:
+     they are somebody's statement of who turned up, and only a blank sheet
+     on a played match is read as "nobody wrote it down". The match fee is
+     not touched by this — it is still charged on the ticks alone. */
+  const squadOf = tid => (((DB.teams.find(t => t.id === tid) || {}).players) || [])
+    .map(p => p.personId).filter(Boolean);
+  const playedBy = f => attendedIn(f).length ? attendedIn(f).map(pid => [pid, sideOf(f, pid)])
+    : f.status === 'final' ? squadOf(f.homeId).map(p => [p, f.homeId])
+        .concat(squadOf(f.awayId).map(p => [p, f.awayId])) : [];
   // in the order they were played, so a player's teams read in the order they joined them
   fx.slice().sort((a, b) => when(a).localeCompare(when(b))).forEach(f =>
-    attendedIn(f).forEach(pid => { const r = row(pid); r.P++; addTeam(r, sideOf(f, pid)); }));
+    playedBy(f).forEach(([pid, tid]) => { const r = row(pid); r.P++; addTeam(r, tid); }));
   const inMatch = {};                                 // goals by player in each match, for hat-tricks
   allEvents().forEach(e => {
     if (!e.personId || e.type === 'injury') return;
@@ -8006,6 +8149,101 @@ function generateFixtures(keepHistory) {
     return toast('Cup drawn: ' + plural(fx.length, 'tie') +
       (byes.length ? ' and ' + plural(byes.length, 'bye') : '') + '. The next round is drawn as the winners come out.', 'ok');
   }
+  /* ══ A GROUP STAGE INTO A BRACKET, AND A BRACKET ON ITS OWN ═══════════
+     The Copa shape: everybody into groups, the top two of each through, and
+     a straight bracket from there to the trophy. How many groups is read off
+     how many teams there are, because the bracket must come out a power of
+     two: two groups make the semi-finals, four the quarters, eight the last
+     16, sixteen the last 32.
+
+     A group's winner and the side that came second to them go into opposite
+     halves of the bracket, so the one team you have already played in the
+     group is the one team you cannot meet again before the final.
+
+     "Knockout bracket" is the same machine with the group stage taken off:
+     the teams are seeded into the bracket in the order they are listed, best
+     against worst, which is the one thing a seeded draw is for. */
+  if ($('fxFormat').value === 'groups' || $('fxFormat').value === 'ko') {
+    const ko = $('fxFormat').value === 'ko', n = teams.length;
+    const rand = $('fxDraw') && $('fxDraw').value === 'random';
+    const bag = DB.teams.slice();
+    if (rand) for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));
+      const s = bag[i]; bag[i] = bag[j]; bag[j] = s; }
+    const firstMin = toMins(startTime), fx = [];
+    let spec;
+    if (ko) {
+      let p = 1; while (p < n) p *= 2;
+      if (p !== n || n < 4 || n > 32) return toast('A knockout bracket needs 4, 8, 16 or 32 teams ' +
+        '— there ' + (n === 1 ? 'is 1' : 'are ' + n) + '. Nothing was drawn.', 'bad');
+      spec = trBuild({ g: 0, grd: 0, n });
+      const ord = trSeedOrder(n), ids = bag.map(t => t.id), at = {};
+      DB.teams.forEach(t => { delete t.grp; });
+      spec.FIRST.forEach((t, i) => {
+        const s = Math.floor(i / courts);
+        at[s] = (at[s] || 0) + 1;
+        fx.push({ id: uid(), stage: 'regular', round: 1, m: t.m, wc: spec.RNAME[1],
+          homeId: ids[ord[i * 2] - 1], awayId: ids[ord[i * 2 + 1] - 1], date: startDate,
+          time: fmtMins(firstMin + s * slot), court: courts > 1 ? String(at[s]) : '',
+          status: 'scheduled', homeGoals: 0, awayGoals: 0, events: [] });
+      });
+      DB.season.tr = { g: 0, grd: 0, n };
+    } else {
+      const g = trGroupsFor(n);
+      if (!g) return toast('A group stage needs 6 to 10 teams (two groups), 12 to 20 (four), ' +
+        '24 to 40 (eight) or 48 to 80 (sixteen) — there ' + (n === 1 ? 'is 1' : 'are ' + n) +
+        '. Nothing was drawn.', 'bad');
+      const GR = 'ABCDEFGHIJKLMNOP'.split('').slice(0, g);
+      /* A grouping already set is one somebody meant — a real draw typed in,
+         or a file that carries one — and is kept unless the hat is asked for. */
+      const already = !rand && DB.teams.every(t => GR.indexOf(t.grp) >= 0) &&
+        GR.every(x => DB.teams.filter(t => t.grp === x).length >= 3);
+      // dealt down and back, so a list in strength order spreads one to a group
+      if (!already) bag.forEach((t, i) => { const row = Math.floor(i / g), k = i % g;
+        t.grp = GR[row % 2 ? g - 1 - k : k]; });
+      const grp = {}, sched = {};
+      let grd = 0, maxW = 1;
+      GR.forEach(x => { grp[x] = DB.teams.filter(t => t.grp === x).map(t => t.id);
+        sched[x] = trRR(grp[x].length);
+        grd = Math.max(grd, sched[x].length);
+        sched[x].forEach(p => { maxW = Math.max(maxW, p.length); }); });
+      /* The courts fill ACROSS the groups: one match from every group, then
+         the next one from every group. A group's own two matches must never
+         be on at the same moment until the last matchday. */
+      const oneDay = gap === 0, waveSlots = Math.ceil(g / courts);
+      for (let r = 0; r < grd; r++) {
+        const day = new Date(startDate + 'T00:00:00');
+        day.setDate(day.getDate() + r * gap);
+        const dstr = isoOf(day), at = {}, base = oneDay ? r * maxW * waveSlots : 0;
+        for (let w = 0; w < maxW; w++) GR.forEach((x, gi) => {
+          const pr = (sched[x][r] || [])[w];
+          if (!pr) return;
+          const s = base + w * waveSlots + Math.floor(gi / courts);
+          at[s] = (at[s] || 0) + 1;
+          fx.push({ id: uid(), stage: 'regular', round: r + 1, grp: x,
+            homeId: grp[x][pr[0]], awayId: grp[x][pr[1]], date: dstr,
+            time: fmtMins(firstMin + s * slot), court: courts > 1 ? String(at[s]) : '',
+            status: 'scheduled', homeGoals: 0, awayGoals: 0, events: [] });
+        });
+      }
+      DB.season.tr = { g, grd, q: 2 };
+      spec = trBuild(DB.season.tr);
+    }
+    if (keepHistory !== false) archiveSeason();
+    DB.fixtures = fx;
+    DB.season.draw = uid(); DB.season.drawnAs = DB.season.name; DB.season.drawnFormat = DB.season.format;
+    DB.season.format = ko ? 'ko' : 'groups';
+    DB.season.rounds = 1;
+    delete DB.season.cupByes; delete DB.season.noAutoFinals;
+    DB.teams.forEach(t => { delete t.joinedRound; delete t.missedMatches; delete t.equivPoints; });
+    if (save() === false) return;
+    render(); liveTicker();
+    return toast(ko
+      ? 'Knockout drawn: ' + plural(fx.length, 'tie') + ' in the ' + String(spec.RNAME[1]).toLowerCase() +
+        ', then on to the final.'
+      : 'Drawn: ' + plural(spec.GRPS.length, 'group') + ', ' + fx.length + ' group matches' +
+        ' over ' + plural(spec.GRD, 'matchday') + ', then the ' +
+        String(spec.RNAME[spec.GRD + 1]).toLowerCase() + ' down to the final.', 'ok');
+  }
   /* Forty-eight teams, twelve groups, three matchdays. The groups are filled
      down and back — 1 to A, 12 to L, 13 to L again — so a list in strength
      order spreads its best sides one to a group the way the pots do, and a
@@ -8336,7 +8574,8 @@ $('fxRounds').addEventListener('input', () => {
 });
 $('fxFormat').addEventListener('change', () => { paintDrawOpts(); if (currentView === 'fixtures') renderFixtures(); });
 $('fxDraw').addEventListener('change', () => { if (currentView === 'fixtures') renderFixtures(); });
-function paintDrawOpts() { $('fxDrawField').hidden = $('fxFormat').value !== 'world'; }
+// the hat is offered to every format that has something to draw out of it
+function paintDrawOpts() { $('fxDrawField').hidden = ['world', 'groups', 'ko'].indexOf($('fxFormat').value) < 0; }
 /* Long lists read as blocks when neighbouring sections take turns in colour:
    plain, then a warm ember tint, then plain. A knockout night is gold. */
 // a section's colour: rounds take turns, the semis are silver and the finals gold
@@ -8581,11 +8820,31 @@ function walkover(id) {
 /* A plain-English description of the draw the current settings would produce. */
 function drawSummary() {
   const n = DB.teams.length;
-  if ($('fxFormat') && $('fxFormat').value === 'world') {
-    /* Said here rather than only in a toast after the button is pressed: a
-       World Cup is the one format that will not draw at all with the wrong
-       number of teams, and finding that out from a message that fades is
-       the kind of thing that reads as nothing having happened. */
+  const fmt = $('fxFormat') ? $('fxFormat').value : '';
+  /* Said here rather than only in a toast after the button is pressed: these
+     formats will not draw at all with the wrong number of teams. */
+  if (fmt === 'ko') {
+    let p = 1; while (p < n) p *= 2;
+    const ok = p === n && n >= 4 && n <= 32;
+    const s = trBuild({ g: 0, grd: 0, n: ok ? n : 8 });
+    return '<span class="' + (ok ? '' : 'bad') + '"><b>' + n + '</b> teams' +
+      (ok ? ' — ready: ' + plural(n / 2, 'tie') + ' in the ' + String(s.RNAME[1]).toLowerCase() +
+            ', ' + (n - 1) + ' matches in all, seeded best against worst.'
+          : ' — a seeded bracket needs 4, 8, 16 or 32. Add or take away teams, or pick another format.') +
+      '</span>';
+  }
+  if (fmt === 'groups') {
+    const g = trGroupsFor(n);
+    if (!g) return '<span class="bad"><b>' + n + '</b> teams — a group stage needs 6 to 10 (two groups), ' +
+      '12 to 20 (four), 24 to 40 (eight) or 48 to 80 (sixteen). Add or take away teams, or pick another format.</span>';
+    const sz = Math.floor(n / g), big = n % g, s = trBuild({ g, grd: 3, q: 2 });
+    const gm = Array.from({ length: g }, (_, i) => { const k = sz + (i < big ? 1 : 0); return k * (k - 1) / 2; })
+      .reduce((a, b) => a + b, 0);
+    return '<b>' + n + ' teams</b> in <b>' + plural(g, 'group') + '</b> of ' +
+      (big ? sz + ' and ' + (sz + 1) : sz) + ' — ' + gm + ' group matches, then the top two of each into the ' +
+      String(s.RNAME[s.GRD + 1]).toLowerCase() + ' and on to the final (' + (gm + g * 2 - 1) + ' in all).';
+  }
+  if (fmt === 'world') {
     const ok = n === WC_TEAMS;
     return '<span class="' + (ok ? '' : 'bad') + '"><b>' + n + '</b> of <b>' + WC_TEAMS + '</b> teams' +
       (ok ? ' — ready: twelve groups of four, 72 group matches over ' + WC_GRD +
@@ -10853,14 +11112,15 @@ function worldAdvance() {
   if (!has(WC_GRD + 1)) {
     if (!wcGroupsDone()) return false;
     const { by, thirds } = wcTables();
-    if (WC_GRPS.some(g => (by[g] || []).length < 3)) return false;
-    const qual = thirds.slice(0, 8);
-    if (qual.length < 8) return false;
+    if (WC_GRPS.some(g => (by[g] || []).length < (WC_THIRDS ? 3 : 2))) return false;
+    const qual = thirds.slice(0, WC_THIRDS);
+    if (qual.length < WC_THIRDS) return false;
     const slots = WC_R32.filter(t => t.a === '3').map(t => t.h.slice(1));
     const got = wcAllocThirds(slots, qual);
     if (!got) return false;                       // no legal arrangement: leave it to be drawn by hand
     let si = 0;
-    const pick = code => { if (code === '3') return got[si++].id;
+    const pick = code => { if (!code) return null;
+      if (code === '3') return got[si++].id;
       const g = by[code.slice(1)] || []; return (g[+code[0] - 1] || {}).id || null; };
     const last = DB.fixtures.filter(f => (f.round || 0) === WC_GRD);
     const from = last.sort((a, b) => String(a.date).localeCompare(String(b.date))).pop();
@@ -10872,7 +11132,7 @@ function worldAdvance() {
       { date: when.date, time: fmtMins(toMins(when.time) + Math.floor(i / COURTS) * STEP), court: courtName(i) }));
     return true;
   }
-  for (let r = WC_GRD + 2; r <= 8; r++) {
+  for (let r = WC_GRD + 2; r <= WC_LAST; r++) {
     if (has(r)) continue;
     const need = WC_ON[r];
     const prev = DB.fixtures.filter(f => (f.round || 0) === r - 1);
@@ -10886,10 +11146,10 @@ function worldAdvance() {
        Always: a World Cup has that match whatever the league's own setting
        for a 3rd-place play-off says, because the tournament this format
        copies has one — it is match 103 of 104. */
-    if (r === 8) {
+    if (r === WC_LAST && WC_P3) {
       const l = m => byM[m] ? loserOf(byM[m]) : null;
       const [la, lb] = [l(101), l(102)];
-      if (la && lb) put(8, 103, la, lb, sameDay
+      if (la && lb) put(r, 103, la, lb, sameDay
         ? { date: when.date, time: when.time, court: courtName(1) }        // alongside the final
         : { date: when.date ? addDays(when.date, -1) : '', time: when.time, court: when.court },
         'Third place');
@@ -10970,6 +11230,16 @@ function syncFinals() {
 function renderWorldTable() {
   const { by, thirds, mv } = wcTables();
   const cut = 8;
+  /* A straight bracket has no table at all: everything it has to say is in
+     the bracket, and an empty grid of groups says the opposite. */
+  if (!WC_GRPS.length) {
+    $('tableTbl').innerHTML = '';
+    $('tableLegend').innerHTML = '';
+    $('tableNote').innerHTML = '<b>Straight knockout.</b> Lose and you are out, so there is no table —' +
+      ' the road to the trophy is the bracket, on the Finals tab.';
+    $('gridWrap').innerHTML = '';
+    return;
+  }
   const head = '<tr><th class="num">#</th><th>Team</th><th class="num">P</th><th class="num">W</th>' +
     '<th class="num">D</th><th class="num">L</th><th class="num">GF</th><th class="num">GA</th>' +
     '<th class="num">GD</th><th class="num">Pts</th></tr>';
@@ -10983,18 +11253,23 @@ function renderWorldTable() {
     const rows = by[g] || [];
     if (!rows.length) return '';
     return '<tr class="wcgh"><td colspan="10"><b>Group ' + g + '</b></td></tr>' +
-      rows.map((r, i) => row(r, i + 1, i < 2 ? 'q-gold' : i === 2 ? 'q-silver' : '')).join('');
+      rows.map((r, i) => row(r, i + 1, i < 2 ? 'q-gold' : i === 2 && WC_THIRDS ? 'q-silver' : '')).join('');
   }).join('');
   $('tableLegend').innerHTML =
-    '<span><i style="background:var(--gold)"></i>Top two — through to the last 32</span>' +
-    '<span><i style="background:var(--silver)"></i>Third — through if among the best eight</span>';
+    '<span><i style="background:var(--gold)"></i>Top two — through to the ' + esc(wcKo1()) + '</span>' +
+    (WC_THIRDS ? '<span><i style="background:var(--silver)"></i>Third — through if among the best eight</span>' : '');
   const done = wcGroupsDone();
   $('tableNote').innerHTML = '<b>' + (done ? 'Groups complete.' : 'Group stage.') + '</b> ' +
-    'Twelve groups of four. The top two of each go through, and the eight best third-placed sides ' +
-    'join them — thirty-two into the knockout.' +
-    (done ? ' The last 32 is drawn: a group winner never meets another winner in it, a third-placed ' +
-      'side always meets a winner, and nobody meets a side from their own group.' : '');
-  $('gridWrap').innerHTML = '<div class="card"><h3>Third place — the last eight seats</h3>' +
+    (WC_THIRDS
+      ? 'Twelve groups of four. The top two of each go through, and the eight best third-placed sides ' +
+        'join them — thirty-two into the knockout.' +
+        (done ? ' The last 32 is drawn: a group winner never meets another winner in it, a third-placed ' +
+          'side always meets a winner, and nobody meets a side from their own group.' : '')
+      : plural(WC_GRPS.length, 'group') + '. The top two of each go through to the ' + esc(wcKo1()) + '.' +
+        (done ? ' The bracket is drawn: a group winner and the side that came second to them are in ' +
+          'opposite halves of it, so the one team they have already played is the one they cannot ' +
+          'meet again before the final.' : ''));
+  $('gridWrap').innerHTML = !WC_THIRDS ? '' : '<div class="card"><h3>Third place — the last eight seats</h3>' +
     (thirds.length ? '<div class="tw"><table><tr><th class="num">#</th><th>Team</th><th>Group</th>' +
       '<th class="num">P</th><th class="num">GF</th><th class="num">GA</th>' +
       '<th class="num">GD</th><th class="num">Pts</th></tr>' +
@@ -11180,13 +11455,18 @@ function renderFinals() {
   $('bracket').innerHTML = bracketHtml(false);
   if (isWorld()) {
     const done = wcGroupsDone(), drawn = DB.fixtures.some(f => (f.round || 0) === WC_GRD + 1);
-    $('finalsNote').innerHTML = drawn
-      ? 'The last 32 is drawn. Thirty-two sides, two halves of sixteen, and they can only meet in the final. ' +
+    const k1 = wcKo1();
+    $('finalsNote').innerHTML = !WC_GRPS.length
+      ? 'A straight knockout: lose and you are out. Each round is drawn from the winners of the one ' +
+        'before, and a drawn tie is settled by the penalty shoot-out on the match screen.'
+      : drawn
+      ? 'The ' + esc(k1) + ' is drawn. Two halves, and they can only meet in the final. ' +
         'A drawn knockout tie is settled by the penalty shoot-out on the match screen.'
       : done
-      ? 'The groups are complete — save the competition and the last 32 draws itself.'
+      ? 'The groups are complete — save the competition and the ' + esc(k1) + ' draws itself.'
       : 'The group stage is still on. The bracket below is the draw as it would fall if the groups ' +
-        'finished tonight: top two of each group, and the eight best third-placed sides.';
+        'finished tonight: top two of each group' +
+        (WC_THIRDS ? ', and the eight best third-placed sides.' : '.');
   } else
   $('finalsNote').innerHTML = lo ? '' : sf1 ?
       'Locked from the table: gold <b>1st v 4th</b> and <b>2nd v 3rd</b>' + (sv1 ? ', silver <b>5th v 8th</b> and <b>6th v 7th</b>' : '') +
@@ -14080,7 +14360,7 @@ function pubGroups(st, full) {
         '<th class="n hs" style="width:16px">L</th>' : '') +
       '<th class="n" style="width:20px">GF</th><th class="n" style="width:20px">GA</th>' +
       '<th class="n" style="width:24px">GD</th><th class="n" style="width:26px">Pts</th></tr>' +
-      rows.map((r, i) => '<tr class="' + (i < 2 ? 'qg' : i === 2 ? 'qs' : '') + '">' +
+      rows.map((r, i) => '<tr class="' + (i < 2 ? 'qg' : i === 2 && WC_THIRDS ? 'qs' : '') + '">' +
         '<td class="n dim">' + (i + 1) + moveMark(mv, r.id) + '</td>' +
         '<td class="tm">' + dot(r.id) + esc(r.name) + '</td>' +
         '<td class="n">' + r.P + '</td>' +
@@ -14092,8 +14372,8 @@ function pubGroups(st, full) {
   const made = WC_GRPS.map(blk).join('');
   if (!made) return '<div class="empty">No groups yet.</div>';
   return '<div class="pgrid">' + made + '</div>' +
-    '<div class="legend"><span><i class="lg"></i>Top two — through to the last 32</span>' +
-    '<span><i class="ls"></i>Third — through if among the best eight</span></div>' +
+    '<div class="legend"><span><i class="lg"></i>Top two — through to the ' + esc(wcKo1()) + '</span>' +
+    (WC_THIRDS ? '<span><i class="ls"></i>Third — through if among the best eight</span>' : '') + '</div>' +
     (thirds.length ? '<div class="note">Best thirds as it stands: <b>' +
       thirds.slice(0, 8).map(r => esc(r.name)).join(', ') + '</b>' +
       (thirds.length > 8 ? '. Missing out: ' + thirds.slice(8).map(r => esc(r.name)).join(', ') : '') + '.</div>' : '');
@@ -14102,7 +14382,7 @@ function pubGroups(st, full) {
 function mailGroups(DIM, LINE, INK, crest) {
   const { by, thirds, mv } = wcTables();
   const GOLD = '#d9ae2e', SILVER = '#aab0ba';      // the two metals the tool and the page use
-  const edge = i => i < 2 ? GOLD : i === 2 ? SILVER : 'transparent';
+  const edge = i => i < 2 ? GOLD : i === 2 && WC_THIRDS ? SILVER : 'transparent';
   const cell = (v, right, bold) => '<td style="padding:5px 4px;border-bottom:1px solid ' + LINE +
     (right ? ';text-align:right' : '') + (bold ? ';font-weight:700' : '') + '">' + v + '</td>';
   /* Up, down or holding, since the matchday before this one. A triangle
@@ -14137,9 +14417,9 @@ function mailGroups(DIM, LINE, INK, crest) {
   }).join('');
   // what the two colours down the edge mean, said once
   const key = '<div style="font-size:12px;color:' + DIM + ';line-height:1.9">' +
-    '<span style="color:' + GOLD + ';font-size:14px">&#9646;</span> Top two &mdash; through to the last 32' +
-    '<span style="color:' + SILVER + ';font-size:14px;margin-left:18px">&#9646;</span> ' +
-    'Third &mdash; through if among the best eight</div>';
+    '<span style="color:' + GOLD + ';font-size:14px">&#9646;</span> Top two &mdash; through to the ' + esc(wcKo1()) +
+    (WC_THIRDS ? '<span style="color:' + SILVER + ';font-size:14px;margin-left:18px">&#9646;</span> ' +
+      'Third &mdash; through if among the best eight' : '') + '</div>';
   return out + key + (thirds.length ? '<div style="font-size:12.5px;color:' + DIM + ';line-height:1.6">' +
     'Eight best third-placed sides go through. As it stands: <b style="color:' + INK + '">' +
     thirds.slice(0, 8).map(r => esc(r.name)).join(', ') + '</b>.</div>' : '');
@@ -16724,7 +17004,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '15 Nov 03:02 · fb3c07a'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '15 Nov 08:19 · 1109230'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
