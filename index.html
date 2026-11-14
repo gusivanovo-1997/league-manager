@@ -8224,7 +8224,10 @@ function printDraw() {
   const groups = [];
   [...new Set(reg.map(f => f.round))].sort((a, b) => a - b).forEach(r => {
     if (pick && pick !== String(r)) return;
-    groups.push({ title: 'Round ' + r, fx: reg.filter(f => f.round === r), bye: byesIn('R' + r) });
+    /* "Round 4" is true of a World Cup and tells nobody anything: on the
+       sheet it is the Round of 32, and a group matchday says so too. */
+    groups.push({ title: rdName(r), round: r, fx: reg.filter(f => f.round === r),
+      bye: isWorld() ? [] : byesIn('R' + r) });
   });
   [['SEMI', 'Semi-finals'], ['FINAL', 'Finals']].forEach(([k, t]) => {
     if (pick && pick !== k) return;
@@ -8236,17 +8239,32 @@ function printDraw() {
   const stars = tid => { const t = team(tid), s = t && starBy[t.name]; return s ? ' <span class="st">' + CROWN_SVG + s.n + '</span>' : ''; };
   const side = tid => tid ? badge(tid) + '<span class="nm">' + esc(teamName(tid)) + stars(tid) + '</span>' : '<span class="nm tbd">to be decided</span>';
   const courts = DB.fixtures.some(f => f.court);
+  const cols = 3 + (courts ? 1 : 0);
+  const byWhen = (a, b) => when(a).localeCompare(when(b)) || (STAGE_TIER[a.stage] - STAGE_TIER[b.stage]);
+  const row = (f, ko) => '<tr><td class="t">' + esc(f.time || '—') + '</td>' +
+    (courts ? '<td class="c">' + (f.court ? 'Court ' + esc(f.court) : '') + '</td>' : '') +
+    (ko ? '<td class="k">' + esc(stageLabel(f.stage)) + '</td>' : '') +
+    '<td class="h">' + side(f.homeId) + '</td>' +
+    '<td class="s">' + (f.status === 'final' ? f.homeGoals + ' – ' + f.awayGoals : 'v') + '</td>' +
+    '<td class="a">' + side(f.awayId) + '</td></tr>';
   const body = groups.map((g, i) => {
     const dates = [...new Set(g.fx.map(f => f.date).filter(Boolean))].sort().map(fmtDate).join(', ');
-    return '<section class="rd' + (g.ko === 'FINAL' ? ' gold' : g.ko === 'SEMI' ? ' silver' : i % 2 ? ' alt' : '') + '">' +
+    /* A World Cup matchday is twelve groups playing at once. Printed as one
+       run of twenty-four it is a wall; printed group by group it is the
+       competition. Each group is a tbody of its own, so a page may break
+       between groups and never through one. */
+    const wcDay = isWorld() && g.round && g.round <= WC_GRD && g.fx.some(f => f.grp);
+    const inner = wcDay
+      ? WC_GRPS.map(L => { const fx = g.fx.filter(f => f.grp === L).sort(byWhen);
+          if (!fx.length) return '';
+          return '<tbody class="gp"><tr class="gl"><td colspan="' + (cols + 1) + '">Group ' + L +
+            '</td></tr>' + fx.map(f => row(f)).join('') + '</tbody>'; }).join('')
+      : '<tbody>' + g.fx.slice().sort(byWhen).map(f => row(f, g.ko)).join('') + '</tbody>';
+    return '<section class="rd' + (g.ko === 'FINAL' ? ' gold' : g.ko === 'SEMI' ? ' silver' : i % 2 ? ' alt' : '') +
+      (g.fx.length <= 10 ? ' keep' : '') + '">' +
       '<h2>' + esc(g.title) + '<span>' + esc(dates || 'date to be set') +
-        (g.bye && g.bye.length ? ' · bye: ' + esc(g.bye.map(t => t.name).join(', ')) : '') + '</span></h2><table>' +
-      g.fx.slice().sort((a, b) => when(a).localeCompare(when(b)) || (STAGE_TIER[a.stage] - STAGE_TIER[b.stage])).map(f =>
-        '<tr><td class="t">' + esc(f.time || '—') + '</td>' + (courts ? '<td class="c">' + (f.court ? 'Court ' + esc(f.court) : '') + '</td>' : '') +
-          (g.ko ? '<td class="k">' + esc(stageLabel(f.stage)) + '</td>' : '') +
-          '<td class="h">' + side(f.homeId) + '</td>' +
-          '<td class="s">' + (f.status === 'final' ? f.homeGoals + ' – ' + f.awayGoals : 'v') + '</td>' +
-          '<td class="a">' + side(f.awayId) + '</td></tr>').join('') + '</table></section>';
+        (g.bye && g.bye.length ? ' · bye: ' + esc(g.bye.map(t => t.name).join(', ')) : '') + '</span></h2>' +
+      '<table>' + inner + '</table></section>';
   }).join('');
   const css = '@page{size:A4;margin:12mm}' +
     '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
@@ -8259,14 +8277,18 @@ function printDraw() {
       'text-transform:uppercase;text-indent:3px}' +
     'header .k span{color:#ff8a3d;font-weight:700}' +
     'header h1{margin:2px 0 0;font-size:22px}header .v{margin-left:auto;text-align:right;color:#b9b6b2;font-size:12px}' +
-    '.rd{border:1px solid #33343b;border-radius:12px;padding:6px 14px 10px;margin-bottom:12px;background:#232429;break-inside:avoid}' +
+    '.rd{border:1px solid #33343b;border-radius:12px;padding:6px 14px 10px;margin-bottom:12px;background:#232429;break-inside:auto}' +
+    '.rd.keep{break-inside:avoid}tbody.gp{break-inside:avoid}tr{break-inside:avoid}' +
+    'h2{break-after:avoid}footer{break-before:avoid}' +
+    '.gl td{padding:7px 4px 2px;border-top:1px solid rgba(255,255,255,.13);color:#9c9ca6;' +
+      'font:700 10px/1 Consolas,monospace;letter-spacing:2.2px;text-transform:uppercase}' +
+    'tbody:first-child tr:first-child td{border-top:0}' +
     '.rd.alt{background:linear-gradient(180deg,rgba(255,138,61,.16),rgba(255,138,61,.05)),#232429;border-color:rgba(255,138,61,.42)}' +
     '.rd.silver{background:linear-gradient(180deg,rgba(176,196,222,.18),rgba(176,196,222,.05)),#232429;border-color:rgba(176,196,222,.5)}' +
     '.rd.gold{background:linear-gradient(180deg,rgba(255,197,61,.18),rgba(255,197,61,.05)),#232429;border-color:rgba(255,197,61,.55)}' +
     'h2{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 4px;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;color:#ffb27a}' +
     '.silver h2{color:#c9d6e8}.gold h2{color:#ffc53d}h2 span{font-size:11.5px;letter-spacing:0;text-transform:none;color:#9c9ca6;font-weight:400}' +
-    'table{width:100%;border-collapse:collapse}td{padding:6px 4px;border-top:1px solid rgba(255,255,255,.06);vertical-align:middle}' +
-    'tr:first-child td{border-top:0}' +
+    'table{width:100%;border-collapse:collapse}td{padding:5px 4px;border-top:1px solid rgba(255,255,255,.06);vertical-align:middle}' +
     '.t{width:52px;font-weight:700;color:#ff8a3d;font-variant-numeric:tabular-nums}.c{width:60px;color:#9c9ca6;font-size:11.5px}' +
     '.k{width:118px;color:#ffc53d;font-size:11px;font-weight:700}.silver .k{color:#c9d6e8}' +
     '.h{text-align:right}.a{text-align:left}.h,.a{width:40%}' +
@@ -8276,7 +8298,10 @@ function printDraw() {
     '.st{color:#ffc53d;font-size:11px;font-weight:800;margin-left:3px;white-space:nowrap}' +
     '.st .gcrown{display:inline-block;width:12px;height:12px;vertical-align:-2px;margin-right:1px}' +
     '.st .gcrown svg{width:100%;height:100%;display:block}' +
-    'footer{margin-top:10px;text-align:center;color:#77777f;font-size:10.5px}';
+    'footer{margin-top:10px;text-align:center;color:#77777f;font-size:10.5px}' +
+    /* the sheet is dark by design, and the paper under it has to be the
+       same dark or a part-filled last page comes out as a white band */
+    'html{background:#16171b}';
   const ball = ballPng();
   const doc = '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(DB.season.name + ' — fixtures') + '</title><style>' + css + '</style></head><body><div class="wrap">' +
     '<header>' + (ball ? '<img src="' + ball + '" alt="">' : '') +
@@ -16664,7 +16689,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '14 Nov 09:24 · d35083e'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '14 Nov 20:01 · 26c1951'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
