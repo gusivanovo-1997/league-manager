@@ -7111,6 +7111,11 @@ function seasonSnapshot(given) {
   // a title belongs to the squad that finished with it, and to anyone who played the final for them
   const gf = fx.find(f => f.stage === 'F'), svf = fx.find(f => f.stage === 'SVF');
   const won = (pid, tid, fl) => tid && (roster[pid] === tid || (fl && fl.status === 'final' && isHere(fl, pid) && sideOf(fl, pid) === tid));
+  /* The winners' squads are given their rows before the titles go out. A row
+     existed only for a player ticked in as present or who did something in a
+     match, so without attendance the champions' own players were skipped and
+     nobody got a star. Winning it is the test, not being marked present. */
+  [champ, silver].forEach(tid => { if (tid) Object.keys(roster).forEach(pid => { if (roster[pid] === tid) row(pid); }); });
   Object.keys(pl).forEach(pid => {
     const r = pl[pid], p = person(pid);
     if (p && p.guest) r.g = 1;
@@ -10051,7 +10056,7 @@ function resetMatch(f, sure) {
           ' already been played — that result is not touched.' : '') +
         (slotted.length ? '\n\n' + slotted.map(x => stageLabel(x.stage)).join(' and ') + (slotted.length > 1 ? ' keep their' : ' keeps its') +
           ' date and time; the teams are settled again once this semi is replayed.' : '') +
-        (f.stage === 'F' && DB.honours.some(x => +x.year === +DB.season.year)
+        (f.stage === 'F' && honourNow()
           ? '\n\nThe roll of honour keeps this season\'s entry — change it on the Honours tab if it was wrong.' : ''))) return false;
     f = fxNow(f);                                  // the question may have read a newer copy
     if (!f) { toast('That match was removed in the other window.', 'bad'); render(); return false; }
@@ -11052,24 +11057,36 @@ function podiumHtml(p) {
 /* the roll of honour for this season: champion, runner-up and 3rd from the championship bracket */
 function recordHonour() {
   if (!requireMgr('Editing the roll of honour')) return;
-  const ph2 = seasonPhase(), c = ph2.champion, g = ph2.grand, pg = podiumOf('gold');
-  if (!c) return;
+  const ph2 = seasonPhase(), pg = podiumOf('gold'), c = ph2.champion;
+  /* Nothing to record is worth saying out loud: the button used to go dead
+     under the finger with no word of why. */
+  if (!c) return toast(isWorld() ? 'The final has not been played yet, so there is no champion to record.'
+    : isCup() ? 'The cup final has not been played yet, so there is no champion to record.'
+    : leagueOnly() ? 'The table is not decided yet — the last round has still to be played.'
+    : 'The grand final has not been played yet, so there is no champion to record.', 'bad');
+  /* A cup has no gold bracket and no stage 'F': its final is the single tie
+     left in the last round, and that is where its runner-up comes from. */
+  const lastTies = isCup() && ph2.maxRound ? ph2.reg.filter(f => f.round === ph2.maxRound) : [];
+  const g = ph2.grand || (lastTies.length === 1 ? lastTies[0] : null);
   const runner = pg && pg.second ? pg.second
     : g ? (c === g.homeId ? g.awayId : g.homeId) : ((standings().find(r => r.id !== c) || {}).id || null);
   const boots = bootHolders(scorerTable().filter(r => r.personId));   // named players only, never "Unattributed"
   const rec = { year: DB.season.year, season: seasonTitle(), champion: teamName(c), championId: c,
     runnerUp: runner ? teamName(runner) : '', third: pg && pg.third.length ? pg.third.map(teamName).join(' & ') : '',
     topScorer: boots.length ? boots.map(r => r.name).join(' & ') + ' (' + boots[0].goals + ')' : '',
-    notes: g && koNote(g) ? 'Grand final — ' + koNote(g, false, c)
+    notes: g && koNote(g) ? (isCup() ? 'Cup final — ' : 'Grand final — ') + koNote(g, false, c)
       : leagueOnly() ? 'league champions (pontos corridos)' : '' };
   // one season, one record: pressing it again (or after a corrected final, or once 3rd is decided) updates it
-  // this season's record, under its new name or the plain "Season 2026" it may have been saved as before
-  const same = s => String(s || '').toLowerCase();
-  const ex = DB.honours.find(hh => +hh.year === +DB.season.year && same(hh.season) === same(rec.season)) ||
-    DB.honours.find(hh => +hh.year === +DB.season.year && same(hh.season) === same(DB.season.name));
+  const ex = honourNow();
   if (ex) Object.assign(ex, rec); else DB.honours.push(Object.assign({ id: uid() }, rec));
   if (save() === false) return;
-  go('honours'); toast(ex ? 'Roll of honour updated.' : 'Added to the roll of honour.', 'ok');
+  go('honours');
+  /* Never say "saved" when nothing was stored: a browser that has run out of
+     room, or that will not keep data at all, holds the whole league in memory
+     and loses it with the tab. */
+  toast(!storageOk
+    ? 'It is on the roll of honour here, but this browser is not storing anything — export a .json backup now or it goes when the tab closes.'
+    : ex ? 'Roll of honour updated.' : 'Added to the roll of honour.', storageOk ? 'ok' : 'bad');
 }
 /* The bracket, drawn once and read in two places: the Finals tab, where
    you run the matches from it, and Home, where it is the same picture at
@@ -11084,8 +11101,7 @@ function bracketHtml(mini) {
   const ph = seasonPhase();
   const champ = ph.champion, silverWin = winnerOf(svf);
   const recBtn = () => isMgr() ? '<button class="btn ok sm" style="margin-top:10px" data-rechon>' +
-    (DB.honours.some(hh => +hh.year === +DB.season.year && String(hh.season).toLowerCase() === String(DB.season.name).toLowerCase())
-      ? 'Update the roll of honour' : 'Add to roll of honour') + '</button>' : '';
+    (honourNow() ? 'Update the roll of honour' : 'Add to roll of honour') + '</button>' : '';
 
   // a semi's winner is coloured as going through: gold to the grand final, silver to the silver final
   /* The name and the score are two columns, so both teams' scores sit on
@@ -11158,8 +11174,7 @@ function renderFinals() {
   const sf1 = DB.fixtures.find(f => f.stage === 'SF1'), sv1 = DB.fixtures.find(f => f.stage === 'SV1');
   const champ = seasonPhase().champion;
   const recBtn = () => isMgr() ? '<button class="btn ok sm" style="margin-top:10px" data-rechon>' +
-    (DB.honours.some(hh => +hh.year === +DB.season.year && String(hh.season).toLowerCase() === String(DB.season.name).toLowerCase())
-      ? 'Update the roll of honour' : 'Add to roll of honour') + '</button>' : '';
+    (honourNow() ? 'Update the roll of honour' : 'Add to roll of honour') + '</button>' : '';
   $('finalsAdminCard').style.display = isMgr() && !lo && !isWorld() ? '' : 'none';
   $('finals3rd').checked = !!DB.finals3rd;
   $('bracket').innerHTML = bracketHtml(false);
@@ -11469,6 +11484,20 @@ function seasonNo() {
   return m <= 5 ? 1 : m <= 9 ? 2 : 3;
 }
 const seasonTitle = () => 'Season ' + seasonNo() + ' ' + DB.season.year;
+/* This season's record on the roll of honour, looked up the way it is
+   written. recordHonour() saves it as "Season 2 2026"; one typed in by hand,
+   or saved before the season was renamed, carries the league's own name
+   instead. Both are looked for, in one place, so the button, the rename and
+   the warning on a reset final can never disagree about whether it is there.
+   They did: every reader but the writer looked only for the league's name,
+   so the button said "Add to roll of honour" for ever and a press that had
+   worked read exactly like one that had not. */
+function honourNow() {
+  const same = s => String(s || '').toLowerCase();
+  const y = +DB.season.year;
+  return (DB.honours || []).find(hh => +hh.year === y && same(hh.season) === same(seasonTitle())) ||
+    (DB.honours || []).find(hh => +hh.year === y && same(hh.season) === same(DB.season.name)) || null;
+}
 let hnEditId = null;                    // the record the form is editing, if any
 function endHonourEdit() {
   hnEditId = null; $('btnAddHonour').textContent = 'Save record';
@@ -11628,6 +11657,7 @@ $('btnSaveSettings').onclick = () => {
   const correction = renaming && confirm('Rename "' + old + '" to "' + $('stName').value.trim() + '"?\n\n' +
     'OK — it is the same season, the name was wrong: players\' history and this season\'s honours record follow the new name.\n' +
     'Cancel — it is a NEW season: players keep "' + old + '" in their history, so they show as returning when they sign up again.');
+  const hnWas = honourNow();          // found while the season still has its old name and year
   SETMAP.forEach(([el, key]) => {
     const v = $(el).value;
     DB.season[key] = (typeof blankDB().season[key] === 'number') ? +v : v.trim();
@@ -11640,7 +11670,12 @@ $('btnSaveSettings').onclick = () => {
     DB.form.title = rn(DB.form.title);
     if (correction) {
       DB.people.forEach(p => { if (p.seasons) p.seasons = [...new Set(p.seasons.map(s => s === old ? DB.season.name : s))]; });
-      DB.honours.forEach(hh => { if (+hh.year === +oldYear && String(hh.season).toLowerCase() === String(old).toLowerCase()) { hh.season = DB.season.name; hh.year = DB.season.year; } });
+      /* A record typed in under the old name takes the new one; one saved by
+         the button is called "Season 2 2026" and only has to follow the year. */
+      if (hnWas) {
+        hnWas.season = String(hnWas.season).toLowerCase() === String(old).toLowerCase() ? DB.season.name : seasonTitle();
+        hnWas.year = DB.season.year;
+      }
       if (!DB.season.drawnAs || DB.season.drawnAs === old) DB.season.drawnAs = DB.season.name;
     } else if (DB.fixtures.some(playedFx) && !DB.season.drawnAs) DB.season.drawnAs = old;    // the season being played keeps its name in the history
     ['blIntro', 'blSubject', 'suTitle'].forEach(id => { if ($(id)) delete $(id).dataset.db; });
@@ -16689,7 +16724,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '14 Nov 20:01 · 26c1951'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '15 Nov 03:02 · fb3c07a'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
