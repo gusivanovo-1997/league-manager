@@ -2404,7 +2404,7 @@ tspan.gstar{fill:var(--gold)}
           <input type="date" id="fxStart"><div class="small muted" id="fxStartHint"></div></div>
         <div class="field"><label>First throw-in</label><input type="time" id="fxTime" value="18:00"></div>
         <div class="field"><label>Minutes between kick-offs</label><input type="number" id="fxSlot" min="15" step="5" value="45"></div>
-        <div class="field"><label>Courts (1 = one game at a time)</label><input type="number" id="fxCourts" min="1" max="6" value="1"></div>
+        <div class="field"><label>Courts (1 = one game at a time)</label><input type="number" id="fxCourts" min="1" max="24" value="1"></div>
         <div class="field"><label>Days between rounds</label><input type="number" id="fxGap" min="0" value="7">
           <div class="small muted">0 — the whole competition in one day, one match after another from the
             first throw-in.</div></div>
@@ -8279,23 +8279,29 @@ function generateFixtures(keepHistory) {
         grd = Math.max(grd, sched[x].length);
         sched[x].forEach(p => { maxW = Math.max(maxW, p.length); }); });
       /* The courts fill ACROSS the groups: one match from every group, then
-         the next one from every group. A group's own two matches must never
-         be on at the same moment until the last matchday. */
-      const oneDay = gap === 0, waveSlots = Math.ceil(g / courts);
+         the next one from every group — and then straight on down the
+         clock, as many to a slot as there are courts, so no court stands
+         idle while matches are still waiting. Inside one matchday every
+         match is between teams that play only that one game, so the packing
+         cannot double-book anybody. */
+      const oneDay = gap === 0;
+      let slotBase = 0;
       for (let r = 0; r < grd; r++) {
         const day = new Date(startDate + 'T00:00:00');
         day.setDate(day.getDate() + r * gap);
-        const dstr = isoOf(day), at = {}, base = oneDay ? r * maxW * waveSlots : 0;
-        for (let w = 0; w < maxW; w++) GR.forEach((x, gi) => {
+        const dstr = isoOf(day), queue = [];
+        for (let w = 0; w < maxW; w++) GR.forEach(x => {
           const pr = (sched[x][r] || [])[w];
-          if (!pr) return;
-          const s = base + w * waveSlots + Math.floor(gi / courts);
-          at[s] = (at[s] || 0) + 1;
-          fx.push({ id: uid(), stage: 'regular', round: r + 1, grp: x,
-            homeId: grp[x][pr[0]], awayId: grp[x][pr[1]], date: dstr,
-            time: fmtMins(firstMin + s * slot), court: courts > 1 ? String(at[s]) : '',
+          if (pr) queue.push({ x: x, pr: pr });
+        });
+        queue.forEach((q, i) => {
+          const s = slotBase + Math.floor(i / courts);
+          fx.push({ id: uid(), stage: 'regular', round: r + 1, grp: q.x,
+            homeId: grp[q.x][q.pr[0]], awayId: grp[q.x][q.pr[1]], date: dstr,
+            time: fmtMins(firstMin + s * slot), court: courts > 1 ? String((i % courts) + 1) : '',
             status: 'scheduled', homeGoals: 0, awayGoals: 0, events: [] });
         });
+        if (oneDay) slotBase += Math.ceil(queue.length / courts);
       }
       DB.season.tr = { g, grd, q: 2 };
       spec = trBuild(DB.season.tr);
@@ -8357,30 +8363,40 @@ function generateFixtures(keepHistory) {
        nine; I, J, K and L at ten — and only when all twelve have played does
        group A's second match come round.
 
-       The wave is what makes that true whatever the court count: twelve
-       matches take ceil(12 / courts) slots, and the next wave starts on a
-       fresh slot even if that leaves a court or two standing for one turn.
-       Without it, eight courts had A to D starting their second match while
-       I to L had not played their first.
+       The order is the wave: every group's first match, then every group's
+       second. The clock is separate from it — the matches are laid into
+       the slots back to back, as many per slot as there are courts, so no
+       court ever stands idle while matches are still waiting.
+
+       Rounding each wave up to a fresh slot was the bug: with twelve groups
+       on ten courts it put ten matches at eight, two at half past, ten at
+       nine, two at half past nine, leaving eight courts empty every second
+       slot. Nothing needed it — inside one matchday every one of the
+       twenty-four matches is between a different four teams, so no team can
+       be double-booked however they are packed.
 
        Going down a group instead — both of A's matches, then both of B's —
        would put a group's own two games on at the same moment on different
        courts, which is the one thing a group stage must not do until the
        last matchday. */
-    const waveSlots = Math.ceil(WC_GRPS.length / courts);
+    let slotBase = 0;
     pat.forEach((day, r) => {
       const d = new Date(startDate + 'T00:00:00');
       d.setDate(d.getDate() + (oneDay ? 0 : r * gap));
-      const dstr = isoOf(d), onCourt = {};
-      const dayBase = oneDay ? r * day.length * waveSlots : 0;
-      day.forEach((pr, w) => WC_GRPS.forEach((g, gi) => {
-        const s = dayBase + w * waveSlots + Math.floor(gi / courts);
-        onCourt[s] = (onCourt[s] || 0) + 1;
-        fx.push({ id: uid(), stage: 'regular', round: r + 1, grp: g,
-          homeId: grp[g][pr[0]], awayId: grp[g][pr[1]], date: dstr,
-          time: fmtMins(firstMin + s * slot), court: courts > 1 ? String(onCourt[s]) : '',
+      const dstr = isoOf(d);
+      const queue = [];
+      day.forEach(pr => WC_GRPS.forEach(g => queue.push({ g: g, pr: pr })));
+      queue.forEach((q, i) => {
+        const s = slotBase + Math.floor(i / courts);
+        fx.push({ id: uid(), stage: 'regular', round: r + 1, grp: q.g,
+          homeId: grp[q.g][q.pr[0]], awayId: grp[q.g][q.pr[1]], date: dstr,
+          time: fmtMins(firstMin + s * slot), court: courts > 1 ? String((i % courts) + 1) : '',
           status: 'scheduled', homeGoals: 0, awayGoals: 0, events: [] });
-      }));
+      });
+      /* Played in one day, the next matchday starts on a slot of its own:
+         the teams are the same teams, so it cannot share the last slot of
+         the one before even when there are courts going spare in it. */
+      if (oneDay) slotBase += Math.ceil(queue.length / courts);
     });
     if (keepHistory !== false) archiveSeason();
     stampDraw(bag);
@@ -16961,7 +16977,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '16 Nov 06:39 · 840ea34'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '16 Nov 08:01 · 93054f3'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
