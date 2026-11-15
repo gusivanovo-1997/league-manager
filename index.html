@@ -8555,7 +8555,8 @@ function printDraw() {
   const reg = DB.fixtures.filter(f => f.stage === 'regular');
   const fin = leagueOnly() ? [] : DB.fixtures.filter(f => f.stage !== 'regular' && (f.homeId || f.awayId));
   const pick = $('fxRoundFilter').value;
-  const when = f => (f.date || '9999') + (f.time || '') + (f.court || '');
+  // court 10 must not sort between courts 1 and 2, so the number is padded
+  const when = f => (f.date || '9999') + (f.time || '') + String(f.court || '').padStart(3, '0');
   const groups = [];
   [...new Set(reg.map(f => f.round))].sort((a, b) => a - b).forEach(r => {
     if (pick && pick !== String(r)) return;
@@ -8574,27 +8575,52 @@ function printDraw() {
   const stars = tid => { const t = team(tid), s = t && starBy[t.name]; return s ? ' <span class="st">' + CROWN_SVG + s.n + '</span>' : ''; };
   const side = tid => tid ? badge(tid) + '<span class="nm">' + esc(teamName(tid)) + stars(tid) + '</span>' : '<span class="nm tbd">to be decided</span>';
   const courts = DB.fixtures.some(f => f.court);
-  const cols = 3 + (courts ? 1 : 0);
   const byWhen = (a, b) => when(a).localeCompare(when(b)) || (STAGE_TIER[a.stage] - STAGE_TIER[b.stage]);
-  const row = (f, ko) => '<tr><td class="t">' + esc(f.time || '—') + '</td>' +
+  // which group a match belongs to is part of the fixture, so it is on the sheet
+  const row = (f, ko, grp) => '<tr><td class="t">' + esc(f.time || '—') + '</td>' +
     (courts ? '<td class="c">' + (f.court ? 'Court ' + esc(f.court) : '') + '</td>' : '') +
+    (grp ? '<td class="g">' + (f.grp ? 'Group ' + esc(f.grp) : '') + '</td>' : '') +
     (ko ? '<td class="k">' + esc(stageLabel(f.stage)) + '</td>' : '') +
     '<td class="h">' + side(f.homeId) + '</td>' +
     '<td class="s">' + (f.status === 'final' ? f.homeGoals + ' – ' + f.awayGoals : 'v') + '</td>' +
     '<td class="a">' + side(f.awayId) + '</td></tr>';
   const body = groups.map((g, i) => {
+    const gHas = g.fx.some(f => f.grp);
+    const cols = 4 + (courts ? 1 : 0) + (gHas ? 1 : 0);
     const dates = [...new Set(g.fx.map(f => f.date).filter(Boolean))].sort().map(fmtDate).join(', ');
     /* A World Cup matchday is twelve groups playing at once. Printed as one
        run of twenty-four it is a wall; printed group by group it is the
        competition. Each group is a tbody of its own, so a page may break
        between groups and never through one. */
     const wcDay = isWorld() && g.round && g.round <= WC_GRD && g.fx.some(f => f.grp);
-    const inner = wcDay
+    /* On several courts the sheet is read down the clock, not down the
+       groups: everything kicking off at eight together, then everything at
+       half past. Each kick-off is a block of its own, so a page never
+       breaks through one, and every row says which group it is.
+       On a single court there is one match per time, so a time-by-time
+       sheet would be one row per block — a group stage then prints group
+       by group, as it did before. */
+    const slots = [];
+    g.fx.slice().sort(byWhen).forEach(f => {
+      const k = (f.date || '') + ' ' + (f.time || '');
+      const last = slots[slots.length - 1];
+      if (last && last.k === k) last.fx.push(f); else slots.push({ k: k, fx: [f] });
+    });
+    const multiDate = new Set(g.fx.map(f => f.date || '')).size > 1;
+    const banded = courts && slots.length > 1 && slots.some(s => s.fx.length > 1);
+    const inner = banded
+      ? slots.map(s => { const f0 = s.fx[0];
+          return '<tbody class="gp"><tr class="gl"><td colspan="' + cols + '">' +
+            (multiDate && f0.date ? esc(fmtDate(f0.date)) + ' · ' : '') +
+            esc(f0.time || 'time to be set') + ' · ' +
+            plural(s.fx.length, 'match', 'matches') + '</td></tr>' +
+            s.fx.map(f => row(f, g.ko, gHas)).join('') + '</tbody>'; }).join('')
+      : wcDay
       ? WC_GRPS.map(L => { const fx = g.fx.filter(f => f.grp === L).sort(byWhen);
           if (!fx.length) return '';
-          return '<tbody class="gp"><tr class="gl"><td colspan="' + (cols + 1) + '">Group ' + L +
-            '</td></tr>' + fx.map(f => row(f)).join('') + '</tbody>'; }).join('')
-      : '<tbody>' + g.fx.slice().sort(byWhen).map(f => row(f, g.ko)).join('') + '</tbody>';
+          return '<tbody class="gp"><tr class="gl"><td colspan="' + cols + '">Group ' + L +
+            '</td></tr>' + fx.map(f => row(f, null, gHas)).join('') + '</tbody>'; }).join('')
+      : '<tbody>' + g.fx.slice().sort(byWhen).map(f => row(f, g.ko, gHas)).join('') + '</tbody>';
     return '<section class="rd' + (g.ko === 'FINAL' ? ' gold' : g.ko === 'SEMI' ? ' silver' : i % 2 ? ' alt' : '') +
       (g.fx.length <= 10 ? ' keep' : '') + '">' +
       '<h2>' + esc(g.title) + '<span>' + esc(dates || 'date to be set') +
@@ -8625,6 +8651,7 @@ function printDraw() {
     '.silver h2{color:#c9d6e8}.gold h2{color:#ffc53d}h2 span{font-size:11.5px;letter-spacing:0;text-transform:none;color:#9c9ca6;font-weight:400}' +
     'table{width:100%;border-collapse:collapse}td{padding:5px 4px;border-top:1px solid rgba(255,255,255,.06);vertical-align:middle}' +
     '.t{width:52px;font-weight:700;color:#ff8a3d;font-variant-numeric:tabular-nums}.c{width:60px;color:#9c9ca6;font-size:11.5px}' +
+    '.g{width:66px;color:#9c9ca6;font-size:11.5px;white-space:nowrap}' +
     '.k{width:118px;color:#ffc53d;font-size:11px;font-weight:700}.silver .k{color:#c9d6e8}' +
     '.h{text-align:right}.a{text-align:left}.h,.a{width:40%}' +
     '.h img,.a img{width:26px;height:26px;vertical-align:middle;object-fit:contain}.h img{float:right;margin-left:8px}.a img{margin-right:8px}' +
@@ -16977,7 +17004,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '16 Nov 08:01 · 93054f3'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '16 Nov 08:16 · cabe837'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
