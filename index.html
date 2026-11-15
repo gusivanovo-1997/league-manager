@@ -8169,6 +8169,48 @@ function shuffled(a) {                       // Fisher–Yates: every order equa
   return b;
 }
 function drawBag() { return drawIsRandom() ? shuffled(DB.teams) : DB.teams.slice(); }
+/* Lay matches onto the clock so that every court is busy in every slot.
+   Ten courts means ten matches kick off together, and the next ten thirty
+   minutes later, straight on down the list until the matches run out —
+   only the very last slot is ever short.
+
+   Two things it will not do. Nobody plays twice in the same slot. And a
+   group does not begin its next matchday until the whole of the one
+   before it is on the board, so the rounds stay in order.
+
+   One thing it prefers: where there is a choice it fills a slot with
+   teams that have had a slot off, and only reaches for a side that has
+   just come off the court when nothing else will fill the court. That is
+   the whole difference between a full slot and a half-empty one —
+   refusing to ever play a team twice in a row was what left eight courts
+   standing idle every second slot.
+
+   Each item needs homeId, awayId, and (for a group stage) grp and round. */
+function packCourts(list, courts) {
+  const rem = list.slice(), last = {}, slots = [];
+  for (let s = 0; rem.length; s++) {
+    // the matchday each group is on: the lowest round it still has to play
+    const curR = {};
+    rem.forEach(f => { const g = f.grp;
+      if (g != null && (curR[g] == null || f.round < curR[g])) curR[g] = f.round; });
+    const busy = {}, took = [];
+    // pass 2 wants a slot's rest behind every team; pass 1 takes what is left
+    for (let pass = 2; pass >= 1 && took.length < courts; pass--) {
+      for (let i = 0; i < rem.length && took.length < courts; i++) {
+        const f = rem[i];
+        if (busy[f.homeId] || busy[f.awayId]) continue;
+        if (last[f.homeId] != null && last[f.homeId] > s - pass) continue;
+        if (last[f.awayId] != null && last[f.awayId] > s - pass) continue;
+        if (f.grp != null && curR[f.grp] != null && f.round !== curR[f.grp]) continue;
+        busy[f.homeId] = busy[f.awayId] = 1;
+        took.push(f); rem.splice(i, 1); i--;
+      }
+    }
+    took.forEach(f => { last[f.homeId] = last[f.awayId] = s; });
+    slots.push(took);
+  }
+  return slots;
+}
 /* The order they came out, kept on the teams themselves. A table of sides
    who have all played nothing has to list them in SOME order, and that
    order used to be the alphabet — which made a freshly drawn group look
@@ -8279,30 +8321,23 @@ function generateFixtures(keepHistory) {
         grd = Math.max(grd, sched[x].length);
         sched[x].forEach(p => { maxW = Math.max(maxW, p.length); }); });
       /* The courts fill ACROSS the groups: one match from every group, then
-         the next one from every group — and then straight on down the
-         clock, as many to a slot as there are courts, so no court stands
-         idle while matches are still waiting. Inside one matchday every
-         match is between teams that play only that one game, so the packing
-         cannot double-book anybody. */
-      const oneDay = gap === 0;
-      let slotBase = 0;
-      for (let r = 0; r < grd; r++) {
-        const day = new Date(startDate + 'T00:00:00');
-        day.setDate(day.getDate() + r * gap);
-        const dstr = isoOf(day), queue = [];
-        for (let w = 0; w < maxW; w++) GR.forEach(x => {
-          const pr = (sched[x][r] || [])[w];
-          if (pr) queue.push({ x: x, pr: pr });
-        });
-        queue.forEach((q, i) => {
-          const s = slotBase + Math.floor(i / courts);
-          fx.push({ id: uid(), stage: 'regular', round: r + 1, grp: q.x,
-            homeId: grp[q.x][q.pr[0]], awayId: grp[q.x][q.pr[1]], date: dstr,
-            time: fmtMins(firstMin + s * slot), court: courts > 1 ? String((i % courts) + 1) : '',
-            status: 'scheduled', homeGoals: 0, awayGoals: 0, events: [] });
-        });
-        if (oneDay) slotBase += Math.ceil(queue.length / courts);
-      }
+         the next one from every group, matchday after matchday — and
+         packCourts lays that order onto the clock so every court is busy
+         in every slot. */
+      const oneDay = gap === 0, queue = [];
+      for (let r = 0; r < grd; r++) for (let w = 0; w < maxW; w++) GR.forEach(x => {
+        const pr = (sched[x][r] || [])[w];
+        if (pr) queue.push({ round: r + 1, grp: x, homeId: grp[x][pr[0]], awayId: grp[x][pr[1]] });
+      });
+      const dayOf = r => { const d = new Date(startDate + 'T00:00:00');
+        d.setDate(d.getDate() + (oneDay ? 0 : (r - 1) * gap)); return isoOf(d); };
+      const lay = list => packCourts(list, courts).forEach((took, si) =>
+        took.forEach((q, ci) => fx.push({ id: uid(), stage: 'regular', round: q.round, grp: q.grp,
+          homeId: q.homeId, awayId: q.awayId, date: dayOf(q.round),
+          time: fmtMins(firstMin + si * slot), court: courts > 1 ? String(ci + 1) : '',
+          status: 'scheduled', homeGoals: 0, awayGoals: 0, events: [] })));
+      if (oneDay) lay(queue);
+      else for (let r = 1; r <= grd; r++) lay(queue.filter(q => q.round === r));
       DB.season.tr = { g, grd, q: 2 };
       spec = trBuild(DB.season.tr);
     }
@@ -8364,40 +8399,32 @@ function generateFixtures(keepHistory) {
        group A's second match come round.
 
        The order is the wave: every group's first match, then every group's
-       second. The clock is separate from it — the matches are laid into
-       the slots back to back, as many per slot as there are courts, so no
-       court ever stands idle while matches are still waiting.
+       second, matchday after matchday. packCourts lays that order onto the
+       clock — ten courts, ten matches a slot, and the next ten thirty
+       minutes later until all seventy-two are placed.
 
-       Rounding each wave up to a fresh slot was the bug: with twelve groups
-       on ten courts it put ten matches at eight, two at half past, ten at
-       nine, two at half past nine, leaving eight courts empty every second
-       slot. Nothing needed it — inside one matchday every one of the
-       twenty-four matches is between a different four teams, so no team can
-       be double-booked however they are packed.
+       Played over several weeks each matchday has its own date, so it
+       starts again at the first kick-off. Played in one day the clock just
+       keeps running: matchday two starts in the slot after matchday one
+       ends, and if matchday one left four courts spare in its last slot,
+       matchday two fills them.
 
        Going down a group instead — both of A's matches, then both of B's —
        would put a group's own two games on at the same moment on different
        courts, which is the one thing a group stage must not do until the
        last matchday. */
-    let slotBase = 0;
-    pat.forEach((day, r) => {
-      const d = new Date(startDate + 'T00:00:00');
-      d.setDate(d.getDate() + (oneDay ? 0 : r * gap));
-      const dstr = isoOf(d);
-      const queue = [];
-      day.forEach(pr => WC_GRPS.forEach(g => queue.push({ g: g, pr: pr })));
-      queue.forEach((q, i) => {
-        const s = slotBase + Math.floor(i / courts);
-        fx.push({ id: uid(), stage: 'regular', round: r + 1, grp: q.g,
-          homeId: grp[q.g][q.pr[0]], awayId: grp[q.g][q.pr[1]], date: dstr,
-          time: fmtMins(firstMin + s * slot), court: courts > 1 ? String((i % courts) + 1) : '',
-          status: 'scheduled', homeGoals: 0, awayGoals: 0, events: [] });
-      });
-      /* Played in one day, the next matchday starts on a slot of its own:
-         the teams are the same teams, so it cannot share the last slot of
-         the one before even when there are courts going spare in it. */
-      if (oneDay) slotBase += Math.ceil(queue.length / courts);
-    });
+    const queue = [];
+    pat.forEach((day, r) => day.forEach(pr => WC_GRPS.forEach(g => queue.push({
+      round: r + 1, grp: g, homeId: grp[g][pr[0]], awayId: grp[g][pr[1]] }))));
+    const dayOf = r => { const d = new Date(startDate + 'T00:00:00');
+      d.setDate(d.getDate() + (oneDay ? 0 : (r - 1) * gap)); return isoOf(d); };
+    const lay = (list, base) => packCourts(list, courts).forEach((took, si) =>
+      took.forEach((q, ci) => fx.push({ id: uid(), stage: 'regular', round: q.round, grp: q.grp,
+        homeId: q.homeId, awayId: q.awayId, date: dayOf(q.round),
+        time: fmtMins(firstMin + (base + si) * slot), court: courts > 1 ? String(ci + 1) : '',
+        status: 'scheduled', homeGoals: 0, awayGoals: 0, events: [] })));
+    if (oneDay) lay(queue, 0);
+    else pat.forEach((day, r) => lay(queue.filter(q => q.round === r + 1), 0));
     if (keepHistory !== false) archiveSeason();
     stampDraw(bag);
     DB.fixtures = fx;
@@ -8570,6 +8597,19 @@ function printDraw() {
     const fx = fin.filter(f => roundKey(f) === k);
     if (fx.length) groups.push({ title: t, ko: k, fx });
   });
+  /* All on one day means one session, and a sheet cut up by matchday cuts
+     the clock up with it: the ten matches kicking off at nine are split
+     across two pages because four of them are matchday one and six are
+     matchday two. On a single date the group stage prints as one run, read
+     down the clock, with the matchday on each row instead. */
+  const gSecs = groups.filter(g => g.round && g.fx.some(f => f.grp));
+  const gDates = new Set(gSecs.reduce((a, g) => a.concat(g.fx.map(f => f.date || '')), []));
+  if (gSecs.length > 1 && gDates.size === 1) {
+    const at = groups.indexOf(gSecs[0]);
+    const all = gSecs.reduce((a, g) => a.concat(g.fx), []);
+    gSecs.forEach(g => groups.splice(groups.indexOf(g), 1));
+    groups.splice(at, 0, { title: 'Group stage', fx: all, md: true });
+  }
   if (!groups.length) return toast('Nothing to print yet — generate the draw first.', 'bad');
   const badge = tid => '<img src="' + esc(logoOf(tid) || SHIELD_SVG) + '" alt="">';
   const stars = tid => { const t = team(tid), s = t && starBy[t.name]; return s ? ' <span class="st">' + CROWN_SVG + s.n + '</span>' : ''; };
@@ -8579,13 +8619,14 @@ function printDraw() {
   // which group a match belongs to is part of the fixture, so it is on the sheet
   const row = (f, ko, grp) => '<tr><td class="t">' + esc(f.time || '—') + '</td>' +
     (courts ? '<td class="c">' + (f.court ? 'Court ' + esc(f.court) : '') + '</td>' : '') +
-    (grp ? '<td class="g">' + (f.grp ? 'Group ' + esc(f.grp) : '') + '</td>' : '') +
+    (grp ? '<td class="g">' + (f.grp ? 'Group ' + esc(f.grp) +
+      (grp === 2 && f.round ? ' · MD' + f.round : '') : '') + '</td>' : '') +
     (ko ? '<td class="k">' + esc(stageLabel(f.stage)) + '</td>' : '') +
     '<td class="h">' + side(f.homeId) + '</td>' +
     '<td class="s">' + (f.status === 'final' ? f.homeGoals + ' – ' + f.awayGoals : 'v') + '</td>' +
     '<td class="a">' + side(f.awayId) + '</td></tr>';
   const body = groups.map((g, i) => {
-    const gHas = g.fx.some(f => f.grp);
+    const gHas = g.fx.some(f => f.grp) ? (g.md ? 2 : 1) : 0;
     const cols = 4 + (courts ? 1 : 0) + (gHas ? 1 : 0);
     const dates = [...new Set(g.fx.map(f => f.date).filter(Boolean))].sort().map(fmtDate).join(', ');
     /* A World Cup matchday is twelve groups playing at once. Printed as one
@@ -17004,7 +17045,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '16 Nov 08:16 · cabe837'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '16 Nov 08:38 · 61b0199'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
