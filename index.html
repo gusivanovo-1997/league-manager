@@ -2410,10 +2410,11 @@ tspan.gstar{fill:var(--gold)}
             first throw-in.</div></div>
         <div class="field" id="fxDrawField"><label>The draw</label>
           <select id="fxDraw">
-            <option value="seed">As the teams are listed — or the groups they already have</option>
-            <option value="random">Random — draw the teams out of the hat</option></select>
-          <div class="small muted">A random draw shuffles every team into a group, the way the real draw
-            does. The listed order keeps a grouping a file already carries.</div></div>
+            <option value="random">Out of the hat — random, and no two draws alike</option>
+            <option value="seed">As the teams are listed — or the groups they already have</option></select>
+          <div class="small muted">The hat decides everything: the group a side lands in, where it sits in
+            that group, who it meets first and which half of the bracket it is in. Pick the listed order
+            only for a draw already made somewhere else, or a file that carries its own groups.</div></div>
         <div class="field"><label>Format</label><select id="fxFormat">
           <option value="finals">League + finals (gold 1–4, silver 5–8)</option>
           <option value="league">League only — pontos corridos, no finals</option>
@@ -3499,8 +3500,17 @@ function sigHTML(p, id) { return '<canvas class="sig" id="' + id + '" style="wid
 
 /* ══════════════ STANDINGS ══════════════ */
 function blankRow(t) {
-  return { id: t.id, name: t.name, colour: t.colour, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0, GD: 0, Pts: 0 };
+  return { id: t.id, name: t.name, colour: t.colour, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0, GD: 0, Pts: 0,
+    dp: t.drawPos == null ? 1e9 : t.drawPos };
 }
+/* Two sides level on everything have to be printed one above the other, and
+   whichever goes first is arbitrary — but the alphabet is arbitrary AND
+   looks deliberate, which on the morning of a draw makes every group read
+   like a register. The draw decides it instead, and a team drawn before
+   another goes above it. Teams added since the draw (no position) keep the
+   order they were added in. */
+const byDraw = (a, b) => (a.dp - b.dp) ||
+  (DB.teams.findIndex(t => t.id === a.id) - DB.teams.findIndex(t => t.id === b.id));
 function standings(only) {
   const rows = {};
   DB.teams.forEach(t => rows[t.id] = blankRow(t));
@@ -3532,7 +3542,7 @@ function standings(only) {
     return gb - ga;
   };
   list.sort((a, b) => (b.Pts - a.Pts) || (b.GD - a.GD) || (b.GF - a.GF) || h2h(a, b) ||
-    (a.GA - b.GA) || a.name.localeCompare(b.name));
+    (a.GA - b.GA) || byDraw(a, b));
   list.forEach((r, i) => r.pos = i + 1);
   return list;
 }
@@ -6224,7 +6234,7 @@ function wcTables() {
      them. Where the top two go through and nobody else does, this is empty
      and every surface that would have shown it shows nothing. */
   const thirds = !WC_THIRDS ? [] : WC_GRPS.map(g => by[g][2]).filter(Boolean)
-    .sort((a, b) => b.Pts - a.Pts || b.GD - a.GD || b.GF - a.GF || String(a.name).localeCompare(b.name));
+    .sort((a, b) => b.Pts - a.Pts || b.GD - a.GD || b.GF - a.GF || byDraw(a, b));
   thirds.forEach((r, i) => r.tpos = i + 1);
   return { by, thirds, mv };
 }
@@ -8138,9 +8148,46 @@ function timeSeed(fixtures, startMins, slot) {
 }
 
 /* ══════════════ FIXTURES ══════════════ */
+/* ══════════════ THE DRAW ══════════════
+   Random is what a draw is, so random is the default and every format uses
+   it: the league, the cup, the group stage, the bracket and the World Cup.
+   "As the teams are listed" is still there for the one case that needs it
+   — a real draw made somewhere else and typed in, or a file that already
+   carries its groups.
+
+   The bag is shuffled once per draw and everything is built from it, so
+   there is no second ordering underneath for a pattern to survive in: no
+   pair of sides keeps landing in the same group, and nobody opens against
+   the same team twice running unless the hat says so. */
+function drawIsRandom() { return !$('fxDraw') || $('fxDraw').value !== 'seed'; }
+function shuffled(a) {                       // Fisher–Yates: every order equally likely
+  const b = a.slice();
+  for (let i = b.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const s = b[i]; b[i] = b[j]; b[j] = s;
+  }
+  return b;
+}
+function drawBag() { return drawIsRandom() ? shuffled(DB.teams) : DB.teams.slice(); }
+/* The order they came out, kept on the teams themselves. A table of sides
+   who have all played nothing has to list them in SOME order, and that
+   order used to be the alphabet — which made a freshly drawn group look
+   like a class register. It is the draw now. Stamped only when a draw is
+   actually being committed, never on a run that bails out on the team
+   count. */
+function stampDraw(bag) { bag.forEach((t, i) => t.drawPos = i); }
 function generateFixtures(keepHistory) {
   const teams = DB.teams.map(t => t.id);
   if (teams.length < 2) return toast('Add at least two teams first.', 'bad');
+  /* The hat. Everything below is built from the order the teams come out of
+     it — which group a side lands in, where it sits inside that group, who
+     it meets in round one, which half of the bracket it is in — so nothing
+     of the list it came from survives into the competition. A list typed in
+     alphabetically used to come out alphabetically: Group A was the first
+     four names in the book, and round one was the first name against the
+     last. Drawn once, here, and the same bag is used for all of it, so no
+     two sides keep each other's company from one draw to the next. */
+  const bag = drawBag(), bagIds = bag.map(t => t.id);
   const rounds = Math.max(1, +$('fxRounds').value || 2);
   const startDate = snapToWeekday($('fxStart').value || todayISO(), +$('fxDay').value);
   const startTime = $('fxTime').value || '18:00';
@@ -8154,7 +8201,7 @@ function generateFixtures(keepHistory) {
      round two is a clean four. */
   if ($('fxFormat').value === 'cup') {
     let p = 1; while (p < teams.length) p *= 2;
-    const byes = teams.slice(0, p - teams.length), playing = teams.slice(p - teams.length);
+    const byes = bagIds.slice(0, p - teams.length), playing = bagIds.slice(p - teams.length);
     const pairs = [];
     for (let i = 0; i < playing.length / 2; i++) pairs.push([playing[i], playing[playing.length - 1 - i]]);
     const firstMin = toMins(startTime), onCourt = {};
@@ -8166,6 +8213,7 @@ function generateFixtures(keepHistory) {
         homeGoals: 0, awayGoals: 0, events: [] };
     });
     if (keepHistory !== false) archiveSeason();
+    stampDraw(bag);
     DB.fixtures = fx;
     DB.season.draw = uid(); DB.season.drawnAs = DB.season.name; DB.season.drawnFormat = DB.season.format;
     DB.season.format = 'cup';
@@ -8192,10 +8240,7 @@ function generateFixtures(keepHistory) {
      against worst, which is the one thing a seeded draw is for. */
   if ($('fxFormat').value === 'groups' || $('fxFormat').value === 'ko') {
     const ko = $('fxFormat').value === 'ko', n = teams.length;
-    const rand = $('fxDraw') && $('fxDraw').value === 'random';
-    const bag = DB.teams.slice();
-    if (rand) for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));
-      const s = bag[i]; bag[i] = bag[j]; bag[j] = s; }
+    const rand = drawIsRandom();
     const firstMin = toMins(startTime), fx = [];
     let spec;
     if (ko) {
@@ -8203,7 +8248,7 @@ function generateFixtures(keepHistory) {
       if (p !== n || n < 4 || n > 32) return toast('A knockout bracket needs 4, 8, 16 or 32 teams ' +
         '— there ' + (n === 1 ? 'is 1' : 'are ' + n) + '. Nothing was drawn.', 'bad');
       spec = trBuild({ g: 0, grd: 0, n });
-      const ord = trSeedOrder(n), ids = bag.map(t => t.id), at = {};
+      const ord = trSeedOrder(n), ids = bagIds, at = {};
       DB.teams.forEach(t => { delete t.grp; });
       spec.FIRST.forEach((t, i) => {
         const s = Math.floor(i / courts);
@@ -8229,7 +8274,7 @@ function generateFixtures(keepHistory) {
         t.grp = GR[row % 2 ? g - 1 - k : k]; });
       const grp = {}, sched = {};
       let grd = 0, maxW = 1;
-      GR.forEach(x => { grp[x] = DB.teams.filter(t => t.grp === x).map(t => t.id);
+      GR.forEach(x => { grp[x] = bag.filter(t => t.grp === x).map(t => t.id);
         sched[x] = trRR(grp[x].length);
         grd = Math.max(grd, sched[x].length);
         sched[x].forEach(p => { maxW = Math.max(maxW, p.length); }); });
@@ -8256,6 +8301,7 @@ function generateFixtures(keepHistory) {
       spec = trBuild(DB.season.tr);
     }
     if (keepHistory !== false) archiveSeason();
+    stampDraw(bag);
     DB.fixtures = fx;
     DB.season.draw = uid(); DB.season.drawnAs = DB.season.name; DB.season.drawnFormat = DB.season.format;
     DB.season.format = ko ? 'ko' : 'groups';
@@ -8283,17 +8329,16 @@ function generateFixtures(keepHistory) {
        one — twelve groups of exactly four — and as long as a random draw
        has not been asked for, which is a deliberate "do it again, properly
        out of the hat". Otherwise the teams are dealt out down and back. */
-    const rand = $('fxDraw') && $('fxDraw').value === 'random';
+    const rand = drawIsRandom();
     const already = !rand && WC_GRPS.every(g => DB.teams.filter(t => t.grp === g).length === 4);
-    if (rand) {
-      const bag = DB.teams.slice();
-      for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));
-        const s = bag[i]; bag[i] = bag[j]; bag[j] = s; }
-      bag.forEach((t, i) => t.grp = WC_GRPS[i % 12]);
-    } else if (!already) DB.teams.forEach((t, i) => { const row = Math.floor(i / 12), k = i % 12;
+    if (rand) bag.forEach((t, i) => t.grp = WC_GRPS[i % 12]);
+    else if (!already) bag.forEach((t, i) => { const row = Math.floor(i / 12), k = i % 12;
       t.grp = WC_GRPS[row % 2 ? 11 - k : k]; });
+    /* Read back off the bag, not off the team list: a group's four sides sit
+       in it in the order they were drawn into it, so the opening match of
+       Group A is not its first two names in the book. */
     const grp = {};
-    WC_GRPS.forEach(g => grp[g] = DB.teams.filter(t => t.grp === g).map(t => t.id));
+    WC_GRPS.forEach(g => grp[g] = bag.filter(t => t.grp === g).map(t => t.id));
     /* The order the 2026 tournament itself played: first and second open
        against each other while third plays fourth, then fourth meets second
        and first meets third, and the last night is fourth against first and
@@ -8338,6 +8383,7 @@ function generateFixtures(keepHistory) {
       }));
     });
     if (keepHistory !== false) archiveSeason();
+    stampDraw(bag);
     DB.fixtures = fx;
     DB.season.draw = uid(); DB.season.drawnAs = DB.season.name; DB.season.drawnFormat = DB.season.format;
     DB.season.format = 'world';
@@ -8350,7 +8396,9 @@ function generateFixtures(keepHistory) {
       ' matchdays. The last 32 is drawn the moment the groups are done.', 'ok');
   }
   // who plays whom, home and away alternating; then each night's kick-off times dealt out fairly
-  const season = seasonPairs(teams, rounds);
+  // out of the hat as well: round one of an alphabetical list used to be the
+  // first name against the last, every single time it was drawn
+  const season = seasonPairs(bagIds, rounds);
   const pick = dealTimes(season, courts);
   const first = toMins(startTime);
   const fixtures = [];
@@ -8370,6 +8418,7 @@ function generateFixtures(keepHistory) {
   const roundNo = season.length;
   if (keepHistory !== false) archiveSeason();   // each player's season is kept before the results go
   else { const mine = recordsFor(DB.season.draw, new Set(DB.fixtures.map(f => f.id))); DB.archive = (DB.archive || []).filter(a => mine.indexOf(a) < 0); }
+  stampDraw(bag);
   DB.fixtures = fixtures;                // as the card promised: the old draw AND its finals go
   DB.season.draw = uid(); DB.season.drawnAs = DB.season.name; DB.season.drawnFormat = DB.season.format;
   DB.season.format = $('fxFormat').value === 'league' ? 'league' : 'finals';   // a cup and a World Cup return above
@@ -8602,7 +8651,9 @@ $('fxRounds').addEventListener('input', () => {
 $('fxFormat').addEventListener('change', () => { paintDrawOpts(); if (currentView === 'fixtures') renderFixtures(); });
 $('fxDraw').addEventListener('change', () => { if (currentView === 'fixtures') renderFixtures(); });
 // the hat is offered to every format that has something to draw out of it
-function paintDrawOpts() { $('fxDrawField').hidden = ['world', 'groups', 'ko'].indexOf($('fxFormat').value) < 0; }
+/* Every format is drawn, so every format gets the choice: a league's first
+   round and a cup's first ties come out of the same hat as a group stage. */
+function paintDrawOpts() { $('fxDrawField').hidden = false; }
 /* Long lists read as blocks when neighbouring sections take turns in colour:
    plain, then a warm ember tint, then plain. A knockout night is gold. */
 // a section's colour: rounds take turns, the semis are silver and the finals gold
@@ -16910,7 +16961,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '15 Nov 11:20 · 1558849'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '16 Nov 06:39 · 840ea34'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
