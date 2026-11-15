@@ -8651,10 +8651,14 @@ function printDraw() {
     const banded = courts && slots.length > 1 && slots.some(s => s.fx.length > 1);
     const inner = banded
       ? slots.map(s => { const f0 = s.fx[0];
+          const cn = s.fx.map(f => +f.court).filter(n => n > 0).sort((a, b) => a - b);
+          const cr = cn.length > 1 ? 'courts ' + cn[0] + '–' + cn[cn.length - 1]
+            : cn.length ? 'court ' + cn[0] : '';
           return '<tbody class="gp"><tr class="gl"><td colspan="' + cols + '">' +
             (multiDate && f0.date ? esc(fmtDate(f0.date)) + ' · ' : '') +
-            esc(f0.time || 'time to be set') + ' · ' +
-            plural(s.fx.length, 'match', 'matches') + '</td></tr>' +
+            esc(f0.time || 'time to be set') +
+            '<span>' + plural(s.fx.length, 'match', 'matches') +
+            (cr ? ' · ' + cr : '') + '</span></td></tr>' +
             s.fx.map(f => row(f, g.ko, gHas)).join('') + '</tbody>'; }).join('')
       : wcDay
       ? WC_GRPS.map(L => { const fx = g.fx.filter(f => f.grp === L).sort(byWhen);
@@ -8682,22 +8686,29 @@ function printDraw() {
     '.rd{border:1px solid #33343b;border-radius:12px;padding:6px 14px 10px;margin-bottom:12px;background:#232429;break-inside:auto}' +
     '.rd.keep{break-inside:avoid}tbody.gp{break-inside:avoid}tr{break-inside:avoid}' +
     'h2{break-after:avoid}footer{break-before:avoid}' +
-    '.gl td{padding:7px 4px 2px;border-top:1px solid rgba(255,255,255,.13);color:#9c9ca6;' +
-      'font:700 10px/1 Consolas,monospace;letter-spacing:2.2px;text-transform:uppercase}' +
+    /* Every kick-off is its own block with a clear band of air above it,
+       so ten matches starting at eight read as ten matches starting at
+       eight and not as the middle of a list. The heading carries the time
+       on the left and what is on at it down the right. */
+    '.gl td{padding:15px 8px 5px;border-top:2px solid rgba(255,138,61,.35);color:#ffb27a;' +
+      'font:700 11px/1.1 Consolas,monospace;letter-spacing:2.2px;text-transform:uppercase}' +
+    '.gl td span{float:right;color:#9c9ca6;font-weight:400;letter-spacing:1px;text-transform:none}' +
+    'tbody.gp:first-child .gl td{padding-top:4px;border-top:0}' +
+    'tbody.gp tr:first-child+tr td{border-top:0}' +
     'tbody:first-child tr:first-child td{border-top:0}' +
     '.rd.alt{background:linear-gradient(180deg,rgba(255,138,61,.16),rgba(255,138,61,.05)),#232429;border-color:rgba(255,138,61,.42)}' +
     '.rd.silver{background:linear-gradient(180deg,rgba(176,196,222,.18),rgba(176,196,222,.05)),#232429;border-color:rgba(176,196,222,.5)}' +
     '.rd.gold{background:linear-gradient(180deg,rgba(255,197,61,.18),rgba(255,197,61,.05)),#232429;border-color:rgba(255,197,61,.55)}' +
     'h2{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 4px;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;color:#ffb27a}' +
     '.silver h2{color:#c9d6e8}.gold h2{color:#ffc53d}h2 span{font-size:11.5px;letter-spacing:0;text-transform:none;color:#9c9ca6;font-weight:400}' +
-    'table{width:100%;border-collapse:collapse}td{padding:5px 4px;border-top:1px solid rgba(255,255,255,.06);vertical-align:middle}' +
-    '.t{width:52px;font-weight:700;color:#ff8a3d;font-variant-numeric:tabular-nums}.c{width:60px;color:#9c9ca6;font-size:11.5px}' +
-    '.g{width:66px;color:#9c9ca6;font-size:11.5px;white-space:nowrap}' +
+    'table{width:100%;border-collapse:collapse}td{padding:4px;border-top:1px solid rgba(255,255,255,.06);vertical-align:middle}' +
+    '.t{width:52px;font-weight:700;color:#ff8a3d;font-variant-numeric:tabular-nums}.c{width:80px;white-space:nowrap;color:#9c9ca6;font-size:11.5px}' +
+    '.g{width:104px;color:#9c9ca6;font-size:11.5px;white-space:nowrap}' +
     '.k{width:118px;color:#ffc53d;font-size:11px;font-weight:700}.silver .k{color:#c9d6e8}' +
     '.h{text-align:right}.a{text-align:left}.h,.a{width:40%}' +
-    '.h img,.a img{width:26px;height:26px;vertical-align:middle;object-fit:contain}.h img{float:right;margin-left:8px}.a img{margin-right:8px}' +
-    '.nm{font-weight:600;line-height:26px}.tbd{color:#77777f;font-style:italic;font-weight:400}' +
-    '.s{width:56px;text-align:center;font-weight:800;color:#9c9ca6}' +
+    '.h img,.a img{width:20px;height:20px;vertical-align:middle;object-fit:contain}.h img{float:right;margin-left:8px}.a img{margin-right:8px}' +
+    '.nm{font-weight:600;line-height:20px}.tbd{color:#77777f;font-style:italic;font-weight:400}' +
+    '.s{width:64px;white-space:nowrap;text-align:center;font-weight:800;color:#9c9ca6}' +
     '.st{color:#ffc53d;font-size:11px;font-weight:800;margin-left:3px;white-space:nowrap}' +
     '.st .gcrown{display:inline-block;width:12px;height:12px;vertical-align:-2px;margin-right:1px}' +
     '.st .gcrown svg{width:100%;height:100%;display:block}' +
@@ -17045,7 +17056,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '16 Nov 08:38 · 61b0199'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '16 Nov 08:47 · 2691cdf'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
