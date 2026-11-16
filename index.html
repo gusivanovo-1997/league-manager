@@ -8258,6 +8258,7 @@ function generateFixtures(keepHistory) {
     stampDraw(bag);
     DB.fixtures = fx;
     DB.season.draw = uid(); DB.season.drawnAs = DB.season.name; DB.season.drawnFormat = DB.season.format;
+    DB.season.gap = gap;
     DB.season.format = 'cup';
     if (byes.length) DB.season.cupByes = byes; else delete DB.season.cupByes;
     delete DB.season.noAutoFinals;
@@ -8345,6 +8346,7 @@ function generateFixtures(keepHistory) {
     stampDraw(bag);
     DB.fixtures = fx;
     DB.season.draw = uid(); DB.season.drawnAs = DB.season.name; DB.season.drawnFormat = DB.season.format;
+    DB.season.gap = gap;
     DB.season.format = ko ? 'ko' : 'groups';
     DB.season.rounds = 1;
     delete DB.season.cupByes; delete DB.season.noAutoFinals;
@@ -8365,6 +8367,14 @@ function generateFixtures(keepHistory) {
   if ($('fxFormat').value === 'world') {
     if (teams.length !== WC_TEAMS) return toast('The World Cup format needs exactly ' + WC_TEAMS +
       ' teams — there ' + (teams.length === 1 ? 'is 1' : 'are ' + teams.length) + '. Nothing was drawn.', 'bad');
+    /* The shape of the competition — how many groups there are, what the
+       rounds after them are called — is read off DB.season as the draw is
+       being made, and until this line it is still the shape of whatever was
+       drawn before. A World Cup drawn over a league that had been a
+       knockout bracket therefore asked a bracket how many groups it had,
+       was told none, and drew nothing at all. The count above is the only
+       check that has to come first; after it the table is a World Cup. */
+    DB.season.tr = null; DB.season.format = 'world';
     /* A grouping already set is a grouping somebody meant: a real draw typed
        in, or a file that carries one. It is kept as long as it is a whole
        one — twelve groups of exactly four — and as long as a random draw
@@ -8429,6 +8439,7 @@ function generateFixtures(keepHistory) {
     stampDraw(bag);
     DB.fixtures = fx;
     DB.season.draw = uid(); DB.season.drawnAs = DB.season.name; DB.season.drawnFormat = DB.season.format;
+    DB.season.gap = gap;
     DB.season.format = 'world';
     DB.season.rounds = 1;
     delete DB.season.cupByes; delete DB.season.noAutoFinals;
@@ -8464,6 +8475,7 @@ function generateFixtures(keepHistory) {
   stampDraw(bag);
   DB.fixtures = fixtures;                // as the card promised: the old draw AND its finals go
   DB.season.draw = uid(); DB.season.drawnAs = DB.season.name; DB.season.drawnFormat = DB.season.format;
+  DB.season.gap = gap;
   DB.season.format = $('fxFormat').value === 'league' ? 'league' : 'finals';   // a cup and a World Cup return above
   DB.teams.forEach(t => { delete t.joinedRound; delete t.missedMatches; delete t.equivPoints; });
   DB.season.rounds = rounds;            // a team joining later needs to know this
@@ -11246,10 +11258,25 @@ function worldAdvance() {
      afternoon rather than turning up a week later. The gap between
      kick-offs is read off the draw too, so the rounds keep the rhythm the
      groups were given. */
-  const gd = [...new Set(DB.fixtures.filter(f => (f.round || 0) <= WC_GRD).map(f => f.date).filter(Boolean))];
-  const sameDay = gd.length === 1;
+  /* The rounds the draw itself put on the table: the group stage, or — in
+     a straight bracket, which has no group stage — the opening round. They
+     are what the clock, the courts and the dates are read off. Reading only
+     "rounds up to the group stage" meant a bracket-only competition had
+     nothing to read at all, so it fell back to one court and six o'clock
+     whatever it had been given. */
+  const DRAWN = Math.max(WC_GRD, 1);
+  const gd = [...new Set(DB.fixtures.filter(f => (f.round || 0) <= DRAWN).map(f => f.date).filter(Boolean))];
+  /* Whether the whole thing is played in one day is something the draw was
+     told, so it is read back from the draw. Guessing it from the dates
+     worked for a group stage, which spans several of them when it is
+     weekly — but a straight bracket's opening round is on one date
+     however it is played, so every bracket looked like a one-day
+     competition and ran the quarter-finals an hour after the first round,
+     gap of a week or not. The guess stays for draws made before the gap
+     was written down. */
+  const sameDay = DB.season.gap != null ? +DB.season.gap === 0 : gd.length === 1;
   const slotOf = () => {
-    const ts = [...new Set(DB.fixtures.filter(f => (f.round || 0) <= WC_GRD).map(f => toMins(f.time || '0:00')))]
+    const ts = [...new Set(DB.fixtures.filter(f => (f.round || 0) <= DRAWN).map(f => toMins(f.time || '0:00')))]
       .sort((a, b) => a - b);
     for (let i = 1; i < ts.length; i++) if (ts[i] - ts[i - 1] > 0) return ts[i] - ts[i - 1];
     return 45;
@@ -11262,7 +11289,7 @@ function worldAdvance() {
   const courtsOf = () => {
     const at = {};
     let most = 1;
-    DB.fixtures.filter(f => (f.round || 0) <= WC_GRD).forEach(f => {
+    DB.fixtures.filter(f => (f.round || 0) <= DRAWN).forEach(f => {
       const k = (f.date || '') + '|' + (f.time || '');
       at[k] = (at[k] || 0) + 1; if (at[k] > most) most = at[k];
     });
@@ -11270,13 +11297,31 @@ function worldAdvance() {
   };
   const COURTS = courtsOf();
   const courtName = i => COURTS > 1 ? String((i % COURTS) + 1) : '';
+  /* The first kick-off the competition was given, not the last slot of its
+     longest matchday. A round on a night of its own starts when the night
+     starts: a group stage of sixteen matches on two courts runs from six
+     until a quarter past eleven, and the round of 32 a week later was
+     starting at a quarter past eleven and going round the clock from
+     there — midnight, half past, half past one. */
+  const FIRST = (() => {
+    const ts = DB.fixtures.filter(f => (f.round || 0) <= DRAWN)
+      .map(f => toMins(f.time || '')).filter(n => n > 0);
+    return ts.length ? Math.min.apply(null, ts) : toMins('18:00');
+  })();
+  /* A slot as a date and a time together, counted in minutes from the day
+     it starts, so a round that does run past midnight moves on to the next
+     day instead of printing half past twelve under yesterday's date. */
+  const slotAt = (date, min) => ({
+    date: date && min >= 1440 ? addDays(date, Math.floor(min / 1440)) : date,
+    time: fmtMins(((min % 1440) + 1440) % 1440) });
   const night = (from, step) => {
     if (!sameDay) return { date: from && from.date ? addDays(from.date, step) : '',
-      time: (from && from.time) || '18:00', court: (from && from.court) || '' };
+      time: fmtMins(FIRST), court: (from && from.court) || '' };
     // the next round starts one slot after the last match of the one before
     const prev = DB.fixtures.filter(f => f.date === (from && from.date));
     const lastT = Math.max.apply(null, prev.map(f => toMins(f.time || '0:00')).concat([0]));
-    return { date: (from && from.date) || '', time: fmtMins(lastT + STEP), court: (from && from.court) || '' };
+    const s = slotAt((from && from.date) || '', lastT + STEP);
+    return { date: s.date, time: s.time, court: (from && from.court) || '' };
   };
   const put = (round, m, hid, aid, when, wc) => DB.fixtures.push({ id: uid(), stage: 'regular',
     round, m, wc: wc || WC_RNAME[round], homeId: hid, awayId: aid, date: when.date, time: when.time,
@@ -11301,8 +11346,10 @@ function worldAdvance() {
     const made = [];
     WC_R32.forEach(t => { const hid = pick(t.h), aid = pick(t.a); if (hid && aid) made.push([t.m, hid, aid]); });
     if (made.length !== WC_R32.length) return false;
-    made.forEach(([m, hid, aid], i) => put(WC_GRD + 1, m, hid, aid,
-      { date: when.date, time: fmtMins(toMins(when.time) + Math.floor(i / COURTS) * STEP), court: courtName(i) }));
+    made.forEach(([m, hid, aid], i) => {
+      const s = slotAt(when.date, toMins(when.time) + Math.floor(i / COURTS) * STEP);
+      put(WC_GRD + 1, m, hid, aid, { date: s.date, time: s.time, court: courtName(i) });
+    });
     return true;
   }
   for (let r = WC_GRD + 2; r <= WC_LAST; r++) {
@@ -11313,8 +11360,10 @@ function worldAdvance() {
     const w = m => byM[m] ? winnerOf(byM[m]) : null;
     if (need.some(([, a, b]) => !w(a) || !w(b))) return false;
     const when = night(prev[0], seasonStep());
-    need.forEach(([m, a, b], i) => put(r, m, w(a), w(b),
-      { date: when.date, time: fmtMins(toMins(when.time) + Math.floor(i / COURTS) * STEP), court: courtName(i) }));
+    need.forEach(([m, a, b], i) => {
+      const s = slotAt(when.date, toMins(when.time) + Math.floor(i / COURTS) * STEP);
+      put(r, m, w(a), w(b), { date: s.date, time: s.time, court: courtName(i) });
+    });
     /* The two beaten semi-finalists play for third, the day before the final.
        Always: a World Cup has that match whatever the league's own setting
        for a 3rd-place play-off says, because the tournament this format
@@ -17056,7 +17105,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '16 Nov 08:47 · 2691cdf'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '16 Nov 20:18 · ec6d0ec'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
