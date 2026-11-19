@@ -3044,13 +3044,39 @@ function seedStaff(r, had) {
      old manager PIN turned into one. */
   if (!had) { r.staff = []; return r; }
   const a = r.access || {};
-  r.staff = [{ id: uid(), name: 'Owner', pin: String(a.managerPin || '4564'), owner: true, roles: {} }];
+  r.staff = [{ id: uid(), name: 'Owner', pin: String(a.managerPin || '4564'), owner: true, roles: {}, pinAt: 0 }];
   if (a.refPin && r.leagues[0]) r.staff.push({ id: uid(), name: 'Referee', pin: String(a.refPin), owner: false, roles: { [r.leagues[0].id]: 'ref' } });
   return r;
 }
 /* The owner is tried first: two machines can be given the same PIN for two
    different people without ever meeting, and the owner must not be the one
    who finds themselves locked out of their own tool by the coincidence. */
+/* A PIN is set by a person sitting at a machine, and the moment they set
+   it is part of it. Without that there is no way to tell a PIN somebody
+   chose last week from one a device has been carrying since it was first
+   opened, and a stale copy coming down the wire wins by arriving last.
+   The owner's PIN going back to the one printed in this file is exactly
+   that: another machine still holding the default, pushing it over a real
+   one. Stamped, a PIN can only ever move forward. */
+function nameStamp(s, name) {
+  if (!s) return s;
+  if (name != null) s.name = String(name);
+  s.nameAt = Date.now();
+  return s;
+}
+// "Owner" and "New person" are what the tool calls somebody it has not been
+// told the name of, so a real name may take their place whatever the stamps say
+const anonName = n => !n || n === 'Owner' || n === 'New person';
+function pinStamp(s, pin) {
+  if (!s) return s;
+  if (pin != null) s.pin = String(pin);
+  s.pinAt = Date.now();
+  /* The old single-PIN field is what a copy saved before people existed is
+     rebuilt from. Kept in step with the owner, so that rebuild can never
+     bring back a PIN the owner has already replaced. */
+  if (s.owner) { ROOT.access = ROOT.access || {}; ROOT.access.managerPin = String(s.pin); }
+  return s;
+}
 const staffByPin = p => (ROOT.staff || []).find(s => s.owner && String(s.pin) === String(p))
   || (ROOT.staff || []).find(s => String(s.pin) === String(p));
 const rolesOf = s => (s && s.roles) || {};
@@ -15443,9 +15469,11 @@ const metaOf = k => SYNC_ROOT[k] ? staffDoc() : DB[k];
 function staffDoc() {
   const lg = ROOT.active;
   const out = (ROOT.staff || []).filter(s => s && !s.owner && rolesOf(s)[lg])
-    .map(s => ({ id: s.id, name: s.name || '', pin: String(s.pin || ''), role: rolesOf(s)[lg] }));
+    .map(s => ({ id: s.id, name: s.name || '', nameAt: +s.nameAt || 0,
+      pin: String(s.pin || ''), pinAt: +s.pinAt || 0, role: rolesOf(s)[lg] }));
   const own = (ROOT.staff || []).find(s => s && s.owner);
-  if (own) out.push({ id: own.id, name: own.name || 'Owner', pin: String(own.pin || ''), role: 'owner' });
+  if (own) out.push({ id: own.id, name: own.name || 'Owner', nameAt: +own.nameAt || 0,
+    pin: String(own.pin || ''), pinAt: +own.pinAt || 0, role: 'owner' });
   return out.sort((a, b) => String(a.id).localeCompare(String(b.id)));   // one order, so the hash is steady
 }
 function staffPut(rec) {
@@ -15456,18 +15484,37 @@ function staffPut(rec) {
      so an owner PIN set once is the owner's PIN everywhere. Never while they
      are the one signed in here — that would change the PIN under them; it
      lands the moment they lock. */
+  /* Whose PIN is the right one is settled by when each was chosen, never by
+     which arrived last. A record with no stamp on it is a copy from before
+     PINs were stamped: it may fill in a PIN that is missing here, and it
+     may not replace one. The owner's identity travels with their PIN, so
+     the two can never come apart. */
+  const newer = (inc, mine) => {
+    const a = +(inc && inc.pinAt) || 0, b = +(mine && mine.pinAt) || 0;
+    return !!(inc && inc.pin) && (a > b || (!mine.pin && a >= b));
+  };
+  // a name moves forward the same way, so a machine that only ever knew
+  // somebody as "Owner" cannot rename them back to it
+  const newerName = (inc, mine) => {
+    const a = +(inc && inc.nameAt) || 0, b = +(mine && mine.nameAt) || 0;
+    if (!inc || !inc.name) return false;
+    return a > b || (anonName(mine.name) && !anonName(inc.name));
+  };
   if (rec.role === 'owner') {
     const own = (ROOT.staff || []).find(x => x && x.owner);
-    if (own && me && own.id === me.id) return;
-    if (own) { own.id = rec.id; own.name = rec.name || own.name; if (rec.pin) own.pin = String(rec.pin); }
-    else ROOT.staff.push({ id: rec.id, name: rec.name || 'Owner', pin: String(rec.pin || ''), owner: true, roles: {} });
+    if (own && me && own.id === me.id) return;     // never under the person signed in
+    if (!own) { ROOT.staff.push({ id: rec.id, name: rec.name || 'Owner', nameAt: +rec.nameAt || 0,
+      pin: String(rec.pin || ''), pinAt: +rec.pinAt || 0, owner: true, roles: {} }); return; }
+    if (newerName(rec, own)) { own.name = rec.name; own.nameAt = +rec.nameAt || 0; }
+    if (newer(rec, own)) { own.id = rec.id; own.pin = String(rec.pin); own.pinAt = +rec.pinAt || 0;
+      ROOT.access = ROOT.access || {}; ROOT.access.managerPin = own.pin; }
     return;
   }
   let s = (ROOT.staff || []).find(x => x && x.id === rec.id);
   if (s && s.owner) return;                        // an owner is not demoted to a referee by a stale list
   if (!s) { s = { id: rec.id, name: '', pin: '', owner: false, roles: {} }; ROOT.staff.push(s); }
-  s.name = rec.name || s.name;
-  if (rec.pin) s.pin = String(rec.pin);
+  if (newerName(rec, s)) { s.name = rec.name; s.nameAt = +rec.nameAt || 0; }
+  if (newer(rec, s)) { s.pin = String(rec.pin); s.pinAt = +rec.pinAt || 0; }
   s.roles = s.roles || {};
   s.roles[lg] = rec.role || 'ref';
 }
@@ -17105,7 +17152,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '16 Nov 20:18 · ec6d0ec'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '20 Nov 09:59 · 4d7aae4'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
@@ -17383,7 +17430,7 @@ function setupOwner(pin) {
     setTimeout(() => $('gatePin').classList.remove('err'), 900);
     return;
   }
-  ROOT.staff = [{ id: uid(), name: 'Owner', pin, owner: true, roles: {} }];
+  ROOT.staff = [pinStamp({ id: uid(), name: 'Owner', pin: pin, owner: true, roles: {} })];
   if (save() === false) return;
   gateSetup = false;
   unlock(ROOT.staff[0]);
@@ -17561,7 +17608,7 @@ function paintStaff() {
   });
   $('stfList').querySelectorAll('[data-sfn]').forEach(i => i.onchange = () => {
     const s = find(i.dataset.sfn); if (!s) return;
-    s.name = i.value.trim() || s.name;
+    nameStamp(s, i.value.trim() || s.name);
     if (me && me.id === s.id) $('roleName').textContent = whoLabel();
     keep('Saved.');
     syncStaffTo(staffLeagues(s));            // their name is in every league they are on
@@ -17571,7 +17618,7 @@ function paintStaff() {
     const v = i.value.trim();
     if (!/^\d{4,8}$/.test(v)) { i.value = s.pin; return toast('A PIN is 4 to 8 digits.', 'bad'); }
     if ((ROOT.staff || []).some(x => x !== s && String(x.pin) === v)) { i.value = s.pin; return toast('Somebody already has that PIN.', 'bad'); }
-    s.pin = v; keep('PIN saved.');
+    pinStamp(s, v); keep('PIN saved.');
     syncStaffTo(staffLeagues(s));            // a PIN is their key to every one of them
   });
   $('stfList').querySelectorAll('[data-sfr]').forEach(sel => sel.onchange = () => {
@@ -17619,7 +17666,8 @@ $('btnNewStaff').onclick = () => {
   const nm = prompt('Who is it?', '');
   if (nm === null) return;
   const pin = freshPin();
-  const s = { id: uid(), name: String(nm).trim() || 'New person', pin, owner: false, roles: {} };
+  const s = nameStamp(pinStamp({ id: uid(), pin: pin, owner: false, roles: {} }),
+    String(nm).trim() || 'New person');
   /* The owner puts them where they like. A manager may only hand out their
      own leagues, so the person lands in the one that is open, as a referee,
      and the manager moves them up from there if that is what they meant. */
