@@ -8455,6 +8455,7 @@ function generateFixtures(keepHistory) {
      four names in the book, and round one was the first name against the
      last. Drawn once, here, and the same bag is used for all of it, so no
      two sides keep each other's company from one draw to the next. */
+  fxSave();                       // whatever this draw was set with, kept for the next one
   const bag = drawBag(), bagIds = bag.map(t => t.id);
   const rounds = Math.max(1, +$('fxRounds').value || 2);
   const startDate = snapToWeekday($('fxStart').value || todayISO(), +$('fxDay').value);
@@ -9012,6 +9013,37 @@ $('fxDraw').addEventListener('change', () => { if (currentView === 'fixtures') r
 // the hat is offered to every format that has something to draw out of it
 /* Every format is drawn, so every format gets the choice: a league's first
    round and a cup's first ties come out of the same hat as a group stage. */
+/* THE DRAW REMEMBERS HOW IT WAS SET. A competition is drawn, played, and
+   then drawn again next season or next week — and every one of those boxes
+   was back at the factory setting each time: two rounds, Thursday, 18:00,
+   45 minutes, one court, a week between rounds. A morning tournament on two
+   courts ten minutes apart had to be typed in from scratch every time, and
+   it is exactly the kind of typing that gets one box wrong.
+
+   Whatever is in them is kept with the season, written as it is changed and
+   again as the draw is made, and put back whenever the panel is opened. The
+   first match day is put back as it was set, even if it has gone by: it is
+   what was asked for, and the Generate button says so plainly rather than a
+   date quietly moving on its own. */
+const FXKEYS = ['fxFormat', 'fxRounds', 'fxDay', 'fxStart', 'fxTime', 'fxSlot', 'fxCourts', 'fxGap', 'fxDraw'];
+function fxSave() {
+  if (!DB || !DB.season) return;
+  const o = {};
+  FXKEYS.forEach(k => { const e = $(k); if (e) o[k] = String(e.value); });
+  if (JSON.stringify(DB.season.fx || null) === JSON.stringify(o)) return false;
+  DB.season.fx = o;
+  return true;
+}
+function fxLoad() {
+  const o = DB && DB.season && DB.season.fx;
+  if (!o) return;
+  FXKEYS.forEach(k => {
+    const e = $(k);
+    if (!e || o[k] == null || o[k] === '') return;
+    if (e.tagName === 'SELECT' && ![...e.options].some(x => x.value === o[k])) return;   // a format that has gone
+    e.value = o[k];
+  });
+}
 function paintDrawOpts() { $('fxDrawField').hidden = false; }
 /* Long lists read as blocks when neighbouring sections take turns in colour:
    plain, then a warm ember tint, then plain. A knockout night is gold. */
@@ -9052,6 +9084,7 @@ function renderFixtures() {
   paintDrawBar();
   $('fxGenCard').style.display = isMgr() ? '' : 'none';
   fill('fxFormat', DB.season.format || 'finals');
+  fxLoad();                       // the boxes as they were last set
   paintDrawOpts();
   const reg = DB.fixtures.filter(f => f.stage === 'regular');
   const rounds = [...new Set(reg.map(f => f.round))].sort((a, b) => a - b);
@@ -9064,6 +9097,12 @@ function renderFixtures() {
     (semis.length ? '<option value="SEMI">Semi-finals</option>' : '') + (finals.length ? '<option value="FINAL">Finals</option>' : '');
   if (keep) sel.value = keep;
   sel.onchange = renderFixtures;
+  /* kept as they are typed, not only when a draw is made: a setup half
+     entered and left is still what this competition is going to be */
+  FXKEYS.forEach(k => { const e = $(k); if (!e || e.dataset.fxmem) return;
+    e.dataset.fxmem = '1';
+    e.addEventListener('change', () => { if (fxSave()) save(); });
+  });
   $('fxStart').min = todayISO();
   const wd = +$('fxDay').value;
   $('fxStartHint').textContent = 'Any day from today — it moves to the ' + DAYS[wd] + ' on or after it.';
@@ -18018,7 +18057,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '21 Nov 09:13 · d4eba25'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '21 Nov 09:26 · 01b302a'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
