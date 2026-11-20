@@ -4380,32 +4380,35 @@ function printFinance() {
 
   const css = '@page{size:A4;margin:11mm}' +
     '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
-    'body{margin:0;background:#16171b;color:#f4f2f0;font:12px/1.4 "Segoe UI",Helvetica,Arial,sans-serif}' +
+    /* ON PAPER, NOT ON SCREEN — the same rule as the fixture sheet. A report
+       that is dark edge to edge is most of a cartridge for a page of figures,
+       and a client's copy of it comes out of their printer too. Ink on white:
+       hairlines, no filled panels, colour only where it carries meaning. */
+    'body{margin:0;background:#fff;color:#1a1613;font:12px/1.4 "Segoe UI",Helvetica,Arial,sans-serif}' +
     '.wrap{padding:20px 22px}' +
-    /* the tool's own header: the ball in its orange ring, then the name */
-    'header{display:flex;align-items:center;gap:13px;padding:15px 19px;border-radius:14px;margin-bottom:15px;' +
-      'background:linear-gradient(135deg,#0d0d10,#24170d);border:1px solid #3a2a1c;border-bottom:3px solid #ff8a3d}' +
-    'header img{width:44px;height:44px;display:block}' +
+    'header{display:flex;align-items:center;gap:13px;padding:0 0 10px;margin-bottom:15px;' +
+      'border-bottom:2.5px solid #c0510a}' +
+    'header img{width:40px;height:40px;display:block}' +
     'header h1{margin:0;font:400 15px/1.4 Consolas,monospace;letter-spacing:3px;' +
-      'text-transform:uppercase;text-indent:3px;color:#9c9ca6}' +
-    'header h1 .lg{color:#ff8a3d;font-weight:700}' +
-    'header .v{margin-left:auto;text-align:right;color:#b9b6b2;font-size:11.5px;line-height:1.45}' +
-    'header .v b{display:block;color:#f4f2f0;font-size:15.5px;font-weight:700;line-height:1.25}' +
+      'text-transform:uppercase;text-indent:3px;color:#6b645d}' +
+    'header h1 .lg{color:#c0510a;font-weight:700}' +
+    'header .v{margin-left:auto;text-align:right;color:#6b645d;font-size:11.5px;line-height:1.45}' +
+    'header .v b{display:block;color:#13100e;font-size:15.5px;font-weight:700;line-height:1.25}' +
     'header .v .c{display:block;font-size:12px;margin-top:1px}' +
-    '.ttl{margin:0 2px 14px}.ttl h2{margin:0;font-size:24px;letter-spacing:.2px}' +
-    '.ttl .u{height:3px;width:62px;background:#ff8a3d;border-radius:2px;margin:7px 0 7px}' +
-    '.ttl p{margin:0;color:#9c9ca6;font-size:11.5px}' +
+    '.ttl{margin:0 2px 14px}.ttl h2{margin:0;font-size:24px;letter-spacing:.2px;color:#13100e}' +
+    '.ttl .u{height:3px;width:62px;background:#c0510a;border-radius:2px;margin:7px 0 7px}' +
+    '.ttl p{margin:0;color:#6b645d;font-size:11.5px}' +
     '.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:15px}' +
-    '.tl{border:1px solid #33343b;border-radius:11px;padding:10px 12px;background:#232429}' +
-    '.tl .k{color:#9c9ca6;font-size:9px;letter-spacing:1.4px;text-transform:uppercase;font-weight:700}' +
-    '.tl .v{font-size:19px;font-weight:800;margin:3px 0 1px;color:#ff8a3d;font-variant-numeric:tabular-nums}' +
-    '.tl .s{color:#77777f;font-size:10px}' +
-    'h4{margin:16px 2px 7px;font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:#ffb27a}' +
-    'table.g{width:100%;border-collapse:collapse;background:#232429;border:1px solid #33343b;' +
-      'border-radius:11px;overflow:hidden;break-inside:avoid}' +
-    'table.g th{background:#1b1c21;color:#9c9ca6;font-size:9px;letter-spacing:1.3px;text-transform:uppercase;' +
-      'text-align:left;padding:8px 10px;border-bottom:1px solid #33343b;font-weight:700}' +
-    'table.g td{padding:7px 10px;border-top:1px solid rgba(255,255,255,.055);color:#d7d4d1;vertical-align:middle}' +
+    '.tl{border:1px solid #d8d2c9;border-radius:10px;padding:10px 12px;background:#fff}' +
+    '.tl .k{color:#6b645d;font-size:9px;letter-spacing:1.4px;text-transform:uppercase;font-weight:700}' +
+    '.tl .v{font-size:19px;font-weight:800;margin:3px 0 1px;color:#b2500f;font-variant-numeric:tabular-nums}' +
+    '.tl .s{color:#8d867e;font-size:10px}' +
+    'h4{margin:16px 2px 7px;font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:#b2500f}' +
+    'table.g{width:100%;border-collapse:collapse;background:#fff;border:1px solid #d8d2c9;' +
+      'border-radius:10px;overflow:hidden;break-inside:avoid}' +
+    'table.g th{background:#f6f2ec;color:#6b645d;font-size:9px;letter-spacing:1.3px;text-transform:uppercase;' +
+      'text-align:left;padding:8px 10px;border-bottom:1px solid #d8d2c9;font-weight:700}' +
+    'table.g td{padding:7px 10px;border-top:1px solid #ece7e0;color:#2b2621;vertical-align:middle}' +
     'table.g tr:first-child td{border-top:0}' +
     /* A column of figures reads as a column when the heading, the numbers
        and the total all sit on the same line down the middle. Right-aligned
@@ -4413,19 +4416,20 @@ function printFinance() {
        so neither lined up with the other. The th rule is more specific than
        a bare .n, which is why both are named here. */
     'table.g th.n,table.g td.n{text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap}' +
-    '.m{color:#77777f}.b{font-weight:700;color:#f4f2f0}.o{color:#ff8a3d;font-weight:700}' +
-    '.tot td{border-top:1.5px solid #3a2a1c;background:#1b1c21}' +
+    '.m{color:#8d867e}.b{font-weight:700;color:#13100e}.o{color:#b2500f;font-weight:700}' +
+    '.tot td{border-top:1.5px solid #c0510a;background:#faf6f1}' +
     '.tm{display:flex;align-items:center;gap:8px}.tm img{width:19px;height:19px;object-fit:contain;flex:0 0 auto}' +
     '.rd{margin-bottom:10px;break-inside:avoid}' +
     '.rd h3{display:flex;align-items:baseline;gap:9px;margin:0 2px 5px;font-size:13px}' +
-    '.rd h3 span{color:#9c9ca6;font-size:10.5px;font-weight:400}.rd h3 b{margin-left:auto;color:#ff8a3d;font-size:13px}' +
-    '.none{border:1px dashed #33343b;border-radius:11px;padding:11px;color:#77777f;font-size:11px}' +
+    '.rd h3 span{color:#6b645d;font-size:10.5px;font-weight:400}.rd h3 b{margin-left:auto;color:#b2500f;font-size:13px}' +
+    '.none{border:1px dashed #d8d2c9;border-radius:10px;padding:11px;color:#8d867e;font-size:11px}' +
     /* the rule that divides the figures from who is standing behind them */
-    'footer{margin-top:18px;border-top:2px solid #ff8a3d;padding-top:11px;break-inside:avoid;' +
+    'footer{margin-top:18px;border-top:2px solid #c0510a;padding-top:11px;break-inside:avoid;' +
       'display:flex;gap:18px;flex-wrap:wrap}' +
-    'footer .f{min-width:150px}footer .k{color:#ff8a3d;font-size:8.5px;letter-spacing:1.6px;' +
+    'footer .f{min-width:150px}footer .k{color:#b2500f;font-size:8.5px;letter-spacing:1.6px;' +
       'text-transform:uppercase;font-weight:700}' +
-    'footer .v{color:#d7d4d1;font-size:11.5px;margin-top:2px}';
+    'footer .v{color:#2b2621;font-size:11.5px;margin-top:2px}' +
+    'html{background:#fff}';
 
   const doc = '<!doctype html><html><head><meta charset="utf-8"><title>' +
     esc(comp + ' — financial summary') + '</title><style>' + css + '</style></head><body><div class="wrap">' +
@@ -17998,7 +18002,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '21 Nov 09:01 · c4d3433'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '21 Nov 09:03 · a7dd70d'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
