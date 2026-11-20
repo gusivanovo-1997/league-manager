@@ -1806,7 +1806,8 @@ td.num .gboot,th .gboot{margin:0}
 .btn.ug{display:inline-flex;align-items:center;justify-content:center;
   background:linear-gradient(135deg,#2f8fd8,#1d6fb5);border-color:#2f8fd8;color:#fff;font-weight:700}
 .btn.ug:hover{background:linear-gradient(135deg,#3a9ce6,#2278c2);border-color:#3a9ce6}
-.btn.ug .ballmark{width:1.2em;height:1.2em;vertical-align:-.22em;margin-right:8px;flex:0 0 auto}
+.btn.ug svg{width:1.45em;height:1.45em;margin-right:9px;flex:0 0 auto;display:block;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
 .btn.ug.big{width:100%;font-size:calc(17px * var(--fs));padding:15px 16px;letter-spacing:.2px}
 .ugrow{gap:8px;flex-wrap:wrap}
 .simpnote{color:var(--dim);font-size:calc(12.5px * var(--fs));margin:2px 0 8px}
@@ -9942,6 +9943,12 @@ function openLive(id) {
   // opening stamps it as in use here, so the other window never clears it as "stuck"
   if (f.status !== 'final') { if (f.status === 'scheduled') f.status = 'live'; f.openedAt = Date.now(); f.openedBy = DEVICE; f.openedWin = WIN; save(); }
   if (live.running) startTick();               // a match already under way
+  /* THE COURT IS CLAIMED AS IT IS OPENED. The lease, the heartbeat and the
+     web app's refusal to let two tablets write to one fixture were all in
+     place — and nothing ever took the claim, so none of it ever came into
+     play. Opening a match is the moment: it says this tablet is scoring it,
+     and the heartbeat below keeps saying so. */
+  if (f.status !== 'final') { try { claimTake(id); } catch (e) {} }
   renderLive();   // the picker, the Close button and the board all follow the open match
   if (kept) toast(teamName(kept.homeId) + ' v ' + teamName(kept.awayId) +
     ' is still running — it is on the bar above, with its own clock.', 'ok');
@@ -10336,8 +10343,8 @@ function drawLive() {
       (simpleComp() ? '' : '<button class="btn sm" data-addguest="' + f.id + '|' + tid + '" style="margin-top:6px">+ Guest player</button>') +
       (locked ? '' :
       '<div class="row ugrow" style="margin-top:8px">' +
-      '<button class="btn ug' + (simpleComp() ? ' big' : ' sm') + '" data-ev="goal|' + which + '|">' + BALL +
-        'Unattributed Goal</button>' +
+      '<button class="btn ug' + (simpleComp() ? ' big' : ' sm') + '" data-ev="goal|' + which + '|">' + BALL_MINI +
+        '<span>Unattributed Goal</span></button>' +
       '<button class="btn sm" data-ev="own|' + which + '|">Own goal (counts to ' + esc(teamName(which === 'h' ? f.awayId : f.homeId)) + ')</button></div>') + '</div>';
   };
   const evs = (f.events || []).filter(e => !e.adj).sort((a, b) => b.seq - a.seq);
@@ -10881,6 +10888,7 @@ function resetMatch(f, sure) {
    keep them for when the game resumes, or wipe it as if it never happened. */
 function closeMatch(f) {
   if (!f) return;
+  try { claimDrop(f.id); } catch (e) {}          // the court is free for another tablet
   if (f.status === 'final') {
     live.running = false; clearInterval(liveTimer);
     if (live.id === f.id) live = { id: null, running: false, elapsed: 0, half: 1, period: 'H1', t0: 0 };
@@ -11120,6 +11128,7 @@ function finaliseMatch(f) {
       if (f.status !== 'final') serveSuspensions(f);          // cards become suspensions, and suspensions are served
       f.status = 'final';
       f.finAt = Date.now(); delete f.reopenAt;               // the seal: this result now travels with the record
+      try { claimDrop(f.id); } catch (e) {}                 // played: nobody is holding this court now
       delete f.clock;
       live.running = false; clearInterval(liveTimer);
       // let go of the match first, so the redraw shows the picker and not an armed board
@@ -16693,11 +16702,20 @@ async function claimDrop(fx) {
   if (r.claims) SY.claims = r.claims;
   paintSync();
 }
-// while a match is open here, the lease is kept alive
+/* EVERY COURT THIS DEVICE HAS OPEN KEEPS ITS LEASE, not only the one on
+   screen. One phone can run three matches at once; the other two are being
+   played just as much as the one being looked at, and a lease that dies
+   after ninety seconds would hand their fixtures to any other tablet that
+   opened them. */
+const heldHere = () => (DB.fixtures || []).filter(f =>
+  f && f.status !== 'final' && !isOff(f) && claimMine(f.id) &&
+  (f.id === live.id || (f.clock && f.openedBy === DEVICE)));
 setInterval(() => {
-  if (!syncOn() || !live || !live.id) return;
-  if (claimMine(live.id)) syncPost({ action: 'claim', fx: live.id, name: (me && me.name) || 'a tablet' })
-    .then(r => { if (r && r.claims) { SY.claims = r.claims; paintSync(); } });
+  if (!syncOn()) return;
+  const mine = heldHere();
+  if (!mine.length) return;
+  mine.forEach(f => syncPost({ action: 'claim', fx: f.id, name: (me && me.name) || 'a tablet' })
+    .then(r => { if (r && r.claims) { SY.claims = r.claims; paintSync(); } }));
 }, 30000);
 
 addEventListener('online', () => pubSoon(true));
@@ -17667,6 +17685,11 @@ const BALL_SVG = '<svg viewBox="0 0 32 32" aria-hidden="true">' +
     '<path d="M11.5 2.7L9.8 5.2L11.5 7.6L8.6 6.8L6.8 9.2L6.8 6.1L3.9 5.2L6.8 4.2L6.8 1.2L8.6 3.6z"/>' +
   '</g>' +
   '<circle cx="16" cy="16" r="15.4" fill="none" stroke="#2b2c33" stroke-width="1"/></svg>';
+/* The same ball, small, for the unattributed-goal button. The flat mark
+   that was on it read as a smudge at that size — this is the ball the rail
+   rolls, drawn once and used twice, with its own clip id so the two never
+   argue over which circle they are cut to. */
+const BALL_MINI = BALL_SVG.split('sbClip').join('sbClipMini');
 /* The line, drawn for a ball sitting at cy: straight down the rail, a long
    easy bow out around the ball with room to spare, and straight on. EDGE is
    where the rail ends inside the line's own box; BOW how far it leans away;
@@ -17820,7 +17843,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '21 Nov 07:16 · f6c84c8'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '21 Nov 07:38 · ca242d9'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
