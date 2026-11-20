@@ -17520,7 +17520,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '20 Nov 18:44 · 540740d'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '20 Nov 18:49 · 0f5cd20'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
@@ -17564,14 +17564,22 @@ const isMgr = () => role === 'manager';
    it must not also hand you somebody else's competition the moment you join
    it. On a league whose shared copy names another owner, this machine's
    owner is whatever that league made them, and nothing more. */
-const ownsLeague = (p, l) => !!(p && p.owner && !(l && l.ownerId && l.ownerId !== p.id));
+/* Whose league it is, by the league's own word. Two ways to own one: this
+   copy is yours and the league has not been handed to you by somebody else,
+   or the league names YOU as its owner — which is how the same person is
+   still in charge on a second tablet that was set up with its own PIN
+   before it joined. Being shut out of your own competition because you
+   installed the tool twice would be a cure worse than the illness. */
+const ownsLeague = (p, l) => !!(p && ((p.owner && !(l && l.ownerId && l.ownerId !== p.id)) ||
+  (l && l.ownerId && l.ownerId === p.id)));
+const ownerHere = () => ownsLeague(me, activeLeague());
 const myLeaguesFor = p => !p ? [] : ROOT.leagues.filter(l => ownsLeague(p, l) || rolesOf(p)[l.id]);
 const myLeagues = () => myLeaguesFor(me);
 const roleIn = l => !me || !l ? null : ownsLeague(me, l) ? 'manager' : rolesOf(me)[l.id] || null;
-const roleWord = () => isOwner() ? 'owner' : isMgr() ? 'manager' : 'referee';
+const roleWord = () => ownerHere() ? 'owner' : isMgr() ? 'manager' : 'referee';
 const whoLabel = () => !me ? '' : (me.name || '').trim().toLowerCase() === roleWord() ? me.name : me.name + ' · ' + roleWord();
 function requireOwner(what) {
-  if (isOwner()) return true;
+  if (ownerHere()) return true;
   toast((what || 'That') + ' is the owner\'s to do.', 'bad');
   return false;
 }
