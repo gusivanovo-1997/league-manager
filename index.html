@@ -11012,7 +11012,7 @@ function finaliseMatch(f) {
       '</div>';
   };
   modal('Finalise result',
-    '<div class="row" style="justify-content:center;gap:14px;margin-bottom:12px">' +
+    '<div class="row" id="fnScoreRow" style="justify-content:center;gap:14px;margin-bottom:12px">' +
       '<b>' + esc(teamName(f.homeId)) + '</b>' +
       (editable ? '<input type="number" id="fgH" min="0" value="' + shown.h + '" style="width:70px;text-align:center">'
                 : '<span style="font-size:calc(26px * var(--fs));font-weight:700">' + s.h + '</span>') +
@@ -11030,12 +11030,23 @@ function finaliseMatch(f) {
     (isKO(f) ? '<div class="kofin">' +
       '<label class="row small" style="gap:7px"><input type="checkbox" id="fnAet"' + (wentEt ? ' checked' : '') + '>' +
         ' <b>Went to extra time</b> (2 × ' + etMin() + ' min)</label>' +
+      /* Tick it and the next thing asked for is the EXTRA-TIME result,
+         because that is what has just been played. It is the final score,
+         so the score box at the top of the card stands down while extra
+         time is on — one number, asked for once, in the order the match
+         was played. Normal time follows it as the detail of the record. */
+      '<div class="row small" id="fnEtRow" style="gap:8px;margin:9px 0 0 26px' + (wentEt ? '' : ';display:none') + '">' +
+        '<b>Score after extra time</b>' +
+        (editable
+          ? '<input type="number" id="fnEtH" min="0" value="' + shown.h + '" style="width:62px;text-align:center"> – ' +
+            '<input type="number" id="fnEtA" min="0" value="' + shown.a + '" style="width:62px;text-align:center">'
+          : '<b style="font-size:calc(17px * var(--fs))">' + s.h + ' – ' + s.a + '</b>') + '</div>' +
       '<div class="row small" id="fnNtRow" style="gap:8px;margin:7px 0 0 26px' + (wentEt ? '' : ';display:none') + '">' +
-        'Score at the end of normal time' +
+        'At the end of normal time <span class="muted">(level — extra time is played from level)</span>' +
         '<input type="number" id="fnNtH" min="0" value="' + ntPre.h + '" style="width:62px;text-align:center"> – ' +
         '<input type="number" id="fnNtA" min="0" value="' + ntPre.a + '" style="width:62px;text-align:center"></div>' +
-      '<div class="row small" style="gap:8px;margin-top:9px">' +
-        '<b>Penalty shoot-out</b> <span class="muted">(only if level at the end)</span>' +
+      '<div class="row small" id="fnPkRow" style="gap:8px;margin-top:9px">' +
+        '<b>Penalty shoot-out</b> <span class="muted">(only if still level at the end)</span>' +
         '<input type="number" id="fnPkH" min="0" value="' + pkPre[0] + '" style="width:62px;text-align:center"> – ' +
         '<input type="number" id="fnPkA" min="0" value="' + pkPre[1] + '" style="width:62px;text-align:center"></div>' +
       '<div id="fnKoLine" style="margin-top:9px"></div></div>' : '') +
@@ -11055,11 +11066,23 @@ function finaliseMatch(f) {
       }
       const sNow = score(f);                   // the goals as they are now, not when the card opened
       let hg, ag;
+      const aetOn = !!($('fnAet') && $('fnAet').checked);
       if (editable) {
-        hg = +$('fgH').value || 0; ag = +$('fgA').value || 0;
+        // with extra time on, the final score is the one typed under it
+        const box = aetOn && $('fnEtH') ? ['fnEtH', 'fnEtA'] : ['fgH', 'fgA'];
+        hg = +$(box[0]).value || 0; ag = +$(box[1]).value || 0;
         // untouched boxes while the other window logged a goal: take the new tally, do not freeze the old one
         if (hg === shown.h && ag === shown.a && !wasFinal && (sNow.h !== s.h || sNow.a !== s.a)) { hg = sNow.h; ag = sNow.a; }
       } else { hg = sNow.h; ag = sNow.a; }
+      /* The man of the match is asked for here, with the other checks and
+         before anything is written. It used to be asked for after the score
+         had already gone on to the fixture, so a card refused for a missing
+         name left a changed result behind on a match that was still open. */
+      const mvpBox = $('fnMvpName');
+      if (mvpBox && !mvpBox.value.trim() && !$('fnMvpNone').checked) {
+        toast('Name the man of the match \u2014 or tick "No man of the match" if there was not one.', 'bad');
+        mvpBox.focus(); return false;
+      }
       // a knockout match: extra time and the shoot-out, checked before anything is written
       let ko = null;
       if (isKO(f)) {
@@ -11068,7 +11091,7 @@ function finaliseMatch(f) {
         if (aet) {
           if (nh === '' || na === '') { toast('Type the score at the end of normal time.', 'bad'); return false; }
           if (+nh !== +na) { toast('Extra time is only played after a level normal time — check the normal-time score.', 'bad'); return false; }
-          if (+nh > hg || +na > ag) { toast('The normal-time score cannot be more than the final score.', 'bad'); return false; }
+          if (+nh > hg || +na > ag) { toast('The score after extra time cannot be less than it was at the end of normal time.', 'bad'); return false; }
         }
         const pens = hg === ag && kh !== '' && ka !== '';
         if (hg === ag && !(pens && +kh !== +ka)) {
@@ -11091,10 +11114,6 @@ function finaliseMatch(f) {
       if (pick && person(pick)) f.mvp = pick; else delete f.mvp;
       if ($('fnMvpName')) {
         const nm = $('fnMvpName').value.trim().replace(/\s+/g, ' ');
-        if (!nm && !$('fnMvpNone').checked) {
-          toast('Name the man of the match \u2014 or tick "No man of the match" if there was not one.', 'bad');
-          $('fnMvpName').focus(); return false;
-        }
         if (nm) f.mvpName = nm; else delete f.mvpName;
       }
       f.manual = editable && (hg !== sNow.h || ag !== sNow.a);
@@ -11115,14 +11134,19 @@ function finaliseMatch(f) {
     const paint = () => {
       const aet = $('fnAet').checked;
       $('fnNtRow').style.display = aet ? '' : 'none';
-      const hg = editable ? +$('fgH').value || 0 : s.h, ag = editable ? +$('fgA').value || 0 : s.a;
+      $('fnEtRow').style.display = aet ? '' : 'none';
+      // one score box on the card at a time: the one that is being played for
+      if ($('fnScoreRow')) $('fnScoreRow').style.display = aet ? 'none' : '';
+      const src = aet && $('fnEtH') ? ['fnEtH', 'fnEtA'] : ['fgH', 'fgA'];
+      const hg = editable ? +$(src[0]).value || 0 : s.h, ag = editable ? +$(src[1]).value || 0 : s.a;
       const st = [];
       if (aet) { if ($('fnNtH').value !== '' && $('fnNtA').value !== '') st.push(['Normal time', [$('fnNtH').value, $('fnNtA').value]]); st.push(['Extra time', [hg, ag]]); }
       else st.push(['Full time', [hg, ag]]);
       if (hg === ag && $('fnPkH').value !== '' && $('fnPkA').value !== '') st.push(['Penalties', [$('fnPkH').value, $('fnPkA').value]]);
       $('fnKoLine').innerHTML = '<span class="small muted">Shows as </span>' + koStripOf(st);
     };
-    ['fnAet', 'fnNtH', 'fnNtA', 'fnPkH', 'fnPkA', 'fgH', 'fgA'].forEach(id => { if ($(id)) { $(id).oninput = paint; $(id).onchange = paint; } });
+    ['fnAet', 'fnEtH', 'fnEtA', 'fnNtH', 'fnNtA', 'fnPkH', 'fnPkA', 'fgH', 'fgA']
+      .forEach(id => { if ($(id)) { $(id).oninput = paint; $(id).onchange = paint; } });
     paint();
   }
 }
@@ -11296,7 +11320,8 @@ function editResult(id) {
       '<input type="number" id="reA" min="0" value="' + (f0.awayGoals || 0) + '" style="width:62px;text-align:center"></div>' +
     (ko ? '<div class="kofin">' +
       '<label class="row small" style="gap:7px"><input type="checkbox" id="reAet"' + (f0.aet ? ' checked' : '') + '> <b>Went to extra time</b></label>' +
-      '<div class="row small" id="reNtRow" style="gap:8px;margin:7px 0 0 26px' + (f0.aet ? '' : ';display:none') + '">Score at the end of normal time' +
+      '<div class="row small" id="reNtRow" style="gap:8px;margin:7px 0 0 26px' + (f0.aet ? '' : ';display:none') + '">' +
+        'At the end of normal time <span class="muted">(level — the score above is after extra time)</span>' +
         '<input type="number" id="reNtH" min="0" value="' + (nt0 ? nt0.h : '') + '" style="width:62px;text-align:center"> – ' +
         '<input type="number" id="reNtA" min="0" value="' + (nt0 ? nt0.a : '') + '" style="width:62px;text-align:center"></div>' +
       '<div class="row small" style="gap:8px;margin-top:9px"><b>Penalty shoot-out</b> <span class="muted">(only if level at the end)</span>' +
@@ -11952,13 +11977,27 @@ function renderWorldTable() {
   countUpAll('#tableTbl td.num:not(:first-child)');
 }
 function podiumOf(metal) {
+  /* WITH NO PLAY-OFF, THIRD IS STILL ONE TEAM. Two beaten semi-finalists
+     used to share it, which reads as two third places — and a competition
+     has one. The better of them takes it, on the table's own order: points,
+     then goal difference, then goals for, then what they did to each other.
+     The same ladder that decides who is in the semi-finals decides who is
+     third when nobody plays for it. */
+  const bestOn = ids => {
+    const live = ids.filter(Boolean);
+    if (live.length < 2) return live;
+    const rank = standings().map(r => r.id);
+    const at = id => { const i = rank.indexOf(id); return i < 0 ? 1e6 : i; };
+    return [live.slice().sort((x, y) => at(x) - at(y))[0]];
+  };
   if (isWorld()) {
     if (metal !== 'gold') return null;             // one trophy, and no silver cup under it
     const fin = DB.fixtures.find(f => f.m === 104), p3 = DB.fixtures.find(f => f.m === 103);
     const sf = [101, 102].map(m => DB.fixtures.find(f => f.m === m)).filter(Boolean);
     if (!fin && !sf.length) return null;
-    const third = p3 ? [winnerOf(p3)].filter(Boolean) : sf.map(loserOf).filter(Boolean);
-    return { metal, first: winnerOf(fin), second: loserOf(fin), third, shared: !p3 && third.length > 1,
+    const beat = sf.map(loserOf).filter(Boolean);
+    const third = p3 ? [winnerOf(p3)].filter(Boolean) : bestOn(beat);
+    return { metal, first: winnerOf(fin), second: loserOf(fin), third, shared: false, onTable: !p3 && beat.length > 1,
       done: !!winnerOf(fin) };
   }
   if (leagueOnly()) {
@@ -11974,8 +12013,10 @@ function podiumOf(metal) {
   const fin = get(fs), p3 = get(ps);
   const first = winnerOf(fin), second = loserOf(fin);
   const playoff = !!p3 || !!DB.finals3rd;
-  const third = playoff ? (p3 ? [winnerOf(p3)].filter(Boolean) : []) : [loserOf(a), loserOf(b)].filter(Boolean);
-  return { metal, first, second, third, shared: !playoff, done: !!first && (playoff ? third.length === 1 : third.length === 2) };
+  const beat = [loserOf(a), loserOf(b)].filter(Boolean);
+  const third = playoff ? (p3 ? [winnerOf(p3)].filter(Boolean) : []) : bestOn(beat);
+  return { metal, first, second, third, shared: false, onTable: !playoff && beat.length > 1,
+    done: !!first && third.length === 1 };
 }
 // every final in every bracket played: the podiums go up — Finals tab, bulletin, live page
 function podiumsDone() {
@@ -11991,7 +12032,8 @@ function podiumHtml(p) {
     '<div class="pstep"><b>' + place + '</b></div></div>';
   return '<div class="podium ' + p.metal + '"><div class="phd ' + p.metal + 'txt">' + esc(podiumTitle(p)) + '</div>' +
     '<div class="pwrap">' + col('p2', '2', '🥈', [p.second]) + col('p1', '1', '🏆', [p.first]) + col('p3', '3', '🥉', p.third) + '</div>' +
-    (p.shared && p.third.length > 1 ? '<div class="small muted pnote">No 3rd-place play-off — the beaten semi-finalists share 3rd.</div>' : '') +
+    (p.onTable ? '<div class="small muted pnote">No 3rd-place play-off — 3rd goes to the better of the beaten ' +
+      'semi-finalists on the table: points, then goal difference, then goals for.</div>' : '') +
     '</div>';
 }
 /* the roll of honour for this season: champion, runner-up and 3rd from the championship bracket */
@@ -12082,7 +12124,8 @@ function bracketHtml(mini) {
     return '<div class="bx places ' + p.metal + '"><div class="st">Places</div>' +
       row('🏆', '1st', [p.first], p.league ? 'decided by the table' : 'decided by the final') +
       row('🥈', '2nd', [p.second], p.league ? 'decided by the table' : 'decided by the final') +
-      row('🥉', '3rd', p.third, p.shared ? 'the two beaten semi-finalists' : p.league ? 'decided by the table' : 'decided by the 3rd-place play-off') + '</div>';
+      row('🥉', '3rd', p.third, p.onTable ? 'the better beaten semi-finalist, on the table'
+        : p.league ? 'decided by the table' : 'decided by the 3rd-place play-off') + '</div>';
   };
 
   const wrap = s => '<div class="brk' + (mini ? ' mini' : '') + '">' + s + '</div>';
@@ -17772,7 +17815,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '20 Nov 21:18 · d8efa40'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '20 Nov 21:45 · ed8c01f'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
