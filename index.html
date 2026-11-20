@@ -15145,7 +15145,11 @@ function appsLiveScript(key) {
     '  if (!b || b.key !== KEY) return json_({ ok: false, error: "wrong key" });',
     '  if (b.action === "quota") return json_({ ok: true, v: 3, left: MailApp.getRemainingDailyQuota() });',
     '  if (b.action === "send") return send_(b.mail || {});',
-    '  if (b.action === "pull") return locked_(function () { return pull_(b); });',
+    '  if (b.action === "pull") {',
+    '    var q = quick_(b);',
+    '    if (q) return json_(q);',
+    '    return locked_(function () { return pull_(b); });',
+    '  }',
     '  if (b.action === "push") return locked_(function () { return push_(b); });',
     '  if (b.action === "claim") return locked_(function () { return claim_(b); });',
     '  if (b.action === "release") return locked_(function () { return release_(b); });',
@@ -15193,7 +15197,43 @@ function appsLiveScript(key) {
     '  if (!s || typeof s !== "object") s = {};',
     '  return { rev: s.rev || 0, doc: s.doc || null, claims: s.claims || {}, log: s.log || [] };',
     '}',
-    'function put_(s) { dataFile_(true).setContent(JSON.stringify(s)); }',
+    'function put_(s) { dataFile_(true).setContent(JSON.stringify(s)); sumPut_(s); }',
+    '',
+    '/* ── the cheap answer ──────────────────────────────',
+    ' * Nearly every pull is a tablet asking whether anything has happened,',
+    ' * and nearly every time the answer is no. Reading the whole league out',
+    ' * of Drive, behind the one script lock, to say "no" is what put a',
+    ' * ceiling on how many tablets a tournament could run: the lock is',
+    ' * single file, so the tablets were queueing for an answer none of them',
+    ' * needed.',
+    ' *',
+    ' * So the revision number, the claims and the record counts — everything',
+    ' * a "nothing new" answer is made of — are kept in the script cache as',
+    ' * well, and refreshed by every write. A tablet already level with that',
+    ' * revision is answered straight from there: no lock, no Drive, and any',
+    ' * number of tablets answered at once. Anything else still goes the long',
+    ' * way, which is the only way that can carry real records.',
+    ' *',
+    ' * The cache is only ever a copy of what the file says, and it is dropped',
+    ' * after two minutes, so the worst a wrong one can do is hold a tablet a',
+    ' * couple of minutes behind before the long way puts it right. */',
+    'var SUMTTL = 120;             // seconds the cheap answer is trusted',
+    'function sum_() {',
+    '  try { return JSON.parse(CacheService.getScriptCache().get("SUM") || "null"); } catch (x) { return null; }',
+    '}',
+    'function sumPut_(s) {',
+    '  try {',
+    '    CacheService.getScriptCache().put("SUM", JSON.stringify({',
+    '      rev: s.rev, claims: s.claims || {}, n: count_(s.doc) }), SUMTTL);',
+    '  } catch (x) {}',
+    '}',
+    'function quick_(b) {',
+    '  var s = sum_(), now = Date.now(), from = Number(b.rev || 0);',
+    '  if (!s || !s.rev || !from || from !== s.rev) return null;',
+    '  var c = {};',
+    '  Object.keys(s.claims || {}).forEach(function (k) { if (live_(s.claims[k], now)) c[k] = s.claims[k]; });',
+    '  return { ok: true, v: 4, rev: s.rev, same: true, claims: c, n: s.n, quick: true };',
+    '}',
     '// a claim only counts while its lease is alive',
     'function live_(c, now) { return c && (now - (c.at || 0)) < LEASE; }',
     'function heldBy_(s, fx, now) { var c = s.claims[fx]; return live_(c, now) ? c : null; }',
@@ -15204,6 +15244,7 @@ function appsLiveScript(key) {
     'function pull_(b) {',
     '  var s = store_(), now = Date.now();',
     '  tidy_(s, now);',
+    '  sumPut_(s);',
     '  if (!s.doc) return { ok: true, v: 3, rev: s.rev, empty: true, claims: s.claims };',
     '  var from = Number(b.rev || 0);',
     '  if (from === s.rev) return { ok: true, v: 3, rev: s.rev, same: true, claims: s.claims, n: count_(s.doc) };',
@@ -15326,7 +15367,7 @@ function appsLiveScript(key) {
     '}',
     '',
     'function doGet(e) {',
-    '  if (e && e.parameter && e.parameter.check) return json_({ ok: true, ver: version() });',
+    '  if (e && e.parameter && e.parameter.check) return json_({ ok: true, v: 4, ver: version() });',
     '  return HtmlService.createHtmlOutput(page_())',
     '    .setTitle(PropertiesService.getScriptProperties().getProperty("TITLE") || "League Manager")',
     '    .addMetaTag("viewport", "width=device-width, initial-scale=1");',
@@ -15546,12 +15587,12 @@ const deviceId = DEVICE;                 // the same id the live screen stamps m
    worth being certain about, so it is kept on its own rather than inferred
    from a fingerprint, and anything missing from it that is finished here
    is sent again on the next tick. */
-let SY = { lg: '', rev: 0, shadow: null, busy: false, again: false, state: 'off', err: '', at: 0, claims: {}, fin: {}, rfin: {}, pull: 0, push: 0 };
+let SY = { lg: '', rev: 0, shadow: null, busy: false, again: false, state: 'off', err: '', at: 0, claims: {}, fin: {}, rfin: {}, pull: 0, push: 0, due: 0, fails: 0 };
 
 const syncSlot = () => SYNCKEY + '.' + (ROOT.active || '');
 const syncOn = () => { const c = pubCfg(); return !!(c.url && c.key && c.share && !DB.demo); };
 function syncLoad() {
-  SY = { lg: ROOT.active, rev: 0, shadow: null, busy: false, again: false, state: 'off', err: '', at: 0, claims: {}, fin: {}, rfin: {}, pull: 0, push: 0 };
+  SY = { lg: ROOT.active, rev: 0, shadow: null, busy: false, again: false, state: 'off', err: '', at: 0, claims: {}, fin: {}, rfin: {}, pull: 0, push: 0, due: 0, fails: 0 };
   try {
     const s = JSON.parse(localStorage.getItem(syncSlot()) || 'null');
     if (s && s.shadow) { SY.rev = s.rev || 0; SY.shadow = s.shadow; SY.at = s.at || 0; SY.fin = s.fin || {}; SY.rfin = s.rfin || {}; }
@@ -15829,7 +15870,7 @@ async function syncTick(force) {
     if (refill) { SY.refill = Date.now(); SY.want = false; }
     const r = await syncPost({ action: 'pull', rev: refill ? 0 : SY.rev });
     if (lg !== ROOT.active) return;
-    if (!r.ok) { SY.state = r.off ? 'off' : 'err'; SY.err = r.error || ''; return; }
+    if (!r.ok) { SY.state = r.off ? 'off' : 'err'; SY.err = r.error || ''; SY.fails = Math.min(SY.fails + 1, 4); return; }
     SY.claims = r.claims || {};
     let changed = false;
     const drifted = r.n && SY.shadow && SYNC_LISTS.some(n => Object.keys(SY.shadow[n] || {}).length !== r.n[n]);
@@ -15926,7 +15967,8 @@ async function syncTick(force) {
         SY.stuck = sig;
       } else { bad = true; SY.state = w.off ? 'off' : 'err'; SY.err = w.error || ''; }
     }
-    if (!bad) { SY.state = 'ok'; SY.err = ''; SY.at = Date.now(); }
+    if (!bad) { SY.state = 'ok'; SY.err = ''; SY.at = Date.now(); SY.fails = 0; }
+    else SY.fails = Math.min(SY.fails + 1, 4);
     /* Before the live page is built from it: a result that came down is a
        result, whatever status arrived with it. Without this the owner's
        phone could publish a page announcing matches as live that had been
@@ -15962,12 +16004,54 @@ function syncSoon(now) {
   clearTimeout(SY.push);
   SY.push = setTimeout(() => syncTick(), now ? 50 : 1200);
 }
+/* How often a tablet asks the shared copy for news.
+ *
+ * Every tablet signed into the league posts to the same Google web app, and
+ * the cost of the shared copy is the number of tablets DIVIDED BY the gap
+ * between asks. Four seconds flat, for every tablet, awake or not, busy or
+ * not, is what used to put the ceiling at about a dozen.
+ *
+ * So the gap is no longer flat. A tablet running a match, with something
+ * still to send, or with a hand on it in the last minute, is on the short
+ * gap and sees everything as it happens. One parked on a court between
+ * games takes the long gap. One nobody is looking at asks for nothing at
+ * all, and catches up the instant it is picked up. A tablet being refused
+ * backs further off each time rather than joining the queue it is already
+ * stuck in — a line of tablets all retrying every four seconds is how a
+ * busy moment turns into a stuck one.
+ *
+ * The gap is scattered by a fifth either way, because ten tablets switched
+ * on together would otherwise ask together for the rest of the day. */
+const SYNC_FAST = 4000, SYNC_IDLE = 15000, SYNC_MAX = 60000;
+let syncTouch = 0;
+['pointerdown', 'keydown'].forEach(e => addEventListener(e, () => { syncTouch = Date.now(); }, true));
+function syncBusyHere() {
+  if (live && live.id) return true;                    // a match is being run here
+  if (Date.now() - syncTouch < 60000) return true;     // somebody is working on it
+  const d = syncDiff();
+  return !!(d && syncCount(d));                        // something of ours still to go up
+}
+function syncGap() {
+  if (SY.fails) return Math.min(SYNC_MAX, SYNC_FAST * Math.pow(2, SY.fails));
+  return syncBusyHere() ? SYNC_FAST : SYNC_IDLE;
+}
+function syncPoll() {
+  if (!syncOn() || document.hidden) return;
+  const now = Date.now();
+  if (now < (SY.due || 0)) return;
+  SY.due = now + syncGap() * (0.8 + Math.random() * 0.4);
+  syncTick();
+}
 function syncLoop() {
   clearInterval(SY.pull);
   if (!syncOn()) { SY.state = 'off'; paintSync(); return; }
-  SY.pull = setInterval(() => syncTick(), 4000);
+  // the tick below is this switch-on asking: the first poll comes after it, not with it
+  SY.fails = 0; SY.due = Date.now() + SYNC_FAST;
+  SY.pull = setInterval(syncPoll, 1000);
   syncTick();
 }
+// picked up again: whatever happened while it was away is wanted now, not in fifteen seconds
+addEventListener('visibilitychange', () => { if (!document.hidden) { SY.due = 0; syncPoll(); } });
 /* Starting again on a different league: its own revision, its own shadow,
    its own queue. */
 function syncSwitch() { clearInterval(SY.pull); syncLoad(); paintSync(); syncLoop(); }
@@ -16327,7 +16411,8 @@ $('pubCheck').onclick = async () => {
   try {
     const r = await fetch(u + (u.indexOf('?') < 0 ? '?' : '&') + 'check=1');
     const j = await r.json().catch(() => null);
-    if (j && j.ok) toast('That web app is live and answering' + (j.ver ? ' (version ' + j.ver + ')' : '') + '.', 'ok');
+    if (j && j.ok) toast('That web app is live and answering' + (j.ver ? ' (version ' + j.ver + ')' : '') +
+      (j.v >= 4 ? ' — the fast setup script.' : '. It is an older setup script: press Copy setup script, paste it over the old one and deploy a new version to let more tablets run.'), j.v >= 4 ? 'ok' : 'bad');
     else toast('It answered, but not as this tool\'s script — paste the setup script over it and deploy a new version.', 'bad');
   } catch (e) {
     toast('No answer. Check the address ends in /exec and the deployment is set to "Anyone".', 'bad');
@@ -17152,7 +17237,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '20 Nov 09:59 · 4d7aae4'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '20 Nov 14:48 · 0b7dc6d'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
