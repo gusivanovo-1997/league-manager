@@ -5926,7 +5926,7 @@ function renderDash() {
        apostrophe in its name led the table as O&#39;HANLON&#39;S. Nothing
        was wrong with the sentence; it was being written twice over. */
     $('homeRaceNote').textContent = st.length > 1 && st[0].P
-      ? (lead === 0 ? '— level at the top' : '— ' + st[0].name + ' by ' + plural(lead, 'point'))
+      ? (lead === 0 ? '' : '— ' + st[0].name + ' by ' + plural(lead, 'point'))
       : '';
   }
   const hg = st.map(r => Object.assign({}, r, playedAll(r.id))).sort((a, b) => b.GF - a.GF || a.name.localeCompare(b.name));
@@ -12206,7 +12206,7 @@ function renderStatCharts() {
   const st = standings();
   const gap = st.length > 1 ? st[0].Pts - st[1].Pts : 0;
   $('raceNote').textContent = st.length > 1 && st[0].P
-    ? (gap === 0 ? '— level at the top' : '— ' + st[0].name + ' by ' + plural(gap, 'point'))
+    ? (gap === 0 ? '' : '— ' + st[0].name + ' by ' + plural(gap, 'point'))
     : '';
   const goals = st.map(r => Object.assign({}, r, playedAll(r.id))).sort((a, b) => b.GF - a.GF || a.name.localeCompare(b.name));
   $('vizGoals').innerHTML = st.length && goals[0].GF
@@ -17586,7 +17586,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '20 Nov 20:59 · eb11a61'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '20 Nov 21:01 · 0aafb2e'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
