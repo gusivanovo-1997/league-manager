@@ -2293,8 +2293,7 @@ tspan.gstar{fill:var(--gold)}
     <!-- The race opens Home: it is the one picture that says where the
          season is. Its own copy, with its own ids, because Stats keeps one
          too and two elements cannot share a name. -->
-    <div class="card leaguecard" id="homeRaceCard"><h3>Title race <span class="muted" style="font-weight:400;text-transform:none;
-      letter-spacing:0" id="homeRaceNote"></span></h3><div id="homeRace"></div></div>
+    <div class="card leaguecard" id="homeRaceCard"><h3>Title race</h3><div id="homeRace"></div></div>
     <div class="grid g2">
       <div class="card leaguecard"><h3 id="dashTableH">Standings</h3><div id="dashTable"></div></div>
       <div class="card bootcard"><h3>Golden Boot</h3><div id="dashScorers"></div></div>
@@ -2592,8 +2591,7 @@ tspan.gstar{fill:var(--gold)}
 
   <!-- ══════════════ STATS ══════════════ -->
   <section class="view" data-view="stats">
-    <div class="card leaguecard"><h3>Title race <span class="muted" style="font-weight:400;text-transform:none;
-      letter-spacing:0" id="raceNote"></span></h3><div id="dashRace"></div></div>
+    <div class="card leaguecard"><h3>Title race</h3><div id="dashRace"></div></div>
     <div class="card"><h3>Average goals per round of all teams</h3><div id="vizRoundAvg"></div></div>
     <div class="grid g2 wide">
       <div class="card bootcard"><h3>Golden Boot <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— the top 10</span></h3>
@@ -5985,14 +5983,10 @@ function renderDash() {
   if (!wc) {
     $('homeRace').innerHTML = vizRace();
     raceRun('homeRace');                               // Home's copy of the season, played through
-    const lead = st.length > 1 ? st[0].Pts - st[1].Pts : 0;
-    /* textContent, not innerHTML — so the name goes in as it is written.
-       Escaping it first put the escape itself on the screen: a club with an
-       apostrophe in its name led the table as O&#39;HANLON&#39;S. Nothing
-       was wrong with the sentence; it was being written twice over. */
-    $('homeRaceNote').textContent = st.length > 1 && st[0].P
-      ? (lead === 0 ? '' : '— ' + st[0].name + ' by ' + plural(lead, 'point'))
-      : '';
+    /* Nothing is written beside the heading. The lines on the chart say who
+       is ahead and by how much, which is what the chart is for; a sentence
+       repeating it in grey earned its place three times over and never
+       kept it. */
   }
   const hg = st.map(r => Object.assign({}, r, playedAll(r.id))).sort((a, b) => b.GF - a.GF || a.name.localeCompare(b.name));
   $('homeGoals').innerHTML = st.length && hg[0].GF
@@ -12400,10 +12394,6 @@ function renderStatCharts() {
   raceRun('dashRace');                                 // the season played through, heads and all
   $('vizRoundAvg').innerHTML = vizRoundAvg();
   const st = standings();
-  const gap = st.length > 1 ? st[0].Pts - st[1].Pts : 0;
-  $('raceNote').textContent = st.length > 1 && st[0].P
-    ? (gap === 0 ? '' : '— ' + st[0].name + ' by ' + plural(gap, 'point'))
-    : '';
   const goals = st.map(r => Object.assign({}, r, playedAll(r.id))).sort((a, b) => b.GF - a.GF || a.name.localeCompare(b.name));
   $('vizGoals').innerHTML = st.length && goals[0].GF
     ? vizShare(goals.map(r => ({ label: r.name, value: r.GF, tid: r.id, colour: (team(r.id) || {}).colour })))
@@ -17782,7 +17772,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '20 Nov 21:14 · 99597f3'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '20 Nov 21:18 · d8efa40'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
