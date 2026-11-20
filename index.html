@@ -15998,8 +15998,8 @@ function staffDoc() {
       pin: String(s.pin || ''), pinAt: +s.pinAt || 0, role: rolesOf(s)[lg] }));
   const own = (ROOT.staff || []).find(s => s && s.owner);
   const L = activeLeague();
-  // and this machine's owner goes up only where this machine's owner IS the owner
-  if (own && !(L && L.ownerId && L.ownerId !== own.id))
+  // and this machine's owner goes up for a league that is this machine's, or that nobody has claimed yet
+  if (own && (ownsLeague(own, L) || !(L && L.ownerId)))
     out.push({ id: own.id, name: own.name || 'Owner', nameAt: +own.nameAt || 0,
       pin: String(own.pin || ''), pinAt: +own.pinAt || 0, role: 'owner' });
   return out.sort((a, b) => String(a.id).localeCompare(String(b.id)));   // one order, so the hash is steady
@@ -17014,6 +17014,11 @@ async function joinFromCode(raw, atGate) {
     const l = blankLeague();
     l.name = x.n || 'Shared league';
     l.publish = { url: x.u, key: x.k, auto: true, share: true };
+    /* It came from somebody else's code: whoever set this copy up does not
+       become its owner by pasting it. They are whatever that league makes
+       them. (A league made here, or restored from a backup, is not marked
+       and stays the copy owner's own.) */
+    l.joined = true;
     ROOT.leagues.push(l);
     added++; open = open || l;
     touched.push(l);
@@ -17815,7 +17820,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '20 Nov 21:45 · ed8c01f'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '21 Nov 07:16 · f6c84c8'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
@@ -17853,22 +17858,34 @@ setInterval(() => {
 let role = null, me = null;
 const isOwner = () => !!(me && me.owner);
 const isMgr = () => role === 'manager';
-/* The owner of this COPY runs everything on it — except a league that came
-   from somebody else and says so. Setting a PIN on a fresh copy makes you
-   the owner of that copy, which is the only way a copy can be used at all;
-   it must not also hand you somebody else's competition the moment you join
-   it. On a league whose shared copy names another owner, this machine's
-   owner is whatever that league made them, and nothing more. */
+/* The owner of this COPY runs everything on it — except a league that was
+   JOINED from somebody else. Setting a PIN on a fresh copy makes you the
+   owner of that copy, which is the only way a copy can be used at all; it
+   must not also hand you somebody else's competition the moment you paste
+   their code.
+
+   How the league got here is the test, and nothing else. It used to be
+   whether the id the shared copy named matched this machine's owner — and
+   those ids are different on every machine the tool is installed on, so a
+   competition this owner had run for months could be stamped with somebody
+   else's id by one pull and vanish out of his own switcher. A league made
+   or restored here is his. One pasted in from a code is theirs until that
+   league names him, which it does by id once he has signed in on it. */
 /* Whose league it is, by the league's own word. Two ways to own one: this
    copy is yours and the league has not been handed to you by somebody else,
    or the league names YOU as its owner — which is how the same person is
    still in charge on a second tablet that was set up with its own PIN
    before it joined. Being shut out of your own competition because you
    installed the tool twice would be a cure worse than the illness. */
-const ownsLeague = (p, l) => !!(p && ((p.owner && !(l && l.ownerId && l.ownerId !== p.id)) ||
+const ownsLeague = (p, l) => !!(p && ((p.owner && !(l && l.joined)) ||
   (l && l.ownerId && l.ownerId === p.id)));
 const ownerHere = () => ownsLeague(me, activeLeague());
-const myLeaguesFor = p => !p ? [] : ROOT.leagues.filter(l => ownsLeague(p, l) || rolesOf(p)[l.id]);
+/* WHAT IS ON THE SWITCHER. The owner of the copy sees every league on it,
+   always — a league can stop being yours to RUN, it can never stop being
+   yours to look at, and losing one out of the list with no way back is far
+   worse than anything the strictness was buying. */
+const myLeaguesFor = p => !p ? [] : p.owner ? ROOT.leagues.slice()
+  : ROOT.leagues.filter(l => rolesOf(p)[l.id] || (l.ownerId && l.ownerId === p.id));
 const myLeagues = () => myLeaguesFor(me);
 const roleIn = l => !me || !l ? null : ownsLeague(me, l) ? 'manager' : rolesOf(me)[l.id] || null;
 const roleWord = () => ownerHere() ? 'owner' : isMgr() ? 'manager' : 'referee';
@@ -18032,6 +18049,16 @@ function unlock(person) {
 function switchLeague(id) {
   const l = myLeagues().find(x => x.id === id);
   if (!l || l.id === ROOT.active) return closeLeagueMenu();
+  /* A league that came from somebody else's code, and has not named this
+     person in anything. It is on the switcher because it is on this copy
+     and the owner of a copy sees all of it — but there is nothing to open
+     until that league says who they are, so it says so rather than drawing
+     an empty competition with no role behind it. */
+  if (!roleIn(l)) {
+    closeLeagueMenu();
+    return toast(leagueName(l) + ' was joined from another machine\u2019s code and has not named you on it yet. ' +
+      'Sign in with the PIN that league knows you by, or ask its owner to add you.', 'bad');
+  }
   ROOT.active = l.id;
   bindDB();
   role = roleIn(l);
