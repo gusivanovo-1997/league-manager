@@ -5287,7 +5287,19 @@ function liveTicker() {
   sc.textContent = s.h + '–' + s.a;
   sc.style.display = '';
 }
-setInterval(liveTicker, 1000);
+/* Once a second, for every court this device has on: the whistle where a
+   period has run out, and the clocks in the picker. */
+function paintRunningOpts() {
+  const sel = $('liveSel');
+  if (!sel || sel === document.activeElement) return;       // not under a finger mid-choice
+  sel.querySelectorAll('option[data-clk]').forEach(o => {
+    const f = DB.fixtures.find(x => x.id === o.dataset.clk);
+    if (!f) return;
+    const want = runOptHead(f) + (o.dataset.tail || '');
+    if (want !== o.textContent) o.textContent = want;
+  });
+}
+setInterval(() => { sweepClocks(); paintRunningOpts(); liveTicker(); }, 1000);
 
 /* ══════════════ STARS ══════════════
    Team names are written in a hundred places — the table, the fixtures, the
@@ -9545,7 +9557,14 @@ let liveTimer = null;
 /* fixtures still carrying a live status from a session that was closed
    without finishing the match: they are not on screen, but they are still
    wrong in the data */
-const stuckLive = () => DB.fixtures.filter(f => f.status === 'live' && f.id !== live.id && !openElsewhere(f));
+/* One phone can run several courts at once, so "left in live mode" cannot
+   mean "not the one on screen". A match whose clock is still going is being
+   played; only one that was opened and then abandoned with the clock stopped
+   is stuck. */
+const LEFTOVER = 3 * 3600e3;          // a match nobody has touched for three hours
+const stuckLive = () => DB.fixtures.filter(f => f.status === 'live' && f.id !== live.id && !openElsewhere(f) &&
+  !(f.clock && f.clock.running) &&
+  Date.now() - Math.max(+((f.clock || {}).saved) || 0, +f.openedAt || 0) > LEFTOVER);
 /* A match marked live that another window touched in the last three hours
    (opened it, started or paused the clock, logged an event) is being run
    over there, not abandoned. Only older ones are offered for clearing. */
@@ -9633,13 +9652,22 @@ function renderLive() {
   const keep = sel.dataset.open ? '' : sel.value;
   const open = live.id ? DB.fixtures.filter(f => f.id === live.id) : [];
   const elsewhere = DB.fixtures.filter(f => f.id !== live.id && openElsewhere(f));
-  const todo = DB.fixtures.filter(f => f.status !== 'final' && !isOff(f) && f.id !== live.id && elsewhere.indexOf(f) < 0)
+  /* Other courts this same device is running. They are not "still to play"
+     — their clocks are going — and a referee with three on the go needs to
+     see all three without opening each one to find out. */
+  const alsoHere = DB.fixtures.filter(f => f.id !== live.id && f.status === 'live' &&
+    f.clock && elsewhere.indexOf(f) < 0);        // running or stood at half-time: either way it is on here
+  const todo = DB.fixtures.filter(f => f.status !== 'final' && !isOff(f) && f.id !== live.id &&
+      elsewhere.indexOf(f) < 0 && alsoHere.indexOf(f) < 0)
     .sort((a, b) => when(a).localeCompare(when(b)));                 // soonest first
   const done = DB.fixtures.filter(f => f.status === 'final' && f.id !== live.id)
     .sort((a, b) => when(b).localeCompare(when(a)));                 // newest first, round 1 last
 
   sel.innerHTML = DB.fixtures.length
     ? group('On now', open.map(f => opt(f, '● ', 'nowp')).join('')) +
+      group('Also running here', alsoHere.map(f => '<option value="' + f.id + '" class="nowp" data-clk="' + f.id +
+        '" data-tail="' + esc(' · ' + label(f)) + '">' +
+        esc(runOptHead(f) + ' \u00b7 ' + label(f)) + '</option>').join('')) +
       group('Open in another window', elsewhere.map(f => opt(f, '◐ ', '')).join('')) +
       group('Still to play', todo.map(f => opt(f, '', '')).join('')) +
       group('Already played', done.map(f =>
@@ -9906,7 +9934,41 @@ function setPeriod(p, andStart) {
 function clockOf(f) {
   const c = f && f.clock;
   if (!c) return 0;
-  return (c.elapsed || 0) + (c.running ? (Date.now() - c.t0) / 1000 : 0);
+  const t = (c.elapsed || 0) + (c.running ? (Date.now() - c.t0) / 1000 : 0);
+  // a half cannot be longer than a half, whoever was or was not watching it
+  const len = periodLen(c.period || 'H1');
+  return len > 0 ? Math.min(t, len) : t;
+}
+const clockTxt = f => { const s = Math.max(0, Math.floor(clockOf(f)));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+// what one of the other running courts says in the picker, clock and score first
+const runOptHead = f => '▶ ' + clockTxt(f) + ' · ' + (f.homeGoals || 0) + '-' + (f.awayGoals || 0);
+/* THE WHISTLE BLOWS ON EVERY PITCH, not only on the one being looked at.
+   Each match keeps its own clock on the fixture, counted from a timestamp,
+   so several courts can run on one phone at once — but only the match on
+   screen was ever stopped at the end of its half. The others ran straight
+   on into the next game, and the referee came back to a half of eleven
+   minutes. Every running clock is now checked once a second, open or not,
+   and the one that reaches the end of its period is stopped there and said
+   out loud. */
+function sweepClocks() {
+  if (!DB || !Array.isArray(DB.fixtures)) return;
+  let hit = null;
+  DB.fixtures.forEach(f => {
+    const c = f && f.clock;
+    if (!c || !c.running || f.id === live.id || f.status === 'final') return;
+    const len = periodLen(c.period || 'H1');
+    if (!(len > 0)) return;
+    if ((c.elapsed || 0) + (Date.now() - (c.t0 || 0)) / 1000 < len) return;
+    c.elapsed = len; c.running = false; c.saved = Date.now();
+    hit = (hit || []).concat([{ f: f, p: c.period || 'H1' }]);
+  });
+  if (!hit) return;
+  save();
+  hit.forEach(h => toast(teamName(h.f.homeId) + ' v ' + teamName(h.f.awayId) + ' — ' +
+    (h.p === 'BRK' ? 'half-time is up' : h.p === 'H1' ? 'first half over' :
+     h.p === 'H2' ? 'full time' : 'that period is over') + '. It is still open on this device.', 'warn'));
+  renderLive();
 }
 function syncClock() {
   const f = DB.fixtures.find(x => x.id === live.id);
@@ -17520,7 +17582,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '20 Nov 18:49 · 0f5cd20'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '20 Nov 20:52 · 1feccab'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
