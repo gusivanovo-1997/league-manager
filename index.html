@@ -1799,6 +1799,17 @@ td.num .gboot,th .gboot{margin:0}
 .kofin{margin-top:12px;padding:10px 12px;border:1px solid rgba(255,194,71,.35);border-radius:10px;background:rgba(255,194,71,.05)}
 .pill.aetp{color:var(--warn);border-color:rgba(255,194,71,.55);background:rgba(255,194,71,.1);font-weight:600}
 .clock .p.etp{color:var(--warn);font-weight:600}
+/* THE UNATTRIBUTED GOAL. In a competition with no registered players this is
+   the goal button, not the last resort, so it does not look like the rest:
+   its own colour, a ball on it, and in a simple competition it takes the
+   whole width of the card. */
+.btn.ug{display:inline-flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#2f8fd8,#1d6fb5);border-color:#2f8fd8;color:#fff;font-weight:700}
+.btn.ug:hover{background:linear-gradient(135deg,#3a9ce6,#2278c2);border-color:#3a9ce6}
+.btn.ug .ballmark{width:1.2em;height:1.2em;vertical-align:-.22em;margin-right:8px;flex:0 0 auto}
+.btn.ug.big{width:100%;font-size:calc(17px * var(--fs));padding:15px 16px;letter-spacing:.2px}
+.ugrow{gap:8px;flex-wrap:wrap}
+.simpnote{color:var(--muted);font-size:calc(12.5px * var(--fs));margin:2px 0 8px}
 .pill.guestp{color:#c9a7ff;border-color:rgba(201,167,255,.5);background:rgba(201,167,255,.08)}
 :root[data-theme="light"] .pill.guestp{color:#6b3fc0}
 .pill.goldp{color:var(--gold);border-color:rgba(255,197,61,.55);background:rgba(255,197,61,.1)}
@@ -2886,6 +2897,13 @@ tspan.gstar{fill:var(--gold)}
            the live page — not hidden, not counted. -->
       <label class="row small" style="gap:7px;margin:4px 0 12px"><input type="checkbox" id="stBoot">
         <b>Count goalscorers</b> — the Golden Boot, the man of the match and the MVP of the round</label>
+      <!-- A tournament where nobody is registered: no squads to tick in, no
+           numbers, no player database. Every goal goes on the team, and the
+           referee is asked for the man of the match as the result is
+           confirmed — a name typed in, not a player picked from a list. -->
+      <label class="row small" style="gap:7px;margin:4px 0 12px"><input type="checkbox" id="stSimple">
+        <b>Simple competition — nobody registered</b> — goals go on the team, and the referee names the
+        man of the match at the end of each game</label>
       <button class="btn accent" id="btnSaveSettings">Save season settings</button>
     </div>
 
@@ -3475,8 +3493,14 @@ function b64dec(b64) {
 
 /* ── modal ───────────────────────────────────────────────────────────── */
 function modal(title, bodyHTML, buttons) {
-  // the full-screen match is the only thing the browser draws; leave it so the card can be seen and answered
-  if (fsEl() && fsEl() === $('liveBody')) document.exitFullscreen();
+  /* A full-screen match is the only thing the browser draws, so a card left
+     on the page behind it cannot be seen. This used to LEAVE full screen to
+     show one, which is why adding a guest or finishing a match dropped a
+     tablet out of full screen in the middle of a game — and why a soft
+     keyboard appeared to turn it off. The card moves into the full-screen
+     element instead, and goes back to the page as it closes. */
+  const host = fsEl(), card = $('modal');
+  if (host && !host.contains(card)) { card.dataset.fsheld = '1'; host.appendChild(card); }
   $('modalTitle').textContent = title;
   $('modalBody').innerHTML = bodyHTML;
   const foot = $('modalFoot');
@@ -3492,7 +3516,9 @@ function modal(title, bodyHTML, buttons) {
 }
 let renderAfterModal = false;
 const closeModal = () => {
-  $('modal').classList.remove('on');
+  const card = $('modal');
+  if (card.dataset.fsheld) { delete card.dataset.fsheld; document.body.appendChild(card); }
+  card.classList.remove('on');
   // another window saved while this card was open: catch up now it is shut
   if (renderAfterModal) { renderAfterModal = false; if (role) { render(); liveTicker(); } }
 };
@@ -3823,6 +3849,12 @@ function allEvents(every) {
    come back empty, so every surface that reads them simply has nothing to
    draw rather than each one needing to be told. */
 const bootOn = () => !DB.season.noBoot;
+/* A SIMPLE COMPETITION: nobody is registered. A one-day tournament where
+   six sides turn up with whoever they brought has no squad list to tick, no
+   numbers and no player database — the goals belong to the team, and the
+   one name worth writing down is the man of the match, which the referee is
+   asked for as the result is confirmed. */
+const simpleComp = () => !!(DB.season && DB.season.simple);
 function scorerTable() {
   if (!bootOn()) return [];
   const m = {};
@@ -5054,7 +5086,11 @@ const parentOf = v => Object.keys(SUBTABS).find(k => SUBTABS[k].some(s => s[0] =
 function paintSubTabs() {
   const el = $('subTabs');
   if (!el) return;
-  const grp = role ? (SUBTABS[parentOf(currentView)] || []).filter(([k]) => allowedView(k)) : [];
+  /* Nobody is registered, so there is nobody to tick in and nothing to
+     charge a fee to: the two tabs that exist only for squads stay out of
+     the referee's way. */
+  const hide = simpleComp() ? { attend: 1, finance: 1 } : {};
+  const grp = role ? (SUBTABS[parentOf(currentView)] || []).filter(([k]) => allowedView(k) && !hide[k]) : [];
   if (grp.length < 2) { el.hidden = true; el.innerHTML = ''; return; }
   const gold = finalsGold(), pend = DB.regs.filter(r => r.status === 'pending').length;
   el.hidden = false;
@@ -5934,6 +5970,11 @@ const roundName = k => k === 'SEMI' ? 'Semi-finals' : k === 'FINAL' ? 'Finals' :
    calling that a bye would be nonsense. */
 function byesIn(key) {
   if (!/^R/.test(String(key))) return [];
+  /* A whole competition in one morning has no byes in it. A round there is
+     one slot of the clock, two courts wide, and the sides not on at half
+     past nine are not sitting the round out — they are playing at twenty
+     to. Saying "Bye" against them reads as a free point. */
+  if (oneDayComp()) return [];
   const fx = DB.fixtures.filter(f => roundKey(f) === key);
   if (!fx.length) return [];
   const playing = new Set();
@@ -7590,7 +7631,7 @@ function showPlayer(pid) {
   if (currentView === 'players') { freshView = true; render(); window.scrollTo(0, 0); } else go('players');
 }
 const plLink = (pid, html) => pid ? '<a href="#" class="plk" data-pl="' + esc(pid) + '">' + html + '</a>' : html;
-const scorerLinks = t => t.ids.map(id => plLink(id, esc(personName(id)))).join(' &amp; ');
+const scorerLinks = t => t.nm ? esc(t.nm) : t.ids.map(id => plLink(id, esc(personName(id)))).join(' &amp; ');
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-pl]');
   if (!el) return;
@@ -8479,22 +8520,44 @@ function generateFixtures(keepHistory) {
   // out of the hat as well: round one of an alphabetical list used to be the
   // first name against the last, every single time it was drawn
   const season = seasonPairs(bagIds, rounds);
-  const pick = dealTimes(season, courts);
   const first = toMins(startTime);
   const fixtures = [];
-  season.forEach((pairs, r) => {
-    const day = new Date(startDate + 'T00:00:00');
-    day.setDate(day.getDate() + r * gap);
-    const dstr = isoOf(day), onCourt = {};
-    pairs.map((p, i) => ({ p, s: pick[r][i] })).sort((x, y) => x.s - y.s).forEach(({ p, s }) => {
-      onCourt[s] = (onCourt[s] || 0) + 1;
-      fixtures.push({
-        id: uid(), stage: 'regular', round: r + 1, homeId: p[0], awayId: p[1], date: dstr,
-        time: fmtMins(first + s * slot), court: courts > 1 ? String(onCourt[s]) : '', status: 'scheduled',
-        homeGoals: 0, awayGoals: 0, events: []
+  if (gap === 0) {
+    /* THE WHOLE THING IN ONE DAY. Each round used to be dealt its times
+       from nought, so with every round on the same date round two kicked
+       off at the same minute as round one, round three on top of that, and
+       a six-team morning came out as three matches played five times over
+       on two courts. Nobody could read it and nobody could play it.
+
+       One day is one long list instead, and the clock simply keeps running:
+       the courts fill, the next slot starts a slot-length later, and round
+       two begins in the slot after round one runs out. The packer is the
+       same one the group stages use, so no side is ever on two courts at
+       once and a team that has just come off is only brought back when
+       nothing else will fill the court. */
+    const queue = [];
+    season.forEach((pairs, r) => pairs.forEach(p => queue.push({ round: r + 1, homeId: p[0], awayId: p[1] })));
+    packCourts(queue, courts).forEach((took, si) => took.forEach((q, ci) => fixtures.push({
+      id: uid(), stage: 'regular', round: q.round, homeId: q.homeId, awayId: q.awayId, date: startDate,
+      time: fmtMins(first + si * slot), court: courts > 1 ? String(ci + 1) : '', status: 'scheduled',
+      homeGoals: 0, awayGoals: 0, events: []
+    })));
+  } else {
+    const pick = dealTimes(season, courts);
+    season.forEach((pairs, r) => {
+      const day = new Date(startDate + 'T00:00:00');
+      day.setDate(day.getDate() + r * gap);
+      const dstr = isoOf(day), onCourt = {};
+      pairs.map((p, i) => ({ p, s: pick[r][i] })).sort((x, y) => x.s - y.s).forEach(({ p, s }) => {
+        onCourt[s] = (onCourt[s] || 0) + 1;
+        fixtures.push({
+          id: uid(), stage: 'regular', round: r + 1, homeId: p[0], awayId: p[1], date: dstr,
+          time: fmtMins(first + s * slot), court: courts > 1 ? String(onCourt[s]) : '', status: 'scheduled',
+          homeGoals: 0, awayGoals: 0, events: []
+        });
       });
     });
-  });
+  }
   const roundNo = season.length;
   if (keepHistory !== false) archiveSeason();   // each player's season is kept before the results go
   else { const mine = recordsFor(DB.season.draw, new Set(DB.fixtures.map(f => f.id))); DB.archive = (DB.archive || []).filter(a => mine.indexOf(a) < 0); }
@@ -8861,8 +8924,10 @@ function renderFixtures() {
      group instead listed the same handful of kick-off times over and over,
      once per group. */
   const wcS = isWorld();
+  // court 10 must not sort between 1 and 2, and court 1 comes before court 2
+  const ckey = f => String(f.court || '').padStart(3, '0');
   show.sort((a, b) => a.round - b.round || skey(a).localeCompare(skey(b)) ||
-    String(a.grp || '').localeCompare(String(b.grp || '')));
+    ckey(a).localeCompare(ckey(b)) || String(a.grp || '').localeCompare(String(b.grp || '')));
   show.forEach(f => {
     if (f.round !== last) {
       if (last !== null) html += '</table></div>';
@@ -9636,7 +9701,7 @@ function fsChrome() {
   b.id = 'fsExit';
   b.className = 'btn sm';
   b.innerHTML = icon('shrink') + 'Exit';
-  b.onclick = () => { if (fsOn()) document.exitFullscreen(); else leaveBroadcast(); };
+  b.onclick = () => { fsWanted = false; if (fsOn()) document.exitFullscreen(); else leaveBroadcast(); };
   body.appendChild(b);
 }
 function enterBroadcast(why) {
@@ -9682,14 +9747,32 @@ $('btnAppFull').onclick = () => {
 
 $('btnFull').onclick = () => {
   const el = $('liveBody');
-  if (liveFs()) { document.exitFullscreen(); return; }   // back to the app shell if it was open
-  if (el.classList.contains('pseudo')) return leaveBroadcast();
+  if (liveFs()) { fsWanted = false; document.exitFullscreen(); return; }   // back to the app shell if it was open
+  if (el.classList.contains('pseudo')) { fsWanted = false; return leaveBroadcast(); }
   if (!live.id) return toast('Open a match first — then it goes up on the wall.', 'bad');
+  fsWanted = true;
   const req = el.requestFullscreen || el.webkitRequestFullscreen;
   if (!req) return enterBroadcast('This browser will not hand over the screen, so the match fills the window instead.');
   Promise.resolve(req.call(el)).catch(() =>
     enterBroadcast('Full screen was refused, so the match fills the window instead — press F11 for the rest.'));
 };
+/* PRESSED ON, IT STAYS ON. A browser hands the screen back for reasons that
+   have nothing to do with the person holding the tablet: a soft keyboard
+   coming up for a name, the screen locking, an app switch, a notification.
+   The match was then simply dumped back into the app in the middle of a
+   game. Anything other than Exit (or Escape, which IS the way out) now
+   falls back to filling the window instead, which no browser can take away
+   — so it stays full screen until somebody says otherwise. */
+let fsWanted = false;
+addEventListener('keydown', e => { if (e.key === 'Escape' && fsOn()) fsWanted = false; }, true);
+function fsLost() {
+  if (fsOn() || !fsWanted) return;
+  fsWanted = false;
+  if (!live.id || $('liveBody').classList.contains('pseudo')) return;
+  enterBroadcast('The browser took the screen back \u2014 the match still fills the window. Press Exit when you have finished with it.');
+}
+document.addEventListener('fullscreenchange', fsLost);
+document.addEventListener('webkitfullscreenchange', fsLost);
 document.addEventListener('fullscreenchange', paintFull);
 document.addEventListener('webkitfullscreenchange', paintFull);
 paintFull();
@@ -9983,9 +10066,10 @@ function drawLive() {
     const att = attendHere(f, tid);
     return '<div class="card"><h3>' + crest(t && t.id, 'md') +
       esc(teamName(tid)) +
-      '<span class="pill' + (att.in || att.g ? ' ok' : '') + '" id="attCount-' + tid + '" style="margin-left:8px;font-weight:400">' +
-        attendPill(att) + '</span></h3>' +
-      (players.length ? players.map(pl => {
+      (simpleComp() ? '</h3>' :
+        '<span class="pill' + (att.in || att.g ? ' ok' : '') + '" id="attCount-' + tid + '" style="margin-left:8px;font-weight:400">' +
+        attendPill(att) + '</span></h3>') +
+      (simpleComp() ? '' : players.length ? players.map(pl => {
         const here = isHere(f, pl.personId);
         const g = (f.events || []).filter(e => !e.adj && e.type === 'goal' && e.personId === pl.personId).length;
         const y = (f.events || []).filter(e => e.type === 'yellow' && e.personId === pl.personId).length;
@@ -10004,7 +10088,7 @@ function drawLive() {
           '<button class="btn sm bad" data-ev="red|' + which + '|' + pl.personId + '">RC</button>' +
           '<button class="btn sm injb" data-ev="injury|' + which + '|' + pl.personId + '" aria-label="Injured" data-tip="Injured">' + INJ_ICON + '</button>') + '</div>';
       }).join('') : '<div class="empty">No players in this squad.</div>') +
-      guestsIn(f, tid).map(pid => {
+      (simpleComp() ? [] : guestsIn(f, tid)).map(pid => {
         const g = (f.events || []).filter(e => !e.adj && e.type === 'goal' && e.personId === pid).length;
         return '<div class="plyrbtn" data-row="' + pid + '">' +
           '<button class="att on" data-att="' + pid + '" aria-pressed="true" data-tip="Guest — tap to take them off this match"></button>' +
@@ -10016,9 +10100,11 @@ function drawLive() {
           '<button class="btn sm" style="background:rgba(255,210,77,.15);border-color:rgba(255,210,77,.5)" data-ev="yellow|' + which + '|' + pid + '">YC</button>' +
           '<button class="btn sm bad" data-ev="red|' + which + '|' + pid + '">RC</button>') + '</div>';
       }).join('') +
-      '<button class="btn sm" data-addguest="' + f.id + '|' + tid + '" style="margin-top:6px">+ Guest player</button>' +
+      (simpleComp() ? '' : '<button class="btn sm" data-addguest="' + f.id + '|' + tid + '" style="margin-top:6px">+ Guest player</button>') +
       (locked ? '' :
-      '<div class="row" style="margin-top:8px"><button class="btn sm" data-ev="goal|' + which + '|">Goal — unattributed</button>' +
+      '<div class="row ugrow" style="margin-top:8px">' +
+      '<button class="btn ug' + (simpleComp() ? ' big' : ' sm') + '" data-ev="goal|' + which + '|">' + BALL +
+        'Unattributed Goal</button>' +
       '<button class="btn sm" data-ev="own|' + which + '|">Own goal (counts to ' + esc(teamName(which === 'h' ? f.awayId : f.homeId)) + ')</button></div>') + '</div>';
   };
   const evs = (f.events || []).filter(e => !e.adj).sort((a, b) => b.seq - a.seq);
@@ -10662,7 +10748,26 @@ function finaliseMatch(f) {
         esc(personName(pid)) + (inSet.size && !inSet.has(pid) ? ' — not ticked in' : '') + '</option>');
       return rows.length ? '<optgroup label="' + esc(teamName(tid)) + '">' + rows.join('') + '</optgroup>' : '';
     };
-    const g = grp(f.homeId) + grp(f.awayId);
+    const g = simpleComp() ? '' : grp(f.homeId) + grp(f.awayId);
+    /* Nobody is registered, so there is no list to pick from — the name is
+       typed. It is ASKED for rather than offered: in a competition where the
+       goals belong to the team, the man of the match is the only record of
+       who actually played well, and a referee walking off without one has
+       lost it for good. Skipping is a tick, so it is a decision and not an
+       oversight. */
+    if (!g) {
+      const seen = [...new Set(DB.fixtures.map(x => x.mvpName).filter(Boolean))].sort();
+      return '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">' +
+        '<div class="small" style="font-weight:600;margin-bottom:5px">Man of the match</div>' +
+        '<input id="fnMvpName" maxlength="40" list="fnMvpSeen" autocomplete="off" style="width:100%" ' +
+          'placeholder="Type the player\u2019s name" value="' + esc(f.mvpName || '') + '">' +
+        '<datalist id="fnMvpSeen">' + seen.map(s => '<option value="' + esc(s) + '"></option>').join('') + '</datalist>' +
+        '<label class="row small" style="gap:7px;margin-top:8px"><input type="checkbox" id="fnMvpNone"' +
+          (f.status === 'final' && !f.mvpName ? ' checked' : '') + '> No man of the match for this game</label>' +
+        '<div class="small muted" style="margin-top:4px">Whoever the referee says it was. Names already ' +
+          'given today come up as you type.</div>' +
+      '</div>';
+    }
     return !g ? '' :
       '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">' +
         '<div class="small" style="font-weight:600;margin-bottom:5px">Man of the match</div>' +
@@ -10702,9 +10807,10 @@ function finaliseMatch(f) {
         '<input type="number" id="fnPkA" min="0" value="' + pkPre[1] + '" style="width:62px;text-align:center"></div>' +
       '<div id="fnKoLine" style="margin-top:9px"></div></div>' : '') +
     mvpPicker() +
+    (simpleComp() ? '' :
     '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">' +
       '<div class="small" style="font-weight:600;margin-bottom:2px">Matches played</div>' +
-      net(f.homeId, 'fnH') + net(f.awayId, 'fnA') + '</div>',
+      net(f.homeId, 'fnH') + net(f.awayId, 'fnA') + '</div>'),
     [{ label: 'Cancel' }, { label: 'Confirm result', cls: 'ok', fn: () => {
       const fx = fxNow(f);
       if (!fx) { toast('That match was removed in another window.', 'bad'); return; }
@@ -10750,6 +10856,14 @@ function finaliseMatch(f) {
       }
       const pick = $('fnMvp') ? $('fnMvp').value : (f.mvp || '');
       if (pick && person(pick)) f.mvp = pick; else delete f.mvp;
+      if ($('fnMvpName')) {
+        const nm = $('fnMvpName').value.trim().replace(/\s+/g, ' ');
+        if (!nm && !$('fnMvpNone').checked) {
+          toast('Name the man of the match \u2014 or tick "No man of the match" if there was not one.', 'bad');
+          $('fnMvpName').focus(); return false;
+        }
+        if (nm) f.mvpName = nm; else delete f.mvpName;
+      }
       f.manual = editable && (hg !== sNow.h || ag !== sNow.a);
       if (f.status !== 'final') serveSuspensions(f);          // cards become suspensions, and suspensions are served
       f.status = 'final';
@@ -10860,7 +10974,10 @@ function renderResults() {
     const top = roundTopScorer({ fx: fx.filter(f => f.status === 'final') });
     return '<details class="card rdrop ' + secCls(si, k) + '"' + (si === 0 || rk || tk ? ' open' : '') + '><summary><b>' + rl(k) + '</b>' +
       '<span class="small muted">' + (date ? fmtDate(date) + ' · ' : '') + plural(goals, 'goal') + ' · ' + plural(fx.length, 'game') + '</span>' +
-      '<span class="top">' + (top ? '<span class="mvp">MVP of the round</span> <b>' + scorerLinks(top) + '</b> · ' + plural(top.goals, 'goal') : '<span class="muted">no scorer named</span>') +
+      '<span class="top">' + (top ? '<span class="mvp">MVP of the round</span> <b>' + scorerLinks(top) + '</b> · ' + plural(top.goals, 'goal')
+        /* where no goal is ever logged against a name, saying so on every
+           round is not news — it is the competition working as intended */
+        : simpleComp() ? '' : '<span class="muted">no scorer named</span>') +
       '</span></summary><div class="rbody">' +
       fx.map(f => {
         const s = shownScore(f), hw = f.status === 'final' && winnerOf(f) === f.homeId, aw = f.status === 'final' && winnerOf(f) === f.awayId;
@@ -11157,6 +11274,7 @@ $('btnClearFinals').onclick = () => {
    the finals keep the same night rather than asking for one. */
 function seasonStep() {
   const dates = [...new Set(DB.fixtures.filter(f => f.stage === 'regular' && f.date).map(f => f.date))].sort();
+  if (dates.length === 1 && +DB.season.gap === 0) return 0;     // it is all one day: the finals are that day too
   if (dates.length < 2) return 7;
   const a = Date.parse(dates[dates.length - 2] + 'T00:00:00'), b = Date.parse(dates[dates.length - 1] + 'T00:00:00');
   const weeks = Math.round((b - a) / 86400e3 / 7);
@@ -11195,17 +11313,48 @@ function koSlot() {
   for (let i = 1; i < ts.length; i++) if (ts[i] > ts[i - 1]) return ts[i] - ts[i - 1];
   return 45;
 }
-const blankKO = (stage, homeId, awayId, night, date) => ({ id: uid(), stage, round: 0, homeId, awayId,
-  date: date || '',
-  time: night && night.time ? fmtMins(toMins(night.time) + koRunOrder(stage) * koSlot()) : '',
-  court: (night && night.court) || '',
-  status: 'scheduled', homeGoals: 0, awayGoals: 0, events: [], homePens: null, awayPens: null });
+/* A whole competition inside one morning. The finals are not another night
+   then — they are the next slots. A bracket match goes on after everything
+   already on the board that comes before it (the group stage before the
+   semis, the semis before the final), and the two semis share a slot across
+   the courts rather than queueing one behind the other, which is how a
+   six-team morning is actually run. */
+const oneDayComp = () => {
+  const d = [...new Set(DB.fixtures.filter(f => f.stage === 'regular' && f.date).map(f => f.date))];
+  return d.length === 1 && +DB.season.gap === 0;
+};
+// how many courts the last day of the league ran at once
+function koCourts() {
+  const reg = DB.fixtures.filter(f => f.stage === 'regular' && f.date && f.time);
+  if (!reg.length) return 1;
+  const last = reg.map(f => f.date).sort().pop(), by = {};
+  reg.filter(f => f.date === last).forEach(f => { by[f.time] = (by[f.time] || 0) + 1; });
+  return Math.max(1, Math.max.apply(null, Object.keys(by).map(k => by[k])));
+}
+function koOneDaySlot(stage, date) {
+  const tier = STAGE_TIER[stage] || 0, step = koSlot(), c = koCourts();
+  const on = DB.fixtures.filter(f => f.date === date && f.time);
+  const below = on.filter(f => (STAGE_TIER[f.stage] || 0) < tier).map(f => toMins(f.time));
+  const i = on.filter(f => f.stage !== stage && (STAGE_TIER[f.stage] || 0) === tier).length;
+  const base = (below.length ? Math.max.apply(null, below) : 0) + step;
+  return { time: fmtMins(base + Math.floor(i / c) * step), court: c > 1 ? String((i % c) + 1) : '' };
+}
+const blankKO = (stage, homeId, awayId, night, date) => {
+  const one = oneDayComp() && date ? koOneDaySlot(stage, date) : null;
+  return { id: uid(), stage, round: 0, homeId, awayId,
+    date: date || '',
+    time: one ? one.time : (night && night.time ? fmtMins(toMins(night.time) + koRunOrder(stage) * koSlot()) : ''),
+    court: one ? one.court : ((night && night.court) || ''),
+    status: 'scheduled', homeGoals: 0, awayGoals: 0, events: [], homePens: null, awayPens: null };
+};
 /* A bracket drawn before there was a running order has every match at the
    same kick-off: it is put in order once. Times that already differ were
    set on purpose — by this, or by hand on the Schedule button — and are
    left exactly as they are. */
 function spreadKO() {
   let changed = false;
+  // one morning: two semis at once on two courts is the running order, not a bracket nobody has put in order
+  if (oneDayComp()) return false;
   const ko = DB.fixtures.filter(f => f.stage !== 'regular' && f.date && f.time);
   [...new Set(ko.map(f => f.date))].forEach(d => {
     const on = ko.filter(f => f.date === d);
@@ -11911,6 +12060,8 @@ function matchMvp(f) {
     const g = (goalsByPlayer(f)[f.mvp] || {}).goals || 0;
     return { ids: [f.mvp], goals: g };
   }
+  // a name the referee wrote down, in a competition with nobody registered
+  if (f.mvpName) return { ids: [], nm: String(f.mvpName), goals: 0 };
   const by = goalsByPlayer(f), all = Object.keys(by);
   if (!all.length) return null;
   const top = ids => { const g = Math.max(0, ...ids.map(id => by[id].goals));
@@ -11962,7 +12113,7 @@ const mvpGoals = m => plural(m.goals, 'goal') + (m.ids.length > 1 ? ' each' : ''
    nowhere does the award explain how it was arrived at. */
 const mvpAfter = (m, sep) => m && m.goals ? (sep || ' · ') + mvpGoals(m) : '';
 // name with its crest, for whichever surface is asking
-const mvpNamed = (m, mark, join) => m.ids.map(id =>
+const mvpNamed = (m, mark, join) => m.nm ? esc(m.nm) : m.ids.map(id =>
   (mark ? mark((personTeam(id) || {}).id) : '') + esc(personName(id))).join(join || ', ');
 function renderStatCharts() {
   /* The title race moved here from the dashboard: Home answers what happens
@@ -12130,6 +12281,7 @@ function renderSettings() {
   $('stClient').placeholder = leagueName(activeLeague());
   $('stReportSub').placeholder = DB.season.name || '';
   $('stBoot').checked = bootOn();
+  $('stSimple').checked = simpleComp();
   paintAccess();
   let bytes = 0;
   try { bytes = (localStorage.getItem(KEY) || '').length; } catch (e) {}
@@ -12186,6 +12338,7 @@ $('btnSaveSettings').onclick = () => {
       : 'this cannot be blank') + '. Nothing was saved.', 'bad');
   }
   if ($('stBoot').checked) delete DB.season.noBoot; else DB.season.noBoot = true;
+  if ($('stSimple').checked) DB.season.simple = true; else delete DB.season.simple;
   const old = DB.season.name, oldYear = DB.season.year, fmtWas = DB.season.format;
   const renaming = $('stName').value.trim() !== old;
   const correction = renaming && confirm('Rename "' + old + '" to "' + $('stName').value.trim() + '"?\n\n' +
@@ -14013,7 +14166,8 @@ function emailHtmlRaw(d, ball, crests) {
   const MVP = '<span style="display:inline-block;background-color:#e9a100;color:#1a1613;font-size:9.5px;font-weight:800;letter-spacing:1px;padding:1px 7px;border-radius:9px">MVP</span>';
   const mvpOf = f => { const m = matchMvp(f);
     return m ? '<div style="font-size:12px;margin-top:4px;color:' + INK + '">' + MVP + ' ' +
-      m.ids.map(id => '<b style="white-space:nowrap">' + badge((personTeam(id) || {}).id, 18) + esc(personName(id)) + '</b>').join(', ') +
+      (m.nm ? '<b style="white-space:nowrap">' + esc(m.nm) + '</b>'
+        : m.ids.map(id => '<b style="white-space:nowrap">' + badge((personTeam(id) || {}).id, 18) + esc(personName(id)) + '</b>').join(', ')) +
       mvpAfter(m, ' &middot; ') + '</div>' : ''; };
   const mark = px => ball ? '<img src="' + esc(ball) + '" width="' + px + '" height="' + px +
     '" alt="" style="display:block;border:0;outline:none">' : '';
@@ -17327,7 +17481,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '20 Nov 16:10 · 571f821'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '20 Nov 16:36 · f7ae876'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
