@@ -1809,7 +1809,23 @@ td.num .gboot,th .gboot{margin:0}
 .btn.ug .ballmark{width:1.2em;height:1.2em;vertical-align:-.22em;margin-right:8px;flex:0 0 auto}
 .btn.ug.big{width:100%;font-size:calc(17px * var(--fs));padding:15px 16px;letter-spacing:.2px}
 .ugrow{gap:8px;flex-wrap:wrap}
-.simpnote{color:var(--muted);font-size:calc(12.5px * var(--fs));margin:2px 0 8px}
+.simpnote{color:var(--dim);font-size:calc(12.5px * var(--fs));margin:2px 0 8px}
+/* THE COURTS BAR. One device can run several matches at once — each keeps
+   its own clock, on its own fixture — so the screen has to say which ones
+   are on and let the referee step between them without closing anything.
+   Without it, one running match looked like the only match the tool had. */
+.courts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.courts:empty{display:none}
+.crt{display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+  border:1px solid var(--chipline);border-radius:999px;padding:5px 12px;
+  background:var(--chip);color:var(--text);font:inherit;font-size:calc(13.5px * var(--fs));line-height:1.2}
+.crt .t{font-variant-numeric:tabular-nums;font-weight:800;color:var(--accent)}
+.crt.pause .t{color:var(--dim)}
+.crt .s{font-variant-numeric:tabular-nums;font-weight:800}
+.crt .crest{margin:0}
+.crt.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.crt.add{border-style:dashed;color:var(--dim);font-weight:600}
+.crt:disabled{cursor:default}
 .pill.guestp{color:#c9a7ff;border-color:rgba(201,167,255,.5);background:rgba(201,167,255,.08)}
 :root[data-theme="light"] .pill.guestp{color:#6b3fc0}
 .pill.goldp{color:var(--gold);border-color:rgba(255,197,61,.55);background:rgba(255,197,61,.1)}
@@ -2076,6 +2092,11 @@ tspan.gstar{fill:var(--gold)}
   .view[data-view="live"].running #liveSel,
   .view[data-view="live"].running #btnLiveLoad,
   .view[data-view="live"].running #liveHint{display:none}
+  /* ...unless another court is being opened. A match on the screen used to
+     take the picker away with it, so there was no way left to start a
+     second one without closing the first. */
+  .view[data-view="live"].running.picking #liveSel,
+  .view[data-view="live"].running.picking #btnLiveLoad{display:revert}
   .view[data-view="live"].running > .card:first-child{padding:8px 11px;margin-bottom:8px}
   /* A squad is fourteen of these rows and the log is longer again, so the
      room each one takes is the difference between seeing a team and
@@ -2463,6 +2484,7 @@ tspan.gstar{fill:var(--gold)}
         <div class="spacer"></div>
         <span class="muted small" id="liveHint">Referee / scorer mode — tap a player to log the event.</span>
       </div>
+      <div class="courts" id="liveCourts"></div>
     </div>
     <div id="liveBody"></div>
   </section>
@@ -5290,16 +5312,35 @@ function liveTicker() {
 /* Once a second, for every court this device has on: the whistle where a
    period has run out, and the clocks in the picker. */
 function paintRunningOpts() {
+  if (!DB || !Array.isArray(DB.fixtures)) return;
   const sel = $('liveSel');
-  if (!sel || sel === document.activeElement) return;       // not under a finger mid-choice
-  sel.querySelectorAll('option[data-clk]').forEach(o => {
+  /* The picker's own labels are left alone while it is under a finger —
+     rewriting an option mid-choice moves the list. The courts bar below is
+     not part of that list and must go on counting either way; guarding both
+     together is what froze every chip the moment the picker was opened. */
+  if (sel && sel !== document.activeElement) sel.querySelectorAll('option[data-clk]').forEach(o => {
     const f = DB.fixtures.find(x => x.id === o.dataset.clk);
     if (!f) return;
     const want = runOptHead(f) + (o.dataset.tail || '');
     if (want !== o.textContent) o.textContent = want;
   });
+  // and the courts bar, so every chip counts its own match
+  document.querySelectorAll('#liveCourts [data-crtclk]').forEach(e => {
+    const f = DB.fixtures.find(x => x.id === e.dataset.crtclk);
+    if (!f) return;
+    const txt = clockTxt(f);
+    if (e.textContent !== txt) e.textContent = txt;
+    const chip = e.closest('.crt');
+    if (chip) chip.classList.toggle('pause', !(f.clock && f.clock.running));
+  });
+  document.querySelectorAll('#liveCourts [data-crtsc]').forEach(e => {
+    const f = DB.fixtures.find(x => x.id === e.dataset.crtsc);
+    if (!f) return;
+    const txt = (f.homeGoals || 0) + '-' + (f.awayGoals || 0);
+    if (e.textContent !== txt) e.textContent = txt;
+  });
 }
-setInterval(() => { sweepClocks(); paintRunningOpts(); liveTicker(); }, 1000);
+setInterval(() => { sweepClocks(); paintCourts(); paintRunningOpts(); liveTicker(); }, 1000);
 
 /* ══════════════ STARS ══════════════
    Team names are written in a hundred places — the table, the fixtures, the
@@ -9685,7 +9726,9 @@ function renderLive() {
   sel.dataset.open = live.id || '';
   // a phone gives the picker's room back to the match once one is open
   const sec = document.querySelector('.view[data-view="live"]');
-  if (sec) sec.classList.toggle('running', !!live.id);
+  if (sec) { sec.classList.toggle('running', !!live.id); sec.classList.remove('picking'); }
+
+  paintCourts(true);
 
   // the same Close that is on the match log, reachable before you open one
   const stuck = stuckLive(), cb = $('btnCloseTop');
@@ -9823,6 +9866,9 @@ paintFull();
 function openLive(id) {
   const f = DB.fixtures.find(x => x.id === id);
   if (!f) return;
+  // the match being stepped away from, if it is still being played
+  const prev = live.id && live.id !== id ? DB.fixtures.find(x => x.id === live.id) : null;
+  const kept = prev && prev.status === 'live' && prev.clock && prev.clock.running ? prev : null;
   const c = f.clock;
   live = c ? { id, running: !!c.running, elapsed: c.elapsed || 0, half: c.half || 1,
                period: c.period || (c.half === 2 ? 'H2' : 'H1'), t0: c.t0 || 0 }
@@ -9831,6 +9877,49 @@ function openLive(id) {
   if (f.status !== 'final') { if (f.status === 'scheduled') f.status = 'live'; f.openedAt = Date.now(); f.openedBy = DEVICE; f.openedWin = WIN; save(); }
   if (live.running) startTick();               // a match already under way
   renderLive();   // the picker, the Close button and the board all follow the open match
+  if (kept) toast(teamName(kept.homeId) + ' v ' + teamName(kept.awayId) +
+    ' is still running — it is on the bar above, with its own clock.', 'ok');
+}
+/* THE COURTS BAR: every match this device has on, each with its own clock
+   and score, and a way to open one more. Tapping a chip steps on to that
+   match — nothing is closed, nothing is stopped, and the one you left
+   carries on counting.
+
+   It paints itself rather than waiting for the screen to be redrawn,
+   because the moment that matters is the one where a second clock starts:
+   a match is opened before it is started, so the redraw that followed the
+   opening came a beat too early to know about it. */
+let courtsSig = '';
+function paintCourts(force) {
+  const bar = $('liveCourts');
+  if (!bar || !DB || !Array.isArray(DB.fixtures)) return;
+  const sec = document.querySelector('.view[data-view="live"]');
+  const onHere = DB.fixtures.filter(f => f.status === 'live' && f.clock && !openElsewhere(f))
+    .sort((a, b) => { const k = f => (f.date || '') + (f.time || '') + String(f.court || '').padStart(3, '0');
+      return k(a).localeCompare(k(b)); });        // kick-off, then court: the order the day is run
+  const sig = (live.id || '') + '|' + onHere.map(f => f.id).join(',');
+  if (!force && sig === courtsSig) return;
+  courtsSig = sig;
+  const chip = f => '<button type="button" class="crt' + (f.id === live.id ? ' on' : '') +
+    (f.clock && f.clock.running ? '' : ' pause') + '" data-crt="' + f.id + '" ' +
+    'aria-label="' + esc(teamName(f.homeId) + ' v ' + teamName(f.awayId)) + '">' +
+    '<span class="t" data-crtclk="' + f.id + '">' + esc(clockTxt(f)) + '</span>' +
+    crest(f.homeId, 'sm') + '<span class="s" data-crtsc="' + f.id + '">' +
+    (f.homeGoals || 0) + '-' + (f.awayGoals || 0) + '</span>' + crest(f.awayId, 'sm') + '</button>';
+  /* Shown even with nothing open: coming back to the app and finding no
+     sign of the two matches still counting is how one gets forgotten. */
+  bar.innerHTML = onHere.map(chip).join('') +
+    (live.id ? '<button type="button" class="crt add" id="btnAddCourt">+ Another match</button>' : '');
+  bar.querySelectorAll('[data-crt]').forEach(b => b.onclick = () => {
+    if (b.dataset.crt !== live.id) openLive(b.dataset.crt);
+  });
+  const add = $('btnAddCourt');
+  if (add) add.onclick = () => {
+    if (sec) sec.classList.add('picking');
+    const s = $('liveSel');
+    if (s) { try { s.focus(); } catch (e) {} }
+    toast('Pick the match and press Open match. The one on screen keeps running.', 'ok');
+  };
 }
 function liveClock() {
   return live.elapsed + (live.running ? (Date.now() - live.t0) / 1000 : 0);
@@ -17586,7 +17675,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '20 Nov 21:01 · 0aafb2e'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '20 Nov 21:09 · 10acb2e'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
