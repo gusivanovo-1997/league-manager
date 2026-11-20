@@ -15274,6 +15274,7 @@ function appsLiveScript(key) {
     '  tidy_(s, now);',
     '  var who = String(b.by || "");',
     '  var set = b.set || {}, del = b.del || {}, meta = b.meta || null;',
+    '  var mset = b.mset || null, mdel = b.mdel || null;',
     '  if (!s.doc) { s.doc = { fixtures: [], teams: [], people: [] }; }',
     '  var blocked = [];',
     '  var okFx = function (id) {',
@@ -15301,10 +15302,29 @@ function appsLiveScript(key) {
     '  applySet("fixtures", okFx); applyDel("fixtures", okFx);',
     '  applySet("teams"); applyDel("teams");',
     '  applySet("people"); applyDel("people");',
-    '  if (meta) Object.keys(meta).forEach(function (k) { s.doc[k] = meta[k]; });',
+    '/* A settings block arrives as the fields that tablet changed, and only',
+    ' * those fields are written \u2014 so two people in Setup at once keep each',
+    ' * other\u2019s work. The whole block is sent as well, for nothing more than',
+    ' * telling an older tool apart from a newer one, and is ignored for any',
+    ' * block that came with its fields. What goes into the log afterwards is',
+    ' * the block as it now STANDS, so a tablet catching up by patch is told',
+    ' * the merged truth rather than one tablet\u2019s half of it. */',
+    '  var mdone = null;',
+    '  if (mset) Object.keys(mset).forEach(function (k) {',
+    '    var cur = s.doc[k];',
+    '    if (!cur || typeof cur !== "object" || Object.prototype.toString.call(cur) === "[object Array]") cur = {};',
+    '    var f = mset[k] || {};',
+    '    Object.keys(f).forEach(function (x) { cur[x] = f[x]; });',
+    '    ((mdel && mdel[k]) || []).forEach(function (x) { delete cur[x]; });',
+    '    s.doc[k] = cur; (mdone = mdone || {})[k] = cur;',
+    '  });',
+    '  if (meta) Object.keys(meta).forEach(function (k) {',
+    '    if (mset && mset[k]) return;',
+    '    s.doc[k] = meta[k]; (mdone = mdone || {})[k] = meta[k];',
+    '  });',
     '  s.rev = (s.rev || 0) + 1;',
     '  var n_ = count_(s.doc);',
-    '  s.log.push({ rev: s.rev, set: set, del: del, meta: meta });',
+    '  s.log.push({ rev: s.rev, set: set, del: del, meta: mdone });',
     '  if (s.log.length > LOGMAX) s.log = s.log.slice(-LOGMAX);',
     '  put_(s);',
     '  return { ok: true, v: 3, rev: s.rev, claims: s.claims, blocked: blocked, n: n_ };',
@@ -15597,6 +15617,15 @@ function syncLoad() {
   try {
     const s = JSON.parse(localStorage.getItem(syncSlot()) || 'null');
     if (s && s.shadow) { SY.rev = s.rev || 0; SY.shadow = s.shadow; SY.at = s.at || 0; SY.fin = s.fin || {}; SY.rfin = s.rfin || {}; }
+    /* A picture of the shared copy taken before settings travelled field by
+       field holds one fingerprint for the whole block. Where it still agrees
+       with what is here, it is simply taken again field by field; where it
+       does not, the block goes up whole once, as it used to, and the answer
+       comes back in the new shape. */
+    if (SY.shadow && SY.shadow.meta) SYNC_META.forEach(k => {
+      const v = metaOf(k), m = SY.shadow.meta[k];
+      if (typeof m === 'string' && plainObj(v) && syncHash(v) === m) SY.shadow.meta[k] = metaMark(v);
+    });
   } catch (e) {}
 }
 function syncStore() {
@@ -15609,6 +15638,45 @@ function syncStore() {
    quietly disappears as records are rewritten. */
 const syncHash = x => hashStr(JSON.stringify(x === undefined ? null : x,
   (k, v) => (k === 'own' || k === 'edAt') ? undefined : v));
+/* A settings block is not one thing.
+
+   Two people in Setup at the same time are almost never in the same box:
+   one is fixing the points for a win while the other sets the half length.
+   Sent whole, the second save carried the first person's OLD value with it
+   and quietly put it back — the change was accepted, saved, and gone, with
+   nothing to show it had happened.
+
+   So a plain object is fingerprinted FIELD BY FIELD, and a tablet sends
+   only the fields it actually changed. Anything else (a name, a flag, a
+   list) is one value and still travels whole. One level deep: a field that
+   holds an object or a list is itself a field, and the last save of THAT
+   field wins — which is as far as this can be taken without having to
+   guess what a half-edited list means. */
+const plainObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
+const metaMark = v => {
+  if (!plainObj(v)) return syncHash(v);
+  const m = {};
+  Object.keys(v).forEach(f => m[f] = syncHash(v[f]));
+  return m;
+};
+/* What came down for a settings block, field by field: whatever this tablet
+   has not sent yet stays its own, and every other field is taken. */
+function metaMerge(k, inc, ours) {
+  const cur = metaOf(k);
+  if (!plainObj(cur) || !plainObj(inc)) return false;
+  let hit = false;
+  Object.keys(inc).forEach(f => {
+    if (ours && (f in ours)) return;
+    if (syncHash(cur[f]) === syncHash(inc[f])) return;
+    cur[f] = inc[f]; hit = true;
+  });
+  // a field the shared copy no longer has is a field somebody removed
+  Object.keys(cur).forEach(f => {
+    if ((f in inc) || (ours && (f in ours))) return;
+    delete cur[f]; hit = true;
+  });
+  return hit;
+}
 function syncDoc() {
   const d = {};
   SYNC_LISTS.forEach(n => d[n] = DB[n] || []);
@@ -15618,7 +15686,7 @@ function syncDoc() {
 function shadowOf(doc) {
   const s = { meta: {} };
   SYNC_LISTS.forEach(n => { s[n] = {}; (doc[n] || []).forEach(x => { if (x && x.id) s[n][x.id] = syncHash(x); }); });
-  SYNC_META.forEach(k => s.meta[k] = syncHash(doc[k]));
+  SYNC_META.forEach(k => s.meta[k] = metaMark(doc[k]));
   return s;
 }
 /* When each record was last altered, and on which machine it happened.
@@ -15671,7 +15739,7 @@ function orphanSquad() {
 function syncDiff() {
   if (!SY.shadow) return null;
   const now = syncDoc(), a = SY.shadow, set = {}, del = {}, stale = [];
-  let any = false, meta = null;
+  let any = false, meta = null, mset = null, mdel = null;
   SYNC_LISTS.forEach(n => {
     const s = {}, d = [], seen = {};
     (now[n] || []).forEach(x => {
@@ -15704,12 +15772,25 @@ function syncDiff() {
     if (d.length) del[n] = d;
   });
   SYNC_META.forEach(k => {
-    if (a.meta[k] !== syncHash(now[k])) { (meta = meta || {})[k] = now[k]; any = true; }
+    const v = now[k], mk = a.meta[k];
+    if (plainObj(v) && plainObj(mk)) {
+      const f = {}; let d = null, hit = false;
+      Object.keys(v).forEach(x => { if (mk[x] !== syncHash(v[x])) { f[x] = v[x]; hit = true; } });
+      Object.keys(mk).forEach(x => { if (!(x in v)) { (d = d || []).push(x); hit = true; } });
+      /* The whole block goes up as well as the fields: a web app that has
+         not been updated yet knows nothing of fields, and must go on doing
+         what it did before rather than stop carrying settings at all. */
+      if (hit) { (meta = meta || {})[k] = v; (mset = mset || {})[k] = f;
+        if (d) (mdel = mdel || {})[k] = d; any = true; }
+    } else if (syncHash(v) !== (typeof mk === 'string' ? mk : '\u0000')) {
+      (meta = meta || {})[k] = v; any = true;
+    }
   });
-  return any || stale.length ? { set, del, meta, stale } : null;
+  return any || stale.length ? { set, del, meta, mset, mdel, stale } : null;
 }
 const syncCount = p => !p ? 0 : SYNC_LISTS.reduce((t, n) =>
-  t + Object.keys((p.set || {})[n] || {}).length + (((p.del || {})[n] || []).length), 0) + (p.meta ? 1 : 0);
+  t + Object.keys((p.set || {})[n] || {}).length + (((p.del || {})[n] || []).length), 0) +
+  (p.meta || p.mset || p.mdel ? 1 : 0);
 /* Which matches the shared copy has as FINISHED, and the moment this device
    first saw that.
 
@@ -15749,7 +15830,7 @@ function shadowApply(p, kept) {
     ((p.del || {})[n] || []).forEach(id => { if (SY.shadow[n] && !stuck(id)) { delete SY.shadow[n][id];
       if (n === 'fixtures') delete SY.rfin[id]; } });
   });
-  if (p.meta) Object.keys(p.meta).forEach(k => SY.shadow.meta[k] = syncHash(p.meta[k]));
+  if (p.meta) Object.keys(p.meta).forEach(k => SY.shadow.meta[k] = metaMark(p.meta[k]));
 }
 /* Apply what came down, but never over the top of something this tablet
    has changed and not yet sent — those are ours until they go up. */
@@ -15812,8 +15893,15 @@ function docApply(p, keep) {
     if (d && d.length) DB[n] = DB[n].filter(x => !x || d.indexOf(x.id) < 0 || held(n, x.id));   // a delete keeps whatever is unsent here
   });
   if (p.meta) Object.keys(p.meta).forEach(k => {
-    if (keep && keep.meta && keep.meta[k] !== undefined) return;
     if (SYNC_ROOT[k]) return staffMerge(p.meta[k]);    // not the league's to hold: it lives at the root
+    const ours = keep && keep.mset && keep.mset[k];
+    if (keep && keep.meta && keep.meta[k] !== undefined) {
+      /* Both ends have touched this one. Field by field where that is what
+         it is — the boxes this tablet has not sent are its own, the rest are
+         taken — and otherwise it stays ours until it goes up, as before. */
+      if (ours) metaMerge(k, p.meta[k], ours);
+      return;
+    }
     DB[k] = p.meta[k];
   });
   /* Records that arrived are not this machine's doing. Remembering them now
@@ -15955,7 +16043,8 @@ async function syncTick(force) {
       SY.behind = sig;
     } else SY.behind = '';
     if (out && syncCount(out)) {
-      const w = await syncPost({ action: 'push', base: SY.rev, set: out.set, del: out.del, meta: out.meta });
+      const w = await syncPost({ action: 'push', base: SY.rev, set: out.set, del: out.del,
+        meta: out.meta, mset: out.mset, mdel: out.mdel });
       if (lg !== ROOT.active) return;
       if (w.ok) {
         const stuck = w.blocked || [];
@@ -17238,7 +17327,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '20 Nov 15:10 · d2839de'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '20 Nov 16:10 · 571f821'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
