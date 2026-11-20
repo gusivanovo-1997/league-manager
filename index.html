@@ -9990,8 +9990,26 @@ function paintCourts(force) {
   if (add) add.onclick = () => {
     if (sec) sec.classList.add('picking');
     const s = $('liveSel');
-    if (s) { try { s.focus(); } catch (e) {} }
-    toast('Pick the match and press Open match. The one on screen keeps running.', 'ok');
+    if (!s) return;
+    /* The picker opens on the match that comes NEXT, not on the one already
+       on the screen. Asking for another court and being offered the court
+       you are standing on is a tap wasted every time: the day runs in order,
+       so the next one down the clock — same slot and the next court, then
+       the slot after that — is what is wanted, with anything already open
+       here or on another tablet passed over. */
+    const on = {};
+    (DB.fixtures || []).forEach(f => { if (f.status === 'live' && f.clock) on[f.id] = 1; });
+    const key = f => (f.date || '9999') + (f.time || '') + String(f.court || '').padStart(3, '0');
+    const next = (DB.fixtures || []).filter(f => f.status !== 'final' && !isOff(f) &&
+        f.id !== live.id && !on[f.id] && !openElsewhere(f))
+      .sort((a, b) => key(a).localeCompare(key(b)))[0];
+    if (next) s.value = next.id;
+    try { s.focus(); } catch (e) {}
+    toast(next
+      ? 'Next up: ' + teamName(next.homeId) + ' v ' + teamName(next.awayId) +
+        (next.time ? ', ' + next.time : '') + (next.court ? ' court ' + next.court : '') +
+        '. Press Open match \u2014 the one on screen keeps running.'
+      : 'Every match left is already open on this device.', next ? 'ok' : 'bad');
   };
 }
 function liveClock() {
@@ -17843,7 +17861,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '21 Nov 07:38 · ca242d9'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '21 Nov 07:46 · 62666a9'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
