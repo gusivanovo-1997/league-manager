@@ -1814,6 +1814,19 @@ td.num .gboot,th .gboot{margin:0}
    its own clock, on its own fixture — so the screen has to say which ones
    are on and let the referee step between them without closing anything.
    Without it, one running match looked like the only match the tool had. */
+/* the series board: one line per pairing, the way a rachão is actually read */
+.sser{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line)}
+.sser:last-child{border-bottom:0}
+.sser .sd{display:flex;align-items:center;gap:7px;flex:1;min-width:0}
+.sser .sd.r{justify-content:flex-end;text-align:right}
+.sser .sd b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sser .sw{font-variant-numeric:tabular-nums;font-weight:800;font-size:calc(19px * var(--fs));white-space:nowrap}
+.sser .sw i{font-style:normal;color:var(--dim);margin:0 4px;font-weight:600}
+.sser .won{color:var(--accent)}
+.stag{display:inline-block;font-size:calc(10.5px * var(--fs));font-weight:800;letter-spacing:.9px;text-transform:uppercase;
+  border-radius:999px;padding:2px 9px;background:var(--chip);color:var(--dim);border:1px solid var(--chipline);white-space:nowrap}
+.stag.held{background:var(--grad);color:#1d0f05;border-color:transparent}
+.stag.lead{color:var(--accent);border-color:var(--accent)}
 .courts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .courts:empty{display:none}
 .crt{display:inline-flex;align-items:center;gap:6px;cursor:pointer;
@@ -2450,6 +2463,7 @@ tspan.gstar{fill:var(--gold)}
         <div class="field"><label>Format</label><select id="fxFormat">
           <option value="finals">Group stage / league + finals — everyone plays everyone, top 4 to the semis</option>
           <option value="league">League only — pontos corridos, no finals</option>
+          <option value="rachao">Rachão — 2 to 4 teams, each pair plays its own series (State of Origin)</option>
           <option value="cup">Knockout cup — lose and you are out</option>
           <option value="groups">Groups → knockout — Copa style, top two go through</option>
           <option value="ko">Knockout bracket — 4, 8, 16 or 32 teams, seeded</option>
@@ -2523,6 +2537,15 @@ tspan.gstar{fill:var(--gold)}
          the trophy before the twelve tables that decided who is on it. -->
     <div class="card" id="tableBrkCard" style="display:none"><h3 class="goldtxt">The road to the trophy</h3>
       <div id="tableBrk" data-nostar></div></div>
+    <!-- A rachão is decided pair by pair, so the pairs lead the page. -->
+    <div class="card" id="tableSeriesCard" style="display:none">
+      <div class="row" style="margin-bottom:10px">
+        <h3 style="margin:0">The series</h3>
+        <div class="spacer"></div>
+        <span class="muted small" id="seriesNote"></span>
+      </div>
+      <div id="tableSeries"></div>
+    </div>
     <div class="card">
       <div class="row" style="margin-bottom:10px">
         <h3 style="margin:0">Season table</h3>
@@ -2907,6 +2930,7 @@ tspan.gstar{fill:var(--gold)}
         <div class="field"><label>Competition format</label><select id="stFormat">
           <option value="finals">Group stage / league + finals — everyone plays everyone, top 4 to the semis</option>
           <option value="league">League only — pontos corridos, no finals</option>
+          <option value="rachao">Rachão — 2 to 4 teams, each pair plays its own series (State of Origin)</option>
           <option value="cup">Knockout cup — lose and you are out</option>
           <option value="groups">Groups → knockout — Copa style, top two go through</option>
           <option value="ko">Knockout bracket — 4, 8, 16 or 32 teams, seeded</option>
@@ -6111,7 +6135,51 @@ const cancelLine = x => x.off
     (x.from ? ' on ' + fmtDate(x.from) : '') + ' — it is now on ' + (x.to ? fmtDate(x.to) : 'a date to be confirmed') + '.';
 /* A season can be league only — "pontos corridos": everyone plays everyone,
    no finals, the table decides the champion. */
-const leagueOnly = () => DB.season.format === 'league';
+const leagueOnly = () => DB.season.format === 'league' || isSeries();
+/* THE RACHAO. Two, three or four sides and nothing else: everybody plays
+   everybody, as many times round as the draw asks for, and there is no
+   bracket at the end because there is nothing a bracket would add.
+
+   What is counted is not the table. Each PAIR of teams plays its own little
+   series — State of Origin, best of whatever they play — and the side that
+   wins more of those meetings holds that series. The night belongs to
+   whoever holds the most of them. A table still runs underneath it, and
+   settles a tie, but the series are the thing. */
+const isSeries = () => (DB.season || {}).format === 'rachao';
+const SERIES_MAX = 4;
+/* Every pairing, and where its series stands. Only played matches count
+   towards it; the rest are what is left to play. A drawn match is a draw —
+   it wins nobody the series, and a series level at the end is shared. */
+function seriesBoard() {
+  const ts = (DB.teams || []).slice();
+  const out = [];
+  for (let i = 0; i < ts.length; i++) for (let j = i + 1; j < ts.length; j++) {
+    const a = ts[i], b = ts[j];
+    const met = (DB.fixtures || []).filter(f => f.stage === 'regular' && !isOff(f) &&
+      ((f.homeId === a.id && f.awayId === b.id) || (f.homeId === b.id && f.awayId === a.id)));
+    let aw = 0, bw = 0, dr = 0;
+    met.filter(f => f.status === 'final').forEach(f => {
+      const w = winnerOf(f);
+      if (!w) dr++; else if (w === a.id) aw++; else bw++;
+    });
+    const played = aw + bw + dr, left = met.length - played;
+    const lead = aw === bw ? null : aw > bw ? a.id : b.id;
+    // it is held once the rest of the series cannot change who is ahead
+    const held = lead && Math.abs(aw - bw) > left ? lead : null;
+    out.push({ a: a.id, b: b.id, aw: aw, bw: bw, dr: dr, played: played, of: met.length, left: left, lead: lead, held: held });
+  }
+  return out;
+}
+// how many series each side holds, and who is holding the most of them
+function seriesTally() {
+  const by = {}, board = seriesBoard();
+  (DB.teams || []).forEach(t => by[t.id] = 0);
+  board.forEach(s => { if (s.held) by[s.held] = (by[s.held] || 0) + 1; });
+  const best = Math.max(0, ...Object.keys(by).map(k => by[k]));
+  const top = Object.keys(by).filter(k => by[k] === best && best > 0);
+  return { by: by, board: board, best: best, top: top,
+    done: board.length > 0 && board.every(s => s.left === 0) };
+}
 /* "Mata-mata": a knockout cup. Every tie is played once, the loser is out,
    and the last team standing wins it — so there is no table and no bracket
    locked off a table, only round after round of winners.
@@ -8357,6 +8425,9 @@ function stampDraw(bag) { bag.forEach((t, i) => t.drawPos = i); }
 function generateFixtures(keepHistory) {
   const teams = DB.teams.map(t => t.id);
   if (teams.length < 2) return toast('Add at least two teams first.', 'bad');
+  if ($('fxFormat').value === 'rachao' && teams.length > SERIES_MAX)
+    return toast('A rachão is ' + SERIES_MAX + ' teams at the most \u2014 there are ' + teams.length +
+      '. Use a league or a group stage for more.', 'bad');
   /* The hat. Everything below is built from the order the teams come out of
      it — which group a side lands in, where it sits inside that group, who
      it meets in round one, which half of the bracket it is in — so nothing
@@ -8634,7 +8705,8 @@ function generateFixtures(keepHistory) {
   DB.fixtures = fixtures;                // as the card promised: the old draw AND its finals go
   DB.season.draw = uid(); DB.season.drawnAs = DB.season.name; DB.season.drawnFormat = DB.season.format;
   DB.season.gap = gap;
-  DB.season.format = $('fxFormat').value === 'league' ? 'league' : 'finals';   // a cup and a World Cup return above
+  DB.season.format = $('fxFormat').value === 'league' ? 'league'
+    : $('fxFormat').value === 'rachao' ? 'rachao' : 'finals';   // a cup and a World Cup return above
   DB.teams.forEach(t => { delete t.joinedRound; delete t.missedMatches; delete t.equivPoints; });
   DB.season.rounds = rounds;            // a team joining later needs to know this
   save(); render();
@@ -11324,7 +11396,42 @@ function editResult(id) {
 }
 
 /* ══════════════ TABLE ══════════════ */
+/* The series board, as a rachão is actually read: who has beaten whom, how
+   often, and which of those is settled. */
+function paintSeries() {
+  const card = $('tableSeriesCard');
+  if (!card) return;
+  card.style.display = isSeries() ? '' : 'none';
+  if (!isSeries()) return;
+  const T = seriesTally();
+  const side = (tid, right) => '<span class="sd' + (right ? ' r' : '') + '">' +
+    (right ? '<b>' + esc(teamName(tid)) + '</b>' + crest(tid, 'md') : crest(tid, 'md') + '<b>' + esc(teamName(tid)) + '</b>') + '</span>';
+  $('tableSeries').innerHTML = T.board.length
+    ? T.board.map(s => {
+      const tag = s.held ? '<span class="stag held">' + esc(teamName(s.held)) + ' hold it</span>'
+        : s.lead ? '<span class="stag lead">' + esc(teamName(s.lead)) + ' lead</span>'
+        : s.played ? '<span class="stag">level</span>'
+        : '<span class="stag">to play</span>';
+      return '<div class="sser">' + side(s.a) +
+        '<span class="sw"><span class="' + (s.aw > s.bw ? 'won' : '') + '">' + s.aw + '</span>' +
+          '<i>\u2013</i><span class="' + (s.bw > s.aw ? 'won' : '') + '">' + s.bw + '</span></span>' +
+        side(s.b, true) + tag + '</div>';
+    }).join('')
+    : '<div class="empty">Add teams to see the series.</div>';
+  const nm = ids => ids.map(teamName).join(' & ');
+  const one = T.board.length === 1;        // two teams: there is only the one series
+  $('seriesNote').textContent = !T.board.length ? ''
+    : T.done
+      ? (!T.top.length ? (one ? 'The series is shared' : 'Every series shared')
+         : T.top.length > 1 ? 'Shared: ' + nm(T.top) + ', ' + plural(T.best, 'series') + ' each'
+         : one ? nm(T.top) + ' win the series'
+         : nm(T.top) + ' take it, ' + T.best + ' series of ' + T.board.length)
+      : (T.best ? nm(T.top) + ' ' + (T.top.length > 1 ? 'hold' : 'holds') + ' ' +
+           (one ? 'the series' : plural(T.best, 'series') + ' so far')
+         : 'Nothing settled yet');
+}
 function renderTable() {
+  paintSeries();
   /* The bracket at the top of Competition, from the moment there is one. */
   const koOn = isWorld() && DB.fixtures.some(f => (f.round || 0) > WC_GRD);
   $('tableBrkCard').style.display = koOn ? '' : 'none';
@@ -17675,7 +17782,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '20 Nov 21:09 · 10acb2e'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '20 Nov 21:14 · 99597f3'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
