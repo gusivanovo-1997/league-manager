@@ -8697,8 +8697,14 @@ function generateFixtures(keepHistory) {
        nothing else will fill the court. */
     const queue = [];
     season.forEach((pairs, r) => pairs.forEach(p => queue.push({ round: r + 1, homeId: p[0], awayId: p[1] })));
+    /* The round number is the slot. Played over weeks a round is a night
+       and the two are the same thing anyway; played in one morning the
+       rounds interleave as the courts fill, and a fixture list that says
+       Round 1 at 09:30, Round 2 at 09:40 and Round 1 again at 09:50 is
+       unreadable however true it is. Numbering them down the clock makes
+       the order on the sheet and the order on the pitch the same order. */
     packCourts(queue, courts).forEach((took, si) => took.forEach((q, ci) => fixtures.push({
-      id: uid(), stage: 'regular', round: q.round, homeId: q.homeId, awayId: q.awayId, date: startDate,
+      id: uid(), stage: 'regular', round: si + 1, homeId: q.homeId, awayId: q.awayId, date: startDate,
       time: fmtMins(first + si * slot), court: courts > 1 ? String(ci + 1) : '', status: 'scheduled',
       homeGoals: 0, awayGoals: 0, events: []
     })));
@@ -8859,18 +8865,24 @@ function printDraw() {
     const fx = fin.filter(f => roundKey(f) === k);
     if (fx.length) groups.push({ title: t, ko: k, fx });
   });
-  /* All on one day means one session, and a sheet cut up by matchday cuts
-     the clock up with it: the ten matches kicking off at nine are split
-     across two pages because four of them are matchday one and six are
-     matchday two. On a single date the group stage prints as one run, read
-     down the clock, with the matchday on each row instead. */
-  const gSecs = groups.filter(g => g.round && g.fx.some(f => f.grp));
-  const gDates = new Set(gSecs.reduce((a, g) => a.concat(g.fx.map(f => f.date || '')), []));
-  if (gSecs.length > 1 && gDates.size === 1) {
-    const at = groups.indexOf(gSecs[0]);
-    const all = gSecs.reduce((a, g) => a.concat(g.fx), []);
-    gSecs.forEach(g => groups.splice(groups.indexOf(g), 1));
-    groups.splice(at, 0, { title: 'Group stage', fx: all, md: true });
+  /* ALL ON ONE DAY IS ONE RUN DOWN THE CLOCK. A sheet cut into rounds cuts
+     the clock up with it: the two matches kicking off at half past nine are
+     printed under Round 1, the next two under Round 2 a page later, and the
+     sheet no longer says what happens at twenty to ten. Nobody can run a
+     morning off it.
+
+     So on a single date every round is printed as one section, in kick-off
+     order, banded by the minute each throw-in happens — 09:30, two matches,
+     courts 1 and 2 — with the round named on each row. The semi-finals and
+     the final stay in their own sections after it, where they belong. */
+  const rSecs = groups.filter(g => g.round);
+  const rDates = new Set(rSecs.reduce((a, g) => a.concat(g.fx.map(f => f.date || '')), []));
+  if (rSecs.length > 1 && rDates.size === 1) {
+    const at = groups.indexOf(rSecs[0]);
+    const all = rSecs.reduce((a, g) => a.concat(g.fx), []);
+    const grouped = all.some(f => f.grp);
+    rSecs.forEach(g => groups.splice(groups.indexOf(g), 1));
+    groups.splice(at, 0, { title: grouped ? 'Group stage' : 'Fixtures', fx: all, md: true });
   }
   if (!groups.length) return toast('Nothing to print yet — generate the draw first.', 'bad');
   const badge = tid => '<img src="' + esc(logoOf(tid) || SHIELD_SVG) + '" alt="">';
@@ -8882,13 +8894,14 @@ function printDraw() {
   const row = (f, ko, grp) => '<tr><td class="t">' + esc(f.time || '—') + '</td>' +
     (courts ? '<td class="c">' + (f.court ? 'Court ' + esc(f.court) : '') + '</td>' : '') +
     (grp ? '<td class="g">' + (f.grp ? 'Group ' + esc(f.grp) +
-      (grp === 2 && f.round ? ' · MD' + f.round : '') : '') + '</td>' : '') +
+      (grp === 2 && f.round ? ' \u00b7 MD' + f.round : '')
+      : grp === 2 && f.round ? 'Round ' + f.round : '') + '</td>' : '') +
     (ko ? '<td class="k">' + esc(stageLabel(f.stage)) + '</td>' : '') +
     '<td class="h">' + side(f.homeId) + '</td>' +
     '<td class="s">' + (f.status === 'final' ? f.homeGoals + ' – ' + f.awayGoals : 'v') + '</td>' +
     '<td class="a">' + side(f.awayId) + '</td></tr>';
   const body = groups.map((g, i) => {
-    const gHas = g.fx.some(f => f.grp) ? (g.md ? 2 : 1) : 0;
+    const gHas = g.fx.some(f => f.grp) ? (g.md ? 2 : 1) : (g.md ? 2 : 0);
     const cols = 4 + (courts ? 1 : 0) + (gHas ? 1 : 0);
     const dates = [...new Set(g.fx.map(f => f.date).filter(Boolean))].sort().map(fmtDate).join(', ');
     /* A World Cup matchday is twelve groups playing at once. Printed as one
@@ -18057,7 +18070,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '21 Nov 09:26 · 01b302a'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '21 Nov 09:36 · c77c73b'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
