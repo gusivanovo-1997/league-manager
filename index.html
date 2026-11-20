@@ -15215,9 +15215,10 @@ function appsLiveScript(key) {
     ' * way, which is the only way that can carry real records.',
     ' *',
     ' * The cache is only ever a copy of what the file says, and it is dropped',
-    ' * after two minutes, so the worst a wrong one can do is hold a tablet a',
-    ' * couple of minutes behind before the long way puts it right. */',
-    'var SUMTTL = 120;             // seconds the cheap answer is trusted',
+    ' * after a minute, so the worst a wrong one can do is hold a tablet a',
+    ' * minute behind before the long way puts it right — and a tablet taking',
+    ' * the long way once a minute is also what checks the cache is honest. */',
+    'var SUMTTL = 60;              // seconds the cheap answer is trusted',
     'function sum_() {',
     '  try { return JSON.parse(CacheService.getScriptCache().get("SUM") || "null"); } catch (x) { return null; }',
     '}',
@@ -17237,7 +17238,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '20 Nov 14:48 · 0b7dc6d'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '20 Nov 15:10 · d2839de'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
