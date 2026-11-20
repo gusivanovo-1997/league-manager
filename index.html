@@ -2427,7 +2427,7 @@ tspan.gstar{fill:var(--gold)}
             that group, who it meets first and which half of the bracket it is in. Pick the listed order
             only for a draw already made somewhere else, or a file that carries its own groups.</div></div>
         <div class="field"><label>Format</label><select id="fxFormat">
-          <option value="finals">League + finals (gold 1–4, silver 5–8)</option>
+          <option value="finals">Group stage / league + finals — everyone plays everyone, top 4 to the semis</option>
           <option value="league">League only — pontos corridos, no finals</option>
           <option value="cup">Knockout cup — lose and you are out</option>
           <option value="groups">Groups → knockout — Copa style, top two go through</option>
@@ -2883,7 +2883,7 @@ tspan.gstar{fill:var(--gold)}
         <div class="field"><label>Minimum age</label><input type="number" id="stAge" min="0" max="99"></div>
         <div class="field"><label>Match fee per player ($)</label><input type="number" id="stFee" min="0" step="0.5"></div>
         <div class="field"><label>Competition format</label><select id="stFormat">
-          <option value="finals">League + finals (gold 1–4, silver 5–8)</option>
+          <option value="finals">Group stage / league + finals — everyone plays everyone, top 4 to the semis</option>
           <option value="league">League only — pontos corridos, no finals</option>
           <option value="cup">Knockout cup — lose and you are out</option>
           <option value="groups">Groups → knockout — Copa style, top two go through</option>
@@ -2901,6 +2901,12 @@ tspan.gstar{fill:var(--gold)}
            numbers, no player database. Every goal goes on the team, and the
            referee is asked for the man of the match as the result is
            confirmed — a name typed in, not a player picked from a list. -->
+      <!-- Six or seven sides in one group, everyone playing everyone once or
+           twice, and the top four into the semi-finals. That is this format
+           with the Silver Cup turned off: with eight or more teams it would
+           otherwise also draw a 5-8 bracket nobody asked for. -->
+      <label class="row small" style="gap:7px;margin:4px 0 12px"><input type="checkbox" id="stNoSilver">
+        <b>Top four only</b> — the semi-finals and the final, and no Silver Cup for 5th to 8th</label>
       <label class="row small" style="gap:7px;margin:4px 0 12px"><input type="checkbox" id="stSimple">
         <b>Simple competition — nobody registered</b> — goals go on the team, and the referee names the
         man of the match at the end of each game</label>
@@ -5090,6 +5096,7 @@ function paintSubTabs() {
      charge a fee to: the two tabs that exist only for squads stay out of
      the referee's way. */
   const hide = simpleComp() ? { attend: 1, finance: 1 } : {};
+  if (isCup()) hide.table = 1;                 // a knockout cup has no table to show
   const grp = role ? (SUBTABS[parentOf(currentView)] || []).filter(([k]) => allowedView(k) && !hide[k]) : [];
   if (grp.length < 2) { el.hidden = true; el.innerHTML = ''; return; }
   const gold = finalsGold(), pend = DB.regs.filter(r => r.status === 'pending').length;
@@ -5100,7 +5107,11 @@ function paintSubTabs() {
 }
 let currentView = 'dash';
 function buildNav() {
-  $('nav').innerHTML = VIEWS.filter(([k]) => allowedView(k) && !(isCup() && k === 'table')).map(([k, label]) =>
+  /* A cup has no table, but it has fixtures, results and a bracket — and
+     taking the whole Competition tab away to hide one of its four pages
+     left a cup looking like a tool with a part missing. The tab stays; the
+     Table page inside it is what a cup does without. */
+  $('nav').innerHTML = VIEWS.filter(([k]) => allowedView(k)).map(([k, label]) =>
     '<button data-nav="' + k + '">' +
       (k === 'live' ? '<span class="livedot"></span>' : icon(k)) +
       (k === 'live' ? '<span class="nvlabel">' + label + '</span>' : label) +
@@ -5121,6 +5132,7 @@ function buildNav() {
 function go(v) {
   if (!role) return;                      // nothing renders until a PIN is in
   if (!allowedView(v)) v = 'dash';
+  if (v === 'table' && isCup()) v = 'fixtures';      // a cup opens on its draw
   currentView = v;
   freshView = true;                       // this render is an arrival, so it animates
   document.querySelectorAll('.view').forEach(s => s.classList.toggle('on', s.dataset.view === v));
@@ -11249,7 +11261,7 @@ $('btnLockFinals').onclick = () => {
   const mk = (stage, homeId, awayId) => blankKO(stage, homeId, awayId, night, night ? addDays(night.date, seasonStep()) : '');
   DB.fixtures.push(mk('SF1', st[0].id, st[3].id));   // gold: 1 v 4
   DB.fixtures.push(mk('SF2', st[1].id, st[2].id));   //       2 v 3
-  const silver = st.length >= 8;
+  const silver = st.length >= 8 && !DB.season.noSilver;
   if (silver) {
     DB.fixtures.push(mk('SV1', st[4].id, st[7].id)); // silver: 5 v 8
     DB.fixtures.push(mk('SV2', st[5].id, st[6].id)); //         6 v 7
@@ -11299,7 +11311,7 @@ function lastRegularNight() {
    no Silver Cup does not leave two empty slots before its first kick-off. */
 const KO_NIGHT = [['SV1', 'SV2', 'SF1', 'SF2'], ['SV3', 'SVF', 'P3', 'F']];
 function koRunOrder(stage) {
-  const silver = DB.teams.length >= 8 || DB.fixtures.some(f => /^SV/.test(f.stage));
+  const silver = !DB.season.noSilver && (DB.teams.length >= 8 || DB.fixtures.some(f => /^SV/.test(f.stage)));
   const night = KO_NIGHT[KO_NIGHT[0].indexOf(stage) >= 0 ? 0 : 1];
   const has = s => (/^SV/.test(s) ? silver : true) && (s === 'SV3' || s === 'P3' ? !!DB.finals3rd : true);
   return Math.max(0, night.filter(has).indexOf(stage));
@@ -11384,7 +11396,7 @@ function autoFinals() {
   const night = lastRegularNight(), when = night ? addDays(night.date, seasonStep()) : '';
   DB.fixtures.push(blankKO('SF1', st[0].id, st[3].id, night, when));     // gold: 1 v 4
   DB.fixtures.push(blankKO('SF2', st[1].id, st[2].id, night, when));     //       2 v 3
-  if (st.length >= 8) {
+  if (st.length >= 8 && !DB.season.noSilver) {
     DB.fixtures.push(blankKO('SV1', st[4].id, st[7].id, night, when));   // silver: 5 v 8
     DB.fixtures.push(blankKO('SV2', st[5].id, st[6].id, night, when));   //         6 v 7
   }
@@ -12282,6 +12294,7 @@ function renderSettings() {
   $('stReportSub').placeholder = DB.season.name || '';
   $('stBoot').checked = bootOn();
   $('stSimple').checked = simpleComp();
+  $('stNoSilver').checked = !!DB.season.noSilver;
   paintAccess();
   let bytes = 0;
   try { bytes = (localStorage.getItem(KEY) || '').length; } catch (e) {}
@@ -12339,6 +12352,7 @@ $('btnSaveSettings').onclick = () => {
   }
   if ($('stBoot').checked) delete DB.season.noBoot; else DB.season.noBoot = true;
   if ($('stSimple').checked) DB.season.simple = true; else delete DB.season.simple;
+  if ($('stNoSilver').checked) DB.season.noSilver = true; else delete DB.season.noSilver;
   const old = DB.season.name, oldYear = DB.season.year, fmtWas = DB.season.format;
   const renaming = $('stName').value.trim() !== old;
   const correction = renaming && confirm('Rename "' + old + '" to "' + $('stName').value.trim() + '"?\n\n' +
@@ -15688,8 +15702,11 @@ function staffDoc() {
     .map(s => ({ id: s.id, name: s.name || '', nameAt: +s.nameAt || 0,
       pin: String(s.pin || ''), pinAt: +s.pinAt || 0, role: rolesOf(s)[lg] }));
   const own = (ROOT.staff || []).find(s => s && s.owner);
-  if (own) out.push({ id: own.id, name: own.name || 'Owner', nameAt: +own.nameAt || 0,
-    pin: String(own.pin || ''), pinAt: +own.pinAt || 0, role: 'owner' });
+  const L = activeLeague();
+  // and this machine's owner goes up only where this machine's owner IS the owner
+  if (own && !(L && L.ownerId && L.ownerId !== own.id))
+    out.push({ id: own.id, name: own.name || 'Owner', nameAt: +own.nameAt || 0,
+      pin: String(own.pin || ''), pinAt: +own.pinAt || 0, role: 'owner' });
   return out.sort((a, b) => String(a.id).localeCompare(String(b.id)));   // one order, so the hash is steady
 }
 function staffPut(rec) {
@@ -15718,9 +15735,24 @@ function staffPut(rec) {
   };
   if (rec.role === 'owner') {
     const own = (ROOT.staff || []).find(x => x && x.owner);
-    if (own && me && own.id === me.id) return;     // never under the person signed in
     if (!own) { ROOT.staff.push({ id: rec.id, name: rec.name || 'Owner', nameAt: +rec.nameAt || 0,
       pin: String(rec.pin || ''), pinAt: +rec.pinAt || 0, owner: true, roles: {} }); return; }
+    if (own.id !== rec.id) {
+      /* Another machine's owner, and this machine already has one of its own
+         — made when somebody set this copy up before joining. Two owners of
+         one machine is not a thing, and the one that was here first is not
+         evicted by a list arriving over the wire; that is how a PIN was
+         taken over. Theirs is kept as what they actually are HERE: the
+         person who runs this league. They can sign in and work it, and
+         nothing of this machine itself is in their hands. */
+      let o = (ROOT.staff || []).find(x => x && x.id === rec.id);
+      if (!o) { o = { id: rec.id, name: '', pin: '', owner: false, roles: {} }; ROOT.staff.push(o); }
+      o.roles = Object.assign({}, o.roles, { [lg]: 'manager' });
+      if (newerName(rec, o)) { o.name = rec.name; o.nameAt = +rec.nameAt || 0; }
+      if (newer(rec, o)) { o.pin = String(rec.pin); o.pinAt = +rec.pinAt || 0; }
+      return;
+    }
+    if (me && own.id === me.id) return;            // never under the person signed in
     if (newerName(rec, own)) { own.name = rec.name; own.nameAt = +rec.nameAt || 0; }
     if (newer(rec, own)) { own.id = rec.id; own.pin = String(rec.pin); own.pinAt = +rec.pinAt || 0;
       ROOT.access = ROOT.access || {}; ROOT.access.managerPin = own.pin; }
@@ -15750,6 +15782,13 @@ function staffDrop(id) {
    somewhere else. Whatever they are on other leagues is left alone. */
 function staffMerge(list) {
   const lg = ROOT.active, inc = Array.isArray(list) ? list : [];
+  /* WHOSE LEAGUE THIS IS. The shared copy names its owner, and that name is
+     the answer wherever the league is opened. A tablet that made itself the
+     owner of its own empty copy — which is what the first PIN typed on a
+     fresh copy does — does not thereby own THIS one. */
+  const theirs = inc.find(r => r && r.role === 'owner' && r.id);
+  const L = activeLeague();
+  if (L && theirs) L.ownerId = theirs.id;
   const still = {};
   inc.forEach(r => { if (r && r.id) { still[r.id] = 1; staffPut(r); } });
   (ROOT.staff || []).slice().forEach(s => {
@@ -17481,7 +17520,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '20 Nov 16:36 · f7ae876'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '20 Nov 18:44 · 540740d'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
@@ -17519,10 +17558,16 @@ setInterval(() => {
 let role = null, me = null;
 const isOwner = () => !!(me && me.owner);
 const isMgr = () => role === 'manager';
-// the owner runs everything; everyone else only the leagues they are named on
-const myLeaguesFor = p => !p ? [] : p.owner ? ROOT.leagues.slice() : ROOT.leagues.filter(l => rolesOf(p)[l.id]);
+/* The owner of this COPY runs everything on it — except a league that came
+   from somebody else and says so. Setting a PIN on a fresh copy makes you
+   the owner of that copy, which is the only way a copy can be used at all;
+   it must not also hand you somebody else's competition the moment you join
+   it. On a league whose shared copy names another owner, this machine's
+   owner is whatever that league made them, and nothing more. */
+const ownsLeague = (p, l) => !!(p && p.owner && !(l && l.ownerId && l.ownerId !== p.id));
+const myLeaguesFor = p => !p ? [] : ROOT.leagues.filter(l => ownsLeague(p, l) || rolesOf(p)[l.id]);
 const myLeagues = () => myLeaguesFor(me);
-const roleIn = l => !me || !l ? null : isOwner() ? 'manager' : rolesOf(me)[l.id] || null;
+const roleIn = l => !me || !l ? null : ownsLeague(me, l) ? 'manager' : rolesOf(me)[l.id] || null;
 const roleWord = () => isOwner() ? 'owner' : isMgr() ? 'manager' : 'referee';
 const whoLabel = () => !me ? '' : (me.name || '').trim().toLowerCase() === roleWord() ? me.name : me.name + ' · ' + roleWord();
 function requireOwner(what) {
@@ -17540,8 +17585,8 @@ function requireMgr(what) {
    over access — whose names they see, and which leagues they may put
    somebody in. A manager of the Thursday league has nothing to say about
    who referees on Tuesday. */
-const mgrLeagues = () => !me ? [] : isOwner() ? ROOT.leagues.slice()
-  : ROOT.leagues.filter(l => rolesOf(me)[l.id] === 'manager');
+const mgrLeagues = () => !me ? [] : ROOT.leagues.filter(l =>
+  ownsLeague(me, l) || rolesOf(me)[l.id] === 'manager');
 /* Somebody a manager may look after: not the owner, not themselves, and
    named on no league but the ones this manager runs. The referee who also
    manages another competition belongs to the owner, not to this manager:
