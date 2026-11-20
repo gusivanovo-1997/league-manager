@@ -112,16 +112,32 @@ h2.sec span{color:var(--dim);font-weight:400;margin-left:8px;font-size:calc(11.5
 .g2.wide{grid-template-columns:repeat(auto-fit,minmax(min(500px,100%),1fr))}
 .g3{grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr))}
 .g4{grid-template-columns:repeat(auto-fit,minmax(min(165px,100%),1fr))}
+/* a column of settings is as wide as the words over it need */
+.grid.g4:has(>.field){grid-template-columns:repeat(auto-fit,minmax(min(196px,100%),1fr))}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .spacer{flex:1}
 
 .field{margin-bottom:10px}
-/* In a grid of fields the labels are not all one line long — "extra time,
-   each half (min) — finals only" takes two where "year" takes one — and a
-   taller label used to push its own box below the boxes beside it. The boxes
-   sit on the floor of the row instead, so a row of them reads as a row. */
+/* A GRID OF SETTINGS READS AS A GRID when every box sits on the same line
+   down the page and its own words sit directly over it.
+
+   The labels are not all one line long — "extra time, each half (min) —
+   finals only" takes two where "year" takes one. Pushing the boxes to the
+   floor of the row lined the boxes up, but left a short label floating
+   half a line above nothing, which on a tablet read as a caption belonging
+   to the field above. So every label is given the room for two lines
+   whether it needs them or not, and sits on the bottom of that room: one
+   line or two, the box is always immediately under its own words.
+
+   The cells are top-aligned, so a field that carries a note underneath —
+   "0 — the whole competition in one day" — no longer drags the boxes
+   beside it down with it. Turning the tablet changes how many fields fit
+   in a row; it changes nothing else. */
 .grid>.field{display:flex;flex-direction:column;margin-bottom:0}
-.grid>.field>input,.grid>.field>select,.grid>.field>textarea{margin-top:auto}
+.grid:has(>.field){align-items:start}
+.grid>.field>label{display:flex;align-items:flex-end;min-height:2.5em;line-height:1.25;margin-bottom:5px}
+.grid>.field>input,.grid>.field>select,.grid>.field>textarea{margin-top:0}
+.grid>.field>.small{margin-top:5px}
 .field label{display:block;font-size:calc(10.5px * var(--fs));letter-spacing:.5px;color:var(--dim);text-transform:uppercase;margin-bottom:4px}
 input,select,textarea{width:100%;background:var(--card);border:1px solid var(--line2);color:var(--text);
   border-radius:5px;padding:7px 8px;font-size:calc(13px * var(--fs));font-family:inherit}
@@ -18002,7 +18018,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '21 Nov 09:03 · a7dd70d'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '21 Nov 09:13 · d4eba25'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
