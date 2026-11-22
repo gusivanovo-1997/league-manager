@@ -14952,16 +14952,21 @@ function emailHtmlRaw(d, ball, crests) {
       'border-radius:8px 8px 0 0;font-size:22px;font-weight:800;color:#3a2a14;text-align:center">' + n + '</div>';
     const who = ids => ids.filter(Boolean).map(id => (badge(id, 40) ? badge(id, 40).replace('margin:0 6px 0 0', 'margin:0 auto 4px;display:block') : dot(id)) +
       esc(teamName(id))).join('<br>') || '&mdash;';
-    const col = (w, medal, ids, stepHtml) => '<td width="' + w + '" valign="bottom" align="center" style="padding:0 4px;vertical-align:bottom">' +
+    const col = (w, medal, ids, stepHtml) => '<td width="' + w + '" valign="bottom" align="center" style="padding:0 3px;vertical-align:bottom;overflow-wrap:break-word">' +
       '<div style="font-size:24px;line-height:1.2">' + medal + '</div>' +
-      '<div style="font-size:13px;font-weight:700;line-height:1.35;margin:4px 0 7px">' + who(ids) + '</div>' + stepHtml + '</td>';
+      '<div style="font-size:12px;font-weight:700;line-height:1.3;letter-spacing:-.2px;margin:4px 0 7px">' + who(ids) + '</div>' + stepHtml + '</td>';
     pods.forEach(p => {
       const m = MET[p.metal];
-      A.push('<div style="margin:10px 0 16px;padding:14px 12px 0;border:1px solid ' + m.line + ';border-radius:12px;' +
+      A.push('<div style="margin:10px 0 16px;padding:14px 8px 0;border:1px solid ' + m.line + ';border-radius:12px;' +
           'background-color:' + m.bg + ';background-image:' + m.img + '">' +
         '<div style="text-align:center;font-size:11px;letter-spacing:1.7px;text-transform:uppercase;font-weight:800;color:' + m.ink + ';margin-bottom:10px">' +
           esc(podiumTitle(p)) + '</div>' +
-        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse"><tr>' +
+        /* table-layout:fixed, or the column widths are only a suggestion:
+           a long name stretches its own column, steals the width from the
+           other two, and a podium that should be symmetrical about the
+           trophy comes out leaning. On a phone, where the names wrap, that
+           is every podium. */
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;table-layout:fixed"><tr>' +
           col('32%', '&#129352;', [p.second], step(70, '#c3c9d2', 'linear-gradient(135deg,#ffffff 0%,#c6ccd5 45%,#8b939e 100%)', '2')) +
           col('36%', '&#127942;', [p.first], step(100, '#dcab2c', 'linear-gradient(135deg,#fbeaa0 0%,#dcab2c 45%,#9c6f0e 100%)', '1')) +
           col('32%', '&#129353;', p.third, step(52, '#c98448', 'linear-gradient(135deg,#f6cfa6 0%,#c98448 45%,#80461c 100%)', '3')) +
@@ -18365,7 +18370,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '22 Nov 10:08 · d61e1b6'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '22 Nov 11:20 · c3e7dcb'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
