@@ -2649,10 +2649,6 @@ tspan.gstar{fill:var(--gold)}
         <div class="tbl-wrap"><table id="scorerTbl"></table></div></div>
     </div>
     <div class="card"><h3>Goals scored, by team</h3><div id="vizGoals"></div></div>
-    <!-- Who has been named man of the match, and how often. In a competition
-         where the goals are not logged against a name, this is the only
-         record of who played well. -->
-    <div class="card" id="cardMvps" hidden><h3>Man of the match <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0" id="mvpBestNote"></span></h3><div id="mvpList"></div></div>
     <div class="card"><h3>Team stats</h3><div class="tbl-wrap"><table id="teamStatTbl"></table></div></div>
     <div class="grid g2 wide">
       <div class="card"><h3>Cards, by team</h3><div id="vizCards"></div>
@@ -2664,6 +2660,11 @@ tspan.gstar{fill:var(--gold)}
       <div class="small muted" style="margin-bottom:10px" id="attNote"></div>
       <div class="tbl-wrap"><table id="attendTbl"></table></div>
     </div>
+    <!-- Who has been named man of the match, and how often. In a competition
+         where the goals are not logged against a name, this is the only
+         record of who played well — and it is the award of the whole
+         competition, so it closes the page. -->
+    <div class="card" id="cardMvps" hidden><h3>Man of the match <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0" id="mvpBestNote"></span></h3><div id="mvpList"></div></div>
   </section>
 
   <!-- ══════════════ HONOURS ══════════════ -->
@@ -16314,7 +16315,7 @@ function publicPageHtml() {
   /* The race first — where the season has got to — then the teams, then
      who is scoring, then the share of the goals, and the season's shape
      last. */
-  const stats = pubMvps() + pubRaceBlock(h2) +
+  const stats = pubRaceBlock(h2) +
     h2('Teams') + (st.length ? '<div class="tw"><table><tr><th>Team</th><th class="n">P</th><th class="n">GF</th><th class="n">GA</th>' +
       '<th class="n">Per game</th><th class="n hs">Clean sheets</th></tr>' +
       st.map(r0 => {
@@ -16329,7 +16330,9 @@ function publicPageHtml() {
     (d.opt.cards && d.cards.length ? h2('Discipline') + '<div class="tw"><table><tr><th>Player</th><th class="n">Yellow</th><th class="n">Red</th></tr>' +
       d.cards.map(r => '<tr><td>' + esc(r.name) + '<div class="sub">' + dot(r.teamId) + esc(teamName(r.teamId)) + '</div></td>' +
         '<td class="n">' + r.y + '</td><td class="n">' + r.r + '</td></tr>').join('') + '</table></div>' : '') +
-    avg;
+    avg +
+    // the last word on the page: who has been named man of the match
+    pubMvps();
 
   const hl = honoursSorted(), h0 = hl[0];
   const champOf = x => (x.championId ? team(x.championId) : teamForChampion(x.champion)) || null;
@@ -18872,7 +18875,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '23 Nov 07:52 · b6652e6'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '23 Nov 08:12 · d5d3dc9'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
