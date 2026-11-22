@@ -2485,7 +2485,7 @@ tspan.gstar{fill:var(--gold)}
     <div class="card" id="fxGenCard">
       <h3>Generate draw</h3>
       <div class="grid g4">
-        <div class="field"><label>Rounds (each team plays each other)</label><input type="number" id="fxRounds" min="1" max="4" value="2"></div>
+        <div class="field"><label id="fxRoundsLbl">Rounds (each team plays each other)</label><input type="number" id="fxRounds" min="1" max="4" value="2"></div>
         <div class="field"><label>Match night</label><select id="fxDay">
           <option value="1">Monday</option><option value="2">Tuesday</option>
           <option value="3">Wednesday</option><option value="4" selected>Thursday</option>
@@ -2615,7 +2615,7 @@ tspan.gstar{fill:var(--gold)}
         <span class="muted small" id="resNote"></span>
       </div>
     </div>
-    <div class="card"><h3>Form from past 5 matches</h3>
+    <div class="card" id="cardResForm"><h3>Form from past 5 matches</h3>
       <div id="resForm"></div></div>
     <div id="resList" data-nostar></div>
   </section>
@@ -5686,10 +5686,20 @@ function vizRace() {
      column of its own at the left, before any round. */
   if (!rounds.length) return '<div class="empty">The first match night and this chart starts telling a story.</div>';
   const st = standings();
-  const leader = st.length ? st[0].id : null;
+  /* In a rachao the line climbs by one on a night a side takes, and by
+     nothing at all on a night it does not. Points would be the wrong
+     picture of a competition that has none. */
+  const T = isSeries() ? seriesTally() : null;
+  const titleAt = {};
+  if (T) T.board.forEach(x => {
+    const r = (DB.fixtures.find(f => f.stage === 'regular' && f.date === x.date) || {}).round;
+    if (r != null) titleAt[r] = x.title;
+  });
+  const leader = T ? (T.top[0] || null) : st.length ? st[0].id : null;
   const series = DB.teams.map(t => {
     let pts = 0;
     const path = [0].concat(rounds.map(r => {
+      if (T) { pts += (titleAt[r] || []).indexOf(t.id) >= 0 ? 1 : 0; return pts; }
       done.filter(f => f.round === r && (f.homeId === t.id || f.awayId === t.id)).forEach(f => {
         const mine = f.homeId === t.id ? f.homeGoals : f.awayGoals;
         const theirs = f.homeId === t.id ? f.awayGoals : f.homeGoals;
@@ -5727,7 +5737,7 @@ function vizRace() {
   return '<svg class="viz-race" viewBox="0 0 ' + W + ' ' + H + '" role="img" ' +
     'aria-label="Points after each match night, one line per team">' + grid +
     series.map(s => '<g class="race-g' + (s.id === leader ? ' lead' : '') + '">' +
-      '<title>' + esc(s.name + ' — ' + plural(s.end, 'point')) + '</title>' +
+      '<title>' + esc(s.name + ' — ' + plural(s.end, T ? 'title' : 'point')) + '</title>' +
       '<path class="race-line"/><path class="race-tie"/>' +
       '<circle class="race-head" r="4.3" fill="' + esc(s.colour) + '"/>' +
       // the badge a team rides behind: its crest, or its colour where it has none
@@ -5737,8 +5747,8 @@ function vizRace() {
       '<text class="race-lbl"><tspan class="race-pts"></tspan></text>' +
     '</g>').join('') +
     '<text class="race-ax" x="' + L + '" y="' + (H - 6) + '">Start</text>' +
-    '<text class="race-ax" x="' + (W - R) + '" y="' + (H - 6) + '" text-anchor="end">Round ' +
-      rounds[rounds.length - 1] + '</text>' +
+    '<text class="race-ax" x="' + (W - R) + '" y="' + (H - 6) + '" text-anchor="end">' +
+      rdName(rounds[rounds.length - 1]) + '</text>' +
     '</svg>';
 }
 
@@ -5956,7 +5966,29 @@ function dashGroups() {
         (cutPts ? ' <span class="muted">— the cut is on ' + cutPts.Pts + ' pt' +
           (cutPts.Pts === 1 ? '' : 's') + '</span>' : '') : '') + '</div>';
 }
+/* The ladder of a rachao counts nights taken, one for each. No points, no
+   goal difference standing over the weeks, no promotion place: a side that
+   wins every game on the night and a side that scrapes it are both one
+   title better off, which is the whole idea. */
+function seriesLadder() {
+  const T = seriesTally();
+  const ord = DB.teams.slice().sort((a, b) => (T.by[b.id] || 0) - (T.by[a.id] || 0) || a.name.localeCompare(b.name));
+  const max = Math.max(1, T.best);
+  const nextUp = T.board.filter(x => !x.done)[0];
+  return '<div class="ladder">' + ord.map((t, i) =>
+    '<div class="lad" style="animation-delay:' + (i * 45) + 'ms">' +
+      '<span class="lpos">' + (i + 1) + '</span>' + crest(t.id) +
+      '<span class="lnm"><span class="lnt">' + esc(t.name) + '</span></span>' +
+      '<span class="lform"></span>' +
+      '<span class="lbar"><i style="--w:' + ((T.by[t.id] || 0) / max * 100).toFixed(1) + '%"></i></span>' +
+      '<span class="lpts">' + (T.by[t.id] || 0) + '</span>' +
+    '</div>').join('') +
+    '<div class="small muted" style="margin-top:8px">One title a night — whoever wins the most games on it takes it' +
+      (nextUp ? '. Next: ' + esc(fmtDate(nextUp.date)) : '') + '.</div>' +
+    '</div>';
+}
 function dashLadder(st) {
+  if (isSeries()) return seriesLadder();
   const max = Math.max(1, ...st.map(r => r.Pts));
   const cut = DB.teams.length >= 4 && !leagueOnly() ? 4 : 0;
   return '<div class="ladder">' + st.map((r, i) =>
@@ -5992,7 +6024,7 @@ function seasonShape() {
   ];
   const line = (f, what) => '<div class="shape-fact"><span class="muted">' + what + '</span><b>' +
     esc(teamName(f.homeId)) + ' ' + f.homeGoals + '–' + f.awayGoals + ' ' + esc(teamName(f.awayId)) +
-    '</b><span class="muted small">round ' + f.round + '</span></div>';
+    '</b><span class="muted small">' + esc(fxRoundName(f).toLowerCase()) + '</span></div>';
   return '<div class="viz-wrap" style="border:0;padding-bottom:4px;margin-bottom:0">' +
       '<div class="viz-col">' + vizDonut(parts, done.length, 'matches') + '</div>' +
       '<div class="viz-col grow">' + vizKey(parts) +
@@ -6014,7 +6046,8 @@ function renderDash() {
   $('dashStats').innerHTML = [
     ['Teams', DB.teams.length, DB.season.name],
     ['Registered players', players, DB.people.length + ' in database'],
-    ['Matches played', done + ' / ' + reg.length, reg.length ? Math.round(done / reg.length * 100) + '% of the season' : 'no draw yet'],
+    ['Matches played', done + ' / ' + reg.length, !reg.length ? 'no draw yet'
+      : isSeries() ? plural(seriesTally().done, 'night') + ' played' : Math.round(done / reg.length * 100) + '% of the season'],
     ['Goals scored', goals, done ? (goals / done).toFixed(1) + ' per match' : '—'],
     ['Pending sign-ups', DB.regs.filter(r => r.status === 'pending').length, 'awaiting review'],
     ['Yellow cards', allEvents().filter(e => e.type === 'yellow').length, allEvents().filter(e => e.type === 'red').length + ' red']
@@ -6071,7 +6104,7 @@ function renderDash() {
 
   const st = standings();
   const wc = isWorld() && DB.fixtures.length;
-  $('dashTableH').textContent = wc ? 'Groups' : 'Standings';
+  $('dashTableH').textContent = wc ? 'Groups' : isSeries() ? 'Titles' : 'Standings';
   /* Twelve groups in a half-width card is a column you scroll past rather
      than a picture you take in. They get the whole row. */
   const tcard = $('dashTableH').closest('.card');
@@ -6152,7 +6185,7 @@ function stageLabel(s) {
 const SEMI_STAGES = ['SF1', 'SF2', 'SV1', 'SV2'];
 const STAGE_TIER = { regular: 0, SF1: 1, SF2: 1, SV1: 1, SV2: 1, P3: 2, SV3: 2, SVF: 2, F: 3 };
 const roundKey = f => f.stage === 'regular' ? 'R' + f.round : SEMI_STAGES.indexOf(f.stage) >= 0 ? 'SEMI' : 'FINAL';
-const roundName = k => k === 'SEMI' ? 'Semi-finals' : k === 'FINAL' ? 'Finals' : 'Round ' + String(k).slice(1);
+const roundName = k => k === 'SEMI' ? 'Semi-finals' : k === 'FINAL' ? 'Finals' : (isSeries() ? 'Night ' : 'Round ') + String(k).slice(1);
 /* Who is out this week. An odd number of teams leaves one side resting every
    round, and a draw that simply does not mention them reads as a team
    forgotten rather than a team with a week off — which is exactly how an
@@ -6278,6 +6311,18 @@ function nightBoard() {
     n.title = n.done ? n.top : [];
     return n;
   });
+}
+const nameList = ids => ids.length < 3 ? ids.map(teamName).join(' & ')
+  : ids.slice(0, -1).map(teamName).join(', ') + ' & ' + teamName(ids[ids.length - 1]);
+/* The headline of a rachao is the last night, not the standing: who took it
+   and how many that makes. There is no "round 38 of 53" to report. */
+function seriesHeadline(ph) {
+  const T = seriesTally(), last = T.board.filter(n => n.done).slice(-1)[0];
+  if (!T.board.length) return 'The nights are drawn';
+  if (!last) return 'The first night has still to be played';
+  const who = nameList(last.top);
+  return (last.top.length === 1 ? who + ' take the night' : last.top.length ? who + ' share the night' : 'The night was drawn') +
+    ' — ' + fmtDate(last.date);
 }
 // how many nights each side has taken, and who leads on them
 function seriesTally() {
@@ -6497,7 +6542,7 @@ const wcRoundName = r => r <= WC_GRD ? 'Group stage · matchday ' + r : (WC_RNAM
    A league says Round 4; a World Cup says Quarter-finals, and saying
    "Round 6" on the fixture list while the bracket says Quarter-finals is
    the kind of thing that makes somebody turn up on the wrong night. */
-const rdName = r => isWorld() ? wcRoundName(r) : isCup() ? cupRoundName(r) : 'Round ' + r;
+const rdName = r => isWorld() ? wcRoundName(r) : isCup() ? cupRoundName(r) : isSeries() ? 'Night ' + r : 'Round ' + r;
 const fxRoundName = f => !f ? '' : f.stage === 'regular' ? rdName(f.round) : stageLabel(f.stage);
 const wcGroupOf = tid => (team(tid) || {}).grp || '';
 /* What one match in a World Cup is called — on the match screen, in the
@@ -9179,6 +9224,8 @@ $('btnPrintFx').onclick = printDraw;
 
 /* fewer than 12 rounds (e.g. 8 teams meeting once = 7 rounds) is a league-only season by default */
 $('fxRounds').addEventListener('input', () => {
+  const now = $('fxFormat').value;
+  if (now !== 'league' && now !== 'finals') return;      // a chosen format is a decision, not a default
   const n = DB.teams.length, reps = Math.max(1, +$('fxRounds').value || 1);
   $('fxFormat').value = (n % 2 ? n : n - 1) * reps < 12 ? 'league' : 'finals';
 });
@@ -9218,7 +9265,15 @@ function fxLoad() {
     e.value = o[k];
   });
 }
-function paintDrawOpts() { $('fxDrawField').hidden = false; }
+function paintDrawOpts() {
+  $('fxDrawField').hidden = false;
+  /* In a rachao the box is how many times everybody meets ON THE NIGHT, not
+     how many times across a season it does not have. */
+  const lbl = $('fxRoundsLbl');
+  if (lbl) lbl.textContent = $('fxFormat').value === 'rachao'
+    ? 'Times round, on the night (each team plays each other)'
+    : 'Rounds (each team plays each other)';
+}
 /* Long lists read as blocks when neighbouring sections take turns in colour:
    plain, then a warm ember tint, then plain. A knockout night is gold. */
 // a section's colour: rounds take turns, the semis are silver and the finals gold
@@ -9248,7 +9303,8 @@ function paintDrawBar() {
       ' joined after it was made, so they have no matches. Draw it again to bring them in.';
     go2.textContent = 'Draw it again…';
   } else {
-    what.textContent = plural(reg.length, 'match', 'matches') + ' over ' + plural(rounds, 'round');
+    what.textContent = plural(reg.length, 'match', 'matches') + ' over ' +
+      plural(rounds, isSeries() ? 'night' : 'round');
     why.innerHTML = 'Drawing again, or starting the next season of this competition, is under <b>Setup → Draw</b>.';
     go2.textContent = 'Draw & season setup…';
   }
@@ -9266,8 +9322,8 @@ function renderFixtures() {
   const semis = fin.filter(f => roundKey(f) === 'SEMI'), finals = fin.filter(f => roundKey(f) === 'FINAL');
   const sel = $('fxRoundFilter');
   const keep = sel.value;
-  sel.innerHTML = '<option value="">All rounds (' + (reg.length + fin.length) + ' matches)</option>' +
-    rounds.map(r => '<option value="' + r + '">Round ' + r + '</option>').join('') +
+  sel.innerHTML = '<option value="">' + (isSeries() ? 'Every night (' : 'All rounds (') + (reg.length + fin.length) + ' matches)</option>' +
+    rounds.map(r => '<option value="' + r + '">' + rdName(r) + '</option>').join('') +
     (semis.length ? '<option value="SEMI">Semi-finals</option>' : '') + (finals.length ? '<option value="FINAL">Finals</option>' : '');
   if (keep) sel.value = keep;
   sel.onchange = renderFixtures;
@@ -10615,7 +10671,7 @@ function drawNextUp() {
   const k = roundKey(left[0]);
   const night = left.filter(x => roundKey(x) === k);
   const title = (k === 'SEMI' ? 'Semi-finals' : k === 'FINAL' ? 'Finals'
-      : isWorld() ? rdName(+k.slice(1)) : 'Round ' + k.slice(1)) +
+      : isWorld() || isSeries() ? rdName(+k.slice(1)) : 'Round ' + k.slice(1)) +
     (night[0].date ? '<span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0"> &mdash; ' +
       esc(fmtDate(night[0].date)) + '</span>' : '');
   const side = id => '<span class="nxs">' + crest(id, 'sm') + esc(teamName(id)) + '</span>';
@@ -11591,11 +11647,15 @@ function renderResForm() {
 }
 function renderResults() {
   renderResForm();
+  // form running across nights that have nothing to do with each other is
+  // a line drawn between unrelated competitions
+  const rf = $('cardResForm');
+  if (rf) rf.style.display = isSeries() ? 'none' : '';
   const played = DB.fixtures.filter(f => f.status === 'final' || f.status === 'live');
   const order = k => k === 'FINAL' ? 1e6 : k === 'SEMI' ? 1e6 - 1 : +k.slice(1);
   const keys = [...new Set(played.map(roundKey))].sort((a, b) => order(b) - order(a));
-  const rl = k => k === 'SEMI' ? 'Semi-finals' : k === 'FINAL' ? 'Finals' : 'Round ' + k.slice(1);
-  $('resRound').innerHTML = '<option value="">All rounds</option>' + keys.map(k => '<option value="' + k + '">' + rl(k) + '</option>').join('');
+  const rl = k => k === 'SEMI' ? 'Semi-finals' : k === 'FINAL' ? 'Finals' : (isSeries() ? 'Night ' : 'Round ') + k.slice(1);
+  $('resRound').innerHTML = '<option value="">' + (isSeries() ? 'Every night' : 'All rounds') + '</option>' + keys.map(k => '<option value="' + k + '">' + rl(k) + '</option>').join('');
   $('resTeam').innerHTML = '<option value="">All teams</option>' + DB.teams.slice().sort((a, b) => a.name.localeCompare(b.name))
     .map(t => '<option value="' + t.id + '">' + esc(t.name) + '</option>').join('');
   if (keys.indexOf(resRoundKeep) >= 0) $('resRound').value = resRoundKeep;
@@ -11810,7 +11870,7 @@ function paintSeries() {
   if (!card) return;
   card.style.display = isSeries() ? '' : 'none';
   if (!isSeries()) return;
-  const T = seriesTally(), nm = ids => ids.map(teamName).join(' & ');
+  const T = seriesTally(), nm = nameList;
   const ord = DB.teams.slice().sort((a, b) => (T.by[b.id] || 0) - (T.by[a.id] || 0) || a.name.localeCompare(b.name));
   const titles = ord.map(t => '<div class="ttl' + ((T.by[t.id] || 0) === T.best && T.best ? ' lead' : '') + '">' +
     crest(t.id, 'md') + '<span class="tnm">' + esc(t.name) + '</span>' +
@@ -11819,7 +11879,8 @@ function paintSeries() {
     const ids = DB.teams.filter(t => n.ids[t.id]);
     const tag = n.done
       ? (n.top.length === 1 ? '<span class="stag held">' + esc(teamName(n.top[0])) + ' take the night</span>'
-         : n.top.length ? '<span class="stag">shared · ' + esc(nm(n.top)) + '</span>'
+         : n.top.length ? '<span class="stag">' + (n.top.length >= ids.length ? 'the night is shared'
+             : 'shared · ' + esc(nm(n.top))) + '</span>'
          : '<span class="stag">no winner</span>')
       : n.played ? '<span class="stag lead">' + (n.top.length ? esc(nm(n.top)) + ' lead' : 'level') +
           ' · ' + n.played + ' of ' + n.of + '</span>'
@@ -14664,6 +14725,7 @@ function seasonPhase() {
   const champion = isWorld() ? (wcFinal ? winnerOf(wcFinal) : null)
     : isCup()
     ? (lastTies.length === 1 && lastTies[0].status === 'final' && !(DB.season.cupByes || []).length ? winnerOf(lastTies[0]) : null)
+    : isSeries() ? null                                  // a rachao is won a night at a time, never overall
     : leagueOnly() ? (rounds.length && !pending.length ? (standings()[0] || {}).id || null : null)
     : grand ? winnerOf(grand) : null;
   let mode = 'mid';
@@ -14690,6 +14752,7 @@ function wcHeadline(ph) {
 }
 function headlineFor(ph) {
   if (isWorld()) return wcHeadline(ph);
+  if (isSeries()) return seriesHeadline(ph);
   const of = 'Round ' + ph.lastPlayedRound + (ph.maxRound ? ' of ' + ph.maxRound : '');
   return { preseason: 'Season update',
     mid: ph.lastPlayedRound ? of : 'The draw is out',
@@ -14711,6 +14774,8 @@ function subjectFor(ph) {
   if (ph.mode === 'wrap') return base + ' - champions';
   if (ph.mode === 'finals') return base + ' - finals';
   if (ph.mode === 'regDone') return base + ' - regular season complete';
+  if (isSeries()) { const T = seriesTally();
+    return T.done ? base + ' - night ' + T.done : base; }
   return ph.lastPlayedRound ? base + ' - round ' + ph.lastPlayedRound : base;
 }
 /* The covering note, written so it can go out as it stands. The competition
@@ -14793,14 +14858,21 @@ function bulletinParts() {
   const scorers = scorerTable().filter(r => r.personId).slice(0, 10), cards = cardTable();   // the top ten named scorers
   const boots = bootHolders(scorers);                     // level on goals is level on the award
   const named = boots[0] || null;
+  const T = isSeries() ? seriesTally() : null;
   const snapshot = [
     // [label, value, note, the team whose badge goes with it]
+    /* A rachao has no leader on points, because it has no points: it has the
+       nights each side has taken, one apiece, and nothing carried over. */
+    ...(!T ? [] : [['Most nights', T.top.length ? nameList(T.top) : '—',
+      T.best ? plural(T.best, 'title') + ' from ' + plural(T.done, 'night') + ' played'
+        : T.done ? 'no titles yet' : 'no nights played yet',
+      T.top.length === 1 ? T.top[0] : null, null, T.top.length > 1 ? T.top : null]]),
     /* A World Cup has no leader: twelve groups are twelve separate races, and
        nobody is top of anything that spans them. What the overall table does
        say is which side has played best so far, so that is what it is called. */
-    [isWorld() ? 'Best performing team' : 'Leader',
+    ...(T ? [] : [[isWorld() ? 'Best performing team' : 'Leader',
       st.length && st[0].P ? st[0].name : '—', st.length && st[0].P ? st[0].Pts + ' pts from ' + st[0].P : 'no games played',
-      st.length && st[0].P ? st[0].id : null],
+      st.length && st[0].P ? st[0].id : null]]),
     // goals logged without a player still count for the team, but a row
     // called "Unattributed" must not be announced as the leading scorer
     ...(!bootShown() ? [] : [['Golden Boot', boots.length ? boots.map(r => r.name).join(', ') : '—',
@@ -14810,7 +14882,7 @@ function bulletinParts() {
     // the MVP of the round, and the match they did it in: a round, or which final
     ...((m => m ? [['MVP of the round', m.ids.map(personName).join(' & '), mvpGoals(m) + ' — ' +
       [...new Set(m.ids.map(id => { const f = lastFx.find(x => (x.events || []).some(e => !e.adj && e.type === 'goal' && e.personId === id));
-        return f ? (f.stage === 'regular' ? 'Round ' + f.round : stageLabel(f.stage)) : lastTitle.replace(/ results$/, ''); }))].join(' & '),
+        return f ? fxRoundName(f) : lastTitle.replace(/ results$/, ''); }))].join(' & '),
       (personTeam(m.ids[0]) || {}).id || null, null, mvpTeams(m)]] : [])(roundTopScorer({ fx: lastFx }))),
     ['Matches played', played.length + ' of ' + games.length, plural(goals, 'goal') + ' · ' +
       (games.length > played.length ? (games.length - played.length) + ' still to play' : 'season complete')]
@@ -15156,6 +15228,45 @@ function emailHtmlRaw(d, ball, crests) {
     const koOn = DB.fixtures.some(f => (f.round || 0) > WC_GRD);
     A.push(H2(koOn ? 'How the groups finished' : 'Groups'));
     A.push(mailGroups(DIM, LINE, INK, brkPic));
+  } else if (d.opt.table && d.st.length && isSeries()) {
+    /* A rachao's email cannot carry a table, because the competition does
+       not have one. What it carries is the count of nights taken and what
+       the last few came to. */
+    const T = seriesTally();
+    const ord = DB.teams.slice().sort((a, b) => (T.by[b.id] || 0) - (T.by[a.id] || 0) || a.name.localeCompare(b.name));
+    A.push(H2('Nights &amp; titles'));
+    A.push('<table role="presentation" cellpadding="0" cellspacing="0" border="0" ' +
+      'style="width:100%;border-collapse:collapse;font-size:13px">');
+    ord.forEach((x, i) => {
+      const lead = (T.by[x.id] || 0) === T.best && T.best;
+      A.push('<tr><td style="padding:7px 4px;border-bottom:1px solid ' + HAIR + ';color:' + (lead ? ACC : DIM) +
+        ';width:22px;font-weight:' + (lead ? '700' : '400') + '">' + (i + 1) + '</td>' +
+        '<td style="padding:7px 4px;border-bottom:1px solid ' + HAIR + '">' + dot(x.id) + esc(x.name) + '</td>' +
+        '<td style="padding:7px 4px;border-bottom:1px solid ' + HAIR + ';text-align:right;color:' + DIM +
+          ';font-size:11.5px;white-space:nowrap">' + (T.by[x.id] === 1 ? 'title' : 'titles') + '</td>' +
+        '<td style="padding:7px 4px;border-bottom:1px solid ' + HAIR + ';text-align:right;width:26px"><b>' +
+          (T.by[x.id] || 0) + '</b></td></tr>');
+    });
+    A.push('</table>');
+    const over = T.board.filter(x => x.done).slice().reverse().slice(0, 6);
+    if (over.length) {
+      A.push('<table role="presentation" cellpadding="0" cellspacing="0" border="0" ' +
+        'style="width:100%;border-collapse:collapse;font-size:13px;margin-top:10px">');
+      over.forEach(x => {
+        const ids = DB.teams.filter(y => x.ids[y.id]);
+        A.push('<tr><td style="padding:6px 4px;border-bottom:1px solid ' + HAIR + ';color:' + DIM +
+          ';white-space:nowrap">' + esc(fmtDate(x.date)) + '</td>' +
+          '<td style="padding:6px 4px;border-bottom:1px solid ' + HAIR + ';color:' + DIM + '">' +
+            ids.map(y => dot(y.id) + (x.w[y.id] || 0)).join('&nbsp;&nbsp;') + '</td>' +
+          '<td style="padding:6px 4px;border-bottom:1px solid ' + HAIR + ';text-align:right;color:' +
+            (x.top.length ? INK : DIM) + ';font-weight:700;font-size:11.5px">' +
+            (x.top.length >= ids.length ? 'shared'
+              : x.top.length ? esc(nameList(x.top)) + ' took it' : 'no winner') + '</td></tr>');
+      });
+      A.push('</table>');
+    }
+    A.push('<div style="font-size:11.5px;color:' + DIM + ';margin-top:7px">' +
+      'One title a night &mdash; whoever wins the most games on it takes the night.</div>');
   } else if (d.opt.table && d.st.length && !isCup()) {
     A.push(H2('Table'));
     A.push('<table role="presentation" cellpadding="0" cellspacing="0" border="0" ' +
@@ -15381,6 +15492,28 @@ function emailText(d) {
    very function the tool uses, so the page and the tool cannot drift — all
    the page needs is the styling, since it has its own palette, and its own
    crest rules because the tiles carry crests. */
+/* The nights of a rachao, on the page everyone else reads: the titles along
+   the top, then a line for every night with the games each side won on it.
+   No points column, because there are none to put in it. */
+const PUB_NIGHT_CSS =
+  '.ttls{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px}' +
+  '.ttl{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:12px;padding:7px 13px;background:var(--card)}' +
+  '.ttl.lead{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}' +
+  '.ttl .tnm{font-weight:700;font-size:13.5px}' +
+  '.ttl b{font-size:19px;font-variant-numeric:tabular-nums;margin-left:4px}.ttl.lead b{color:var(--acc)}' +
+  '.nights{margin-top:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:2px 12px;' +
+    'box-shadow:0 8px 22px -14px rgba(0,0,0,.7)}' +
+  '.nrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 0;border-top:1px solid var(--line)}' +
+  '.nrow:first-child{border-top:0}' +
+  '.ndate{min-width:9.5em;font-weight:600;font-size:13px}' +
+  '.nwins{display:flex;gap:10px;flex:1;min-width:0;flex-wrap:wrap}' +
+  '.nw{display:inline-flex;align-items:center;font-variant-numeric:tabular-nums;font-weight:700;color:var(--dim)}' +
+  '.nw.won{color:var(--acc)}.nw .cr{width:20px;height:20px;margin:0 5px 0 0}.ttl .cr{width:22px;height:22px;margin:0}' +
+  '.stag{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;' +
+    'border-radius:999px;padding:2px 9px;background:var(--card2);color:var(--dim);border:1px solid var(--line);white-space:nowrap}' +
+  '.stag.held{background:var(--grad);color:#1d0f05;border-color:transparent}' +
+  '.stag.lead{color:var(--acc);border-color:var(--acc)}' +
+  '@media (max-width:640px){.ndate{min-width:100%}}';
 const PUB_SHARE_CSS =
   '.share{position:relative;width:100%;aspect-ratio:16/8;min-height:240px;border-radius:14px;overflow:hidden;background:var(--card)}' +
   '.sh-t{position:absolute;padding:3px;container-type:size;animation:shIn .6s cubic-bezier(.22,1,.36,1) var(--d) both}' +
@@ -15806,6 +15939,42 @@ function publicPageHtml() {
             (f.time ? ' ' + esc(f.time) : '') + (f.court ? ' \u00b7 court ' + esc(f.court) : '') + '</span>') + '</td></tr>';
     }).join('') + '</table></div>';
   };
+  /* A rachao's record: what each night came to, and the titles that came
+     out of them. This is the table of a competition that has none. */
+  const pubNights = full => {
+    const T = seriesTally(), nm = nameList;
+    const ord = DB.teams.slice().sort((a, b) => (T.by[b.id] || 0) - (T.by[a.id] || 0) || a.name.localeCompare(b.name));
+    const titles = ord.map(x => '<div class="ttl' + ((T.by[x.id] || 0) === T.best && T.best ? ' lead' : '') + '">' +
+      dot(x.id) + '<span class="tnm">' + esc(x.name) + '</span><b>' + (T.by[x.id] || 0) + '</b></div>').join('');
+    const night = x => {
+      const ids = DB.teams.filter(y => x.ids[y.id]);
+      const tag = x.done
+        ? (x.top.length === 1 ? '<span class="stag held">' + esc(teamName(x.top[0])) + ' take the night</span>'
+           : x.top.length ? '<span class="stag">' + (x.top.length >= ids.length ? 'the night is shared'
+               : 'shared &middot; ' + esc(nm(x.top))) + '</span>'
+           : '<span class="stag">no winner</span>')
+        : x.played ? '<span class="stag lead">' + (x.top.length ? esc(nm(x.top)) + ' lead' : 'level') +
+            ' &middot; ' + x.played + ' of ' + x.of + '</span>'
+        : '<span class="stag">' + plural(x.of, 'game') + ' to play</span>';
+      return '<div class="nrow"><span class="ndate">' + esc(fmtDate(x.date)) + '</span><span class="nwins">' +
+        (!x.played ? ids.map(y => '<span class="nw">' + dot(y.id) + '</span>').join('')
+          : ids.map(y => '<span class="nw' + (x.done && x.top.indexOf(y.id) >= 0 ? ' won' : '') + '">' +
+              dot(y.id) + (x.w[y.id] || 0) + '</span>').join('')) +
+        '</span>' + tag + '</div>';
+    };
+    const over = T.board.filter(x => x.done), rest = T.board.filter(x => !x.done);
+    const show = full ? rest.slice(0, 3).concat(over.slice().reverse())
+      : rest.slice(0, 1).concat(over.slice().reverse().slice(0, 7));
+    const left = T.board.length - show.length;
+    return '<style>' + PUB_NIGHT_CSS + '</style>' +
+      h2('Nights &amp; titles') +
+      (!DB.teams.length ? empty('No teams yet.')
+        : '<div class="ttls">' + titles + '</div>' +
+          (T.board.length ? '<div class="nights">' + show.map(night).join('') + '</div>' +
+            (left > 0 ? '<div class="note">' + plural(left, 'other night') + ' on the schedule.</div>' : '')
+            : empty('No nights drawn yet.')) +
+          '<div class="note">Every night is its own competition: whoever wins the most games on it takes the night, and that is one title. Nothing is carried over.</div>');
+  };
   const goalShare = () => {
     const rows = st.map(r => Object.assign({}, r, playedAll(r.id))).filter(r => r.GF > 0);
     if (!rows.reduce((t, r) => t + r.GF, 0)) return '';
@@ -15878,8 +16047,12 @@ function publicPageHtml() {
        they were, where across the page they lay out two, three or four to a
        row depending on the screen. */
     (isWorld() ? h2('Groups') + pubGroups(st) : '') +
+    /* The nights take the width of the page: squeezed into half of it beside
+       the Golden Boot, a night's wins wrap onto a second line. */
+    (isSeries() ? pubNights() : '') +
     '<div class="two">' + (isWorld() ? ''
-      : isCup() ? '' : '<div>' + h2('Table') + (st.length ? '<div class="tw"><table><tr><th class="n">#</th><th>Team</th>' +
+      : isCup() || isSeries() ? ''
+      : '<div>' + h2('Table') + (st.length ? '<div class="tw"><table><tr><th class="n">#</th><th>Team</th>' +
         '<th class="n">P</th><th class="n">GD</th><th class="n">Pts</th></tr>' +
         st.map(r => '<tr' + q(r) + ' style="--tc:' + tc(r.id) + '"><td class="n dim">' + r.pos + moveMark(mv, r.id) + '</td><td class="tm">' + dot(r.id) + esc(r.name) + '</td>' +
           '<td class="n">' + r.P + '</td><td class="n">' + gd(r) + '</td><td class="n"><b>' + r.Pts + '</b></td></tr>').join('') +
@@ -15910,6 +16083,7 @@ function publicPageHtml() {
   /* ── the full table, with form ── */
   const formOf = id => '<span class="fm">' + teamForm(id, 5, true).map(x => '<a href="#m' + esc(x.id) + '" class="' + x.r + '" data-go="' + esc(x.id) + '" title="' + esc(x.t) + '">' + x.r + '</a>').join('') + '</span>';
   const table = isWorld() ? h2('Groups') + pubGroups(st, true) :
+    isSeries() ? pubNights(true) :
     h2('Table') + (st.length ? '<div class="tw"><table><tr><th class="n">#</th><th>Team</th><th class="n">P</th>' +
       '<th class="n hs">W</th><th class="n hs">D</th><th class="n hs">L</th><th class="n hs">GF</th><th class="n hs">GA</th>' +
       '<th class="n">GD</th><th class="n">Pts</th><th>Form</th></tr>' +
@@ -15934,7 +16108,7 @@ function publicPageHtml() {
   /* "Round 6" is not what a quarter-final is called. A World Cup names its
      own rounds, here as on the bracket and the match screen. */
   const rl = k => k === 'SEMI' ? 'Semi-finals' : k === 'FINAL' ? 'Finals'
-    : isWorld() ? rdName(+k.slice(1)) : 'Round ' + k.slice(1);
+    : isWorld() || isSeries() ? rdName(+k.slice(1)) : 'Round ' + k.slice(1);
   const drawn = DB.fixtures.filter(f => f.stage === 'regular' || f.homeId || f.awayId);
   const keys = [...new Set(drawn.map(roundKey))];
   const isDone = k => drawn.filter(f => roundKey(f) === k).every(f => f.status === 'final');
@@ -16061,7 +16235,7 @@ function publicPageHtml() {
     return h2('Teams') + '<div class="tmpick">' + pick + '</div>' + blocks +
       '<div class="empty" data-tmnone>Pick your badge above to see your own fixtures \u2014 kick-off, court and opponent.</div>';
   })();
-  const tabs = [['dash', 'Dashboard'], ['table', 'Table'], ['matches', 'Fixtures & Results'],
+  const tabs = [['dash', 'Dashboard'], ['table', isSeries() ? 'Nights' : 'Table'], ['matches', 'Fixtures & Results'],
       ['teams', 'Teams'], ['stats', 'Stats'], ['honours', 'Honours']]
     .filter(([k]) => !(isCup() && k === 'table'));
   const ball = ballBare();
@@ -18480,7 +18654,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '22 Nov 11:45 · 62b6d41'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '22 Nov 12:23 · ad6ef3c'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
