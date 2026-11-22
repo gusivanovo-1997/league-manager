@@ -2685,6 +2685,9 @@ tspan.gstar{fill:var(--gold)}
       <button class="btn" id="btnHonourNew" style="display:none">Cancel edit — new record</button>
       </div>
     </div>
+    <!-- A rachao's record of who has played whom, in place of a roll of
+         honour it cannot fill. -->
+    <div class="card" id="h2hCard" style="display:none" data-nostar><h3>Head to head</h3><div id="h2hBoard"></div></div>
     <div class="card hncard" data-nostar><h3 class="goldtxt">★ Titles</h3><div id="honourTitles"></div></div>
     <div class="card hncard" data-nostar><h3 class="goldtxt">Roll of honour</h3><div class="tbl-wrap"><table id="honourTbl"></table></div></div>
   </section>
@@ -3533,7 +3536,7 @@ function teamForChampion(name) {
 }
 function titlesOf(tid) {
   const t = team(tid);
-  if (!t) return [];
+  if (!t || isSeries()) return [];      // a rachao's titles are nights, counted on their own board
   return DB.honours.filter(h => h.championId ? h.championId === tid
     : (teamForChampion(h.champion) || {}).id === tid).sort((a, b) => b.year - a.year);
 }
@@ -5250,8 +5253,9 @@ function paintSubTabs() {
   if (grp.length < 2) { el.hidden = true; el.innerHTML = ''; return; }
   const gold = finalsGold(), pend = DB.regs.filter(r => r.status === 'pending').length;
   el.hidden = false;
-  el.innerHTML = grp.map(([k, label]) => '<button class="subtab' + (k === currentView ? ' on' : '') + (k === 'finals' && gold ? ' gold' : '') +
-    '" data-sub="' + k + '">' + icon(k) + label + (k === 'regs' && pend ? '<span class="badge">' + pend + '</span>' : '') + '</button>').join('');
+  el.innerHTML = grp.map(([k, label0]) => { const label = k === 'honours' && isSeries() ? 'Head to head' : label0;
+    return '<button class="subtab' + (k === currentView ? ' on' : '') + (k === 'finals' && gold ? ' gold' : '') +
+    '" data-sub="' + k + '">' + icon(k) + label + (k === 'regs' && pend ? '<span class="badge">' + pend + '</span>' : '') + '</button>'; }).join('');
   el.querySelectorAll('[data-sub]').forEach(b => b.onclick = () => { if (b.dataset.sub === 'players') plSel = null; go(b.dataset.sub); });
 }
 let currentView = 'dash';
@@ -6312,6 +6316,31 @@ function nightBoard() {
     return n;
   });
 }
+/* Every pairing, and how many times they have faced each other: the only
+   running record a rachao keeps besides the titles. A night brings each
+   pair together as many times as the draw says, so this is the count of
+   those meetings, with what they have come to. */
+function meetings() {
+  const by = {};
+  (DB.fixtures || []).forEach(f => {
+    if (!f || !f.homeId || !f.awayId) return;
+    const ids = [f.homeId, f.awayId].sort(), k = ids.join('|');
+    const m = by[k] = by[k] || { a: ids[0], b: ids[1], drawn: 0, met: 0, of: 0, w: {}, gf: {} };
+    m.of++;
+    if (f.status !== 'final' || isOff(f)) return;
+    m.met++;
+    const win = winnerOf(f);
+    if (win) m.w[win] = (m.w[win] || 0) + 1; else m.drawn++;
+    m.gf[f.homeId] = (m.gf[f.homeId] || 0) + (+f.homeGoals || 0);
+    m.gf[f.awayId] = (m.gf[f.awayId] || 0) + (+f.awayGoals || 0);
+  });
+  return Object.keys(by).map(k => by[k])
+    .filter(m => team(m.a) && team(m.b))
+    .sort((x, y) => y.met - x.met || teamName(x.a).localeCompare(teamName(y.a)) ||
+      teamName(x.b).localeCompare(teamName(y.b)));
+}
+// how many times a pair meet in one night, as the draw was set
+const perNightMeets = () => Math.max(1, +(DB.season || {}).rounds || 1);
 const nameList = ids => ids.length < 3 ? ids.map(teamName).join(' & ')
   : ids.slice(0, -1).map(teamName).join(', ') + ' & ' + teamName(ids[ids.length - 1]);
 /* The headline of a rachao is the last night, not the standing: who took it
@@ -10319,8 +10348,11 @@ const PERIODS = ['H1', 'BRK', 'H2'];
 /* Extra time exists only in a knockout match (gold or silver semi or final,
    3rd place): two halves of DB.season.etMin minutes, after which a level
    match goes to the penalty shoot-out. */
-const isKO = f => !!f && (f.stage !== 'regular' || isCup() ||
+const isKO = f => !!f && (f.stage !== 'regular' || isCup() || isSeries() ||
   (isWorld() && (f.round || 0) > WC_GRD));                      // a group match may be drawn; a tie may not
+const koNeedWinner = () => isSeries()
+  ? 'The night is decided on games won, so this one needs a winner — extra time, or the shoot-out on the match screen.'
+  : 'A finals match needs a winner — enter the penalty shoot-out (it cannot be level).';
 const periodsFor = f => isKO(f) ? ['H1', 'BRK', 'H2', 'ET1', 'ET2'] : PERIODS;
 const etMin = () => Math.max(1, +DB.season.etMin || 5);
 /* A knockout result told in its stages. A match that went to extra time
@@ -10639,7 +10671,8 @@ function koBanner(f) {
       '<span class="rule"></span>' +
       '<div class="ks">' + esc(kick + ' · ' + DB.season.name) + '</div></div>';
   }
-  if (!isKO(f)) return '<div class="rdban">Round ' + esc(f.round) + (f.date ? ' · ' + esc(fmtDate(f.date)) : '') + '</div>';
+  if (!isKO(f) || (isSeries() && f.stage === 'regular'))
+    return '<div class="rdban">' + esc(rdName(f.round)) + (f.date ? ' · ' + esc(fmtDate(f.date)) : '') + '</div>';
   const metal = /^SV/.test(f.stage) ? 'silver' : f.stage === 'P3' ? 'bronze' : 'gold';
   const title = { SF1: 'Semi-final 1', SF2: 'Semi-final 2', F: 'Grand Final', SV1: 'Silver Semi-final 1', SV2: 'Silver Semi-final 2',
     SVF: 'Silver Final', P3: '3rd Place Play-off', SV3: 'Silver 3rd Place Play-off' }[f.stage] || stageLabel(f.stage);
@@ -10801,7 +10834,8 @@ function drawLive() {
               : nextP === 'ET1' ? 'extra time (2 × ' + etMin() + ' min)' : nextP === 'ET2' ? 'the second half of extra time' : 'the second half') +
             '</button>' +
             // level after 40 minutes: extra time, or straight to the penalty shoot-out
-            (nextP === 'ET1' ? '<button class="btn sm ok" id="btnFullTimeFinal" style="margin-top:8px">No extra time — confirm the result</button>' : '')
+            (nextP === 'ET1' ? '<button class="btn sm ok" id="btnFullTimeFinal" style="margin-top:8px">' +
+              (isSeries() ? 'No extra time — straight to the shoot-out' : 'No extra time — confirm the result') + '</button>' : '')
           : done ? (f.status !== 'final'
               ? '<button class="btn sm ok pulse" id="btnFullTimeFinal" style="margin-top:8px">Full time' + (f.aet ? ' (aet)' : '') + ' — confirm the result</button>'
               : '<div class="pill ok" style="margin-top:8px;display:inline-block">Full time</div>' + (koStrip(f) ? '<div style="margin-top:6px">' + koStrip(f) + '</div>' : '')) : '') +
@@ -10815,7 +10849,7 @@ function drawLive() {
     '<div id="liveScroll">' +
     /* Level in a knockout, so there is a shoot-out to come: the board for it
        goes above the log, where the next thing to happen belongs. */
-    (isKO(f) && shown.h === shown.a && (f.status !== 'final' || (f.pens || []).length) ? penBox(f) : '') +
+    (isKO(f) && shown.h === shown.a && (f.status !== 'final' || (f.pens || []).length || isSeries()) ? penBox(f) : '') +
     '<div class="card"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">Match log</h3>' +
       '<div class="spacer"></div>' +
       (isMgr() ? '<button class="btn sm bad" id="btnWipe" data-tip="Wipe it back to unplayed, as if it never happened">Reset as unplayed</button>' : '') +
@@ -11534,7 +11568,7 @@ function finaliseMatch(f) {
         }
         const pens = hg === ag && kh !== '' && ka !== '';
         if (hg === ag && !(pens && +kh !== +ka)) {
-          toast('A finals match needs a winner — enter the penalty shoot-out (it cannot be level).', 'bad'); return false;
+          toast(koNeedWinner(), 'bad'); return false;
         }
         ko = { aet, ntH: aet ? +nh : null, ntA: aet ? +na : null, pkH: pens ? +kh : null, pkA: pens ? +ka : null };
       }
@@ -11791,7 +11825,7 @@ function editResult(id) {
           if (+nh > hg || +na > ag) { toast('The normal-time score cannot be more than the final score.', 'bad'); return false; }
         }
         const pens = hg === ag && kh !== '' && ka !== '';
-        if (hg === ag && !(pens && +kh !== +ka)) { toast('A finals match needs a winner — enter the penalty shoot-out (it cannot be level).', 'bad'); return false; }
+        if (hg === ag && !(pens && +kh !== +ka)) { toast(koNeedWinner(), 'bad'); return false; }
         kox = { aet, ntH: aet ? +nh : null, ntA: aet ? +na : null, pkH: pens ? +kh : null, pkA: pens ? +ka : null };
       }
       // the events: tally corrections untouched, everything else as listed
@@ -12506,6 +12540,7 @@ function recordHonour() {
   const ph2 = seasonPhase(), pg = podiumOf('gold'), c = ph2.champion;
   /* Nothing to record is worth saying out loud: the button used to go dead
      under the finger with no word of why. */
+  if (isSeries()) return toast('A rachão has no champion to record — every night is its own title, counted on the Nights board.', 'bad');
   if (!c) return toast(isWorld() ? 'The final has not been played yet, so there is no champion to record.'
     : isCup() ? 'The cup final has not been played yet, so there is no champion to record.'
     : leagueOnly() ? 'The table is not decided yet — the last round has still to be played.'
@@ -13046,7 +13081,35 @@ $('btnAddHonour').onclick = () => {
     rec.championId ? 'ok' : 'bad');
 };
 $('btnHonourNew').onclick = endHonourEdit;
+/* A rachao has nothing to put on a roll of honour: no champion, no
+   runner-up, no third, and a title that belongs to a Thursday rather than
+   to a season. What it has instead is this — who has played whom, and how
+   often. */
+function paintMeetings(el) {
+  const ms = meetings();
+  if (!ms.length) return el.innerHTML = '<div class="empty">No fixtures drawn yet.</div>';
+  const per = perNightMeets();
+  const side = (m, id) => crest(id, 'sm') + esc(teamName(id));
+  el.innerHTML = '<div class="tbl-wrap"><table>' +
+    '<tr><th>Pairing</th><th class="num">Met</th><th class="num">Record</th><th class="num">Goals</th></tr>' +
+    ms.map(m => {
+      const wa = m.w[m.a] || 0, wb = m.w[m.b] || 0;
+      return '<tr><td>' + side(m, m.a) + ' <span class="muted">v</span> ' + side(m, m.b) + '</td>' +
+        '<td class="num"><b>' + m.met + '</b><span class="muted small"> of ' + m.of + '</span></td>' +
+        '<td class="num">' + (m.met ? wa + ' – ' + m.drawn + ' – ' + wb : '<span class="muted">—</span>') + '</td>' +
+        '<td class="num muted">' + (m.met ? (m.gf[m.a] || 0) + ' – ' + (m.gf[m.b] || 0) : '—') + '</td></tr>';
+    }).join('') + '</table></div>' +
+    '<div class="small muted" style="margin-top:9px">Record reads wins &ndash; draws &ndash; wins, in the order the sides are named. ' +
+      'Each pair meet ' + plural(per, 'time') + ' a night as the draw was set.</div>';
+}
 function renderHonours() {
+  const h2h = $('h2hCard'), hnAdd = $('hnAddCard');
+  if (h2h) h2h.style.display = isSeries() ? '' : 'none';
+  document.querySelectorAll('.hncard').forEach(c => c.style.display = isSeries() ? 'none' : '');
+  if (isSeries()) {
+    if (hnAdd) hnAdd.style.display = 'none';
+    return paintMeetings($('h2hBoard'));
+  }
   $('hnAddCard').style.display = isMgr() ? '' : 'none';
   if (freshView && hnEditId) endHonourEdit();     // arriving at the tab never resumes a half-finished edit
   $('hnTeams').innerHTML = DB.teams.map(t => '<option value="' + esc(t.name) + '"></option>').join('');
@@ -16172,7 +16235,22 @@ function publicPageHtml() {
   const most = Object.values(hGroups).sort((a, b) => b.length - a.length || b[0].year - a[0].year);
   const nowCh = '<span class="curch">👑 Current champions</span>';
   const hasBoot = hl.some(x => (x.topScorer || '').trim()), hasMvp = hl.some(x => (x.mvp || '').trim());
-  const honours = hl.length ? h2('Titles') + '<div class="tw"><table><tr><th>Team</th><th class="n">Titles</th><th>Won</th></tr>' +
+  const pubMeets = () => {
+    const ms = meetings();
+    const side = id => dot(id) + esc(teamName(id));
+    return h2('Head to head') + (!ms.length ? empty('No fixtures drawn yet.')
+      : '<div class="tw"><table><tr><th>Pairing</th><th class="n">Met</th><th class="n">Record</th><th class="n">Goals</th></tr>' +
+        ms.map(m => { const wa = m.w[m.a] || 0, wb = m.w[m.b] || 0;
+          return '<tr style="--tc:' + tc(m.a) + '"><td class="tm">' + side(m.a) +
+            ' <span class="dim">v</span> ' + side(m.b) + '</td>' +
+            '<td class="n"><b>' + m.met + '</b> <span class="dim">of ' + m.of + '</span></td>' +
+            '<td class="n">' + (m.met ? wa + ' &ndash; ' + m.drawn + ' &ndash; ' + wb : '<span class="dim">&mdash;</span>') + '</td>' +
+            '<td class="n dim">' + (m.met ? (m.gf[m.a] || 0) + ' &ndash; ' + (m.gf[m.b] || 0) : '&mdash;') + '</td></tr>'; }).join('') +
+        '</table></div>' +
+        '<div class="note">Record reads wins &ndash; draws &ndash; wins, in the order the sides are named. Each pair meet ' +
+          plural(perNightMeets(), 'time') + ' a night as the draw was set.</div>');
+  };
+  const honours = isSeries() ? pubMeets() : hl.length ? h2('Titles') + '<div class="tw"><table><tr><th>Team</th><th class="n">Titles</th><th>Won</th></tr>' +
       most.map(g => { const t = champOf(g[0]);
         return '<tr' + (t ? ' style="--tc:' + tc(t.id) + '"' : '') + '><td class="tm">' + (t ? dot(t.id) : '') + '<b class="gt">' + esc(t ? t.name : g[0].champion) + '</b></td>' +
           '<td class="n"><b class="gt">' + g.length + '</b></td><td class="sub">' + g.map(x => x.year).join(', ') + (g.indexOf(h0) >= 0 ? ' ' + nowCh : '') + '</td></tr>'; }).join('') +
@@ -16236,7 +16314,7 @@ function publicPageHtml() {
       '<div class="empty" data-tmnone>Pick your badge above to see your own fixtures \u2014 kick-off, court and opponent.</div>';
   })();
   const tabs = [['dash', 'Dashboard'], ['table', isSeries() ? 'Nights' : 'Table'], ['matches', 'Fixtures & Results'],
-      ['teams', 'Teams'], ['stats', 'Stats'], ['honours', 'Honours']]
+      ['teams', 'Teams'], ['stats', 'Stats'], ['honours', isSeries() ? 'Head to head' : 'Honours']]
     .filter(([k]) => !(isCup() && k === 'table'));
   const ball = ballBare();
   const app = '<style>' + crestRules('.cr', 'data-c') + '</style>' + '<header><div class="wrap brand">' +
@@ -18654,7 +18732,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '22 Nov 12:23 · ad6ef3c'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '22 Nov 13:33 · 523ec7e'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
