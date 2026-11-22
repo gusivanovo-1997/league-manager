@@ -1831,6 +1831,18 @@ td.num .gboot,th .gboot{margin:0}
    its own clock, on its own fixture — so the screen has to say which ones
    are on and let the referee step between them without closing anything.
    Without it, one running match looked like the only match the tool had. */
+/* the titles, and a line for every night */
+.ttls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.ttl{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:7px 13px;background:var(--panel)}
+.ttl.lead{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.ttl .tnm{font-weight:700;font-size:calc(13.5px * var(--fs))}
+.ttl b{font-size:calc(19px * var(--fs));font-variant-numeric:tabular-nums;margin-left:4px}
+.ttl.lead b{color:var(--accent)}
+.nrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 2px;border-top:1px solid var(--line)}
+.ndate{min-width:9.5em;font-weight:600;font-size:calc(13px * var(--fs))}
+.nwins{display:flex;gap:8px;flex:1;min-width:0;flex-wrap:wrap}
+.nw{display:inline-flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums;font-weight:700;color:var(--dim)}
+.nw.won{color:var(--accent)}
 /* the series board: one line per pairing, the way a rachão is actually read */
 .sser{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line)}
 .sser:last-child{border-bottom:0}
@@ -2497,7 +2509,7 @@ tspan.gstar{fill:var(--gold)}
         <div class="field"><label>Format</label><select id="fxFormat">
           <option value="finals">Group stage / league + finals — everyone plays everyone, top 4 to the semis</option>
           <option value="league">League only — pontos corridos, no finals</option>
-          <option value="rachao">Rachão — 2 to 4 teams, each pair plays its own series (State of Origin)</option>
+          <option value="rachao">Rachão — 2 to 4 teams, same night every week, titles by the night</option>
           <option value="cup">Knockout cup — lose and you are out</option>
           <option value="groups">Groups → knockout — Copa style, top two go through</option>
           <option value="ko">Knockout bracket — 4, 8, 16 or 32 teams, seeded</option>
@@ -2574,13 +2586,13 @@ tspan.gstar{fill:var(--gold)}
     <!-- A rachão is decided pair by pair, so the pairs lead the page. -->
     <div class="card" id="tableSeriesCard" style="display:none">
       <div class="row" style="margin-bottom:10px">
-        <h3 style="margin:0">The series</h3>
+        <h3 style="margin:0">Nights &amp; titles</h3>
         <div class="spacer"></div>
         <span class="muted small" id="seriesNote"></span>
       </div>
       <div id="tableSeries"></div>
     </div>
-    <div class="card">
+    <div class="card" id="cardSeasonTable">
       <div class="row" style="margin-bottom:10px">
         <h3 style="margin:0">Season table</h3>
         <div class="spacer"></div>
@@ -2590,7 +2602,7 @@ tspan.gstar{fill:var(--gold)}
       <div class="tlegend" id="tableLegend"></div>
       <div id="tableNote" class="small" style="margin-top:10px;line-height:1.8"></div>
     </div>
-    <div class="card"><h3>Form — last 5 league games</h3><div class="tbl-wrap" id="gridWrap"></div></div>
+    <div class="card" id="cardForm"><h3>Form — last 5 league games</h3><div class="tbl-wrap" id="gridWrap"></div></div>
   </section>
 
   <!-- ══════════════ RESULTS ══════════════ -->
@@ -2968,7 +2980,7 @@ tspan.gstar{fill:var(--gold)}
         <div class="field"><label>Competition format</label><select id="stFormat">
           <option value="finals">Group stage / league + finals — everyone plays everyone, top 4 to the semis</option>
           <option value="league">League only — pontos corridos, no finals</option>
-          <option value="rachao">Rachão — 2 to 4 teams, each pair plays its own series (State of Origin)</option>
+          <option value="rachao">Rachão — 2 to 4 teams, same night every week, titles by the night</option>
           <option value="cup">Knockout cup — lose and you are out</option>
           <option value="groups">Groups → knockout — Copa style, top two go through</option>
           <option value="ko">Knockout bracket — 4, 8, 16 or 32 teams, seeded</option>
@@ -6218,49 +6230,64 @@ const cancelLine = x => x.off
 /* A season can be league only — "pontos corridos": everyone plays everyone,
    no finals, the table decides the champion. */
 const leagueOnly = () => DB.season.format === 'league' || isSeries();
-/* THE RACHAO. Two, three or four sides and nothing else: everybody plays
-   everybody, as many times round as the draw asks for, and there is no
-   bracket at the end because there is nothing a bracket would add.
+/* THE RACHAO. Two, three or four sides, the same night, week after week.
 
-   What is counted is not the table. Each PAIR of teams plays its own little
-   series — State of Origin, best of whatever they play — and the side that
-   wins more of those meetings holds that series. The night belongs to
-   whoever holds the most of them. A table still runs underneath it, and
-   settles a tie, but the series are the thing. */
+   A night is the competition. Everybody plays everybody on it, as many
+   times round as the draw asks for, and whoever wins the most games that
+   night takes the night — one title. Nothing is carried over: next week
+   starts level, and the record is how many nights each side has taken.
+   That is how a rachao is actually settled among people who turn up to the
+   same court every week, and it is why there is no table standing over it
+   and no first, second and third at the end of a season that has no end.
+
+   Two sides is the same rule said shorter: whoever won that night. */
 const isSeries = () => (DB.season || {}).format === 'rachao';
 const SERIES_MAX = 4;
-/* Every pairing, and where its series stands. Only played matches count
-   towards it; the rest are what is left to play. A drawn match is a draw —
-   it wins nobody the series, and a series level at the end is shared. */
-function seriesBoard() {
-  const ts = (DB.teams || []).slice();
-  const out = [];
-  for (let i = 0; i < ts.length; i++) for (let j = i + 1; j < ts.length; j++) {
-    const a = ts[i], b = ts[j];
-    const met = (DB.fixtures || []).filter(f => f.stage === 'regular' && !isOff(f) &&
-      ((f.homeId === a.id && f.awayId === b.id) || (f.homeId === b.id && f.awayId === a.id)));
-    let aw = 0, bw = 0, dr = 0;
-    met.filter(f => f.status === 'final').forEach(f => {
-      const w = winnerOf(f);
-      if (!w) dr++; else if (w === a.id) aw++; else bw++;
-    });
-    const played = aw + bw + dr, left = met.length - played;
-    const lead = aw === bw ? null : aw > bw ? a.id : b.id;
-    // it is held once the rest of the series cannot change who is ahead
-    const held = lead && Math.abs(aw - bw) > left ? lead : null;
-    out.push({ a: a.id, b: b.id, aw: aw, bw: bw, dr: dr, played: played, of: met.length, left: left, lead: lead, held: held });
-  }
-  return out;
+/* Every night that has a match on it, and what it came to. A night is
+   taken by the side that won most of its games; level on wins, it goes to
+   goal difference on the night, and level on that too it is shared. A
+   night with games still to play has a leader, not a winner. */
+function nightBoard() {
+  const by = {};
+  (DB.fixtures || []).forEach(f => {
+    if (!f || f.stage !== 'regular' || !f.date) return;
+    const n = by[f.date] = by[f.date] || { date: f.date, of: 0, played: 0, w: {}, gd: {}, ids: {} };
+    n.of++;
+    n.ids[f.homeId] = n.ids[f.awayId] = 1;
+    if (f.status !== 'final' || isOff(f)) return;
+    n.played++;
+    const win = winnerOf(f);
+    if (win) n.w[win] = (n.w[win] || 0) + 1;
+    const h = +f.homeGoals || 0, a = +f.awayGoals || 0;
+    n.gd[f.homeId] = (n.gd[f.homeId] || 0) + h - a;
+    n.gd[f.awayId] = (n.gd[f.awayId] || 0) + a - h;
+  });
+  return Object.keys(by).sort().map(d => {
+    const n = by[d], ids = Object.keys(n.ids);
+    n.done = n.of > 0 && n.played === n.of;
+    n.top = [];
+    if (n.played) {
+      const best = Math.max.apply(null, ids.map(i => n.w[i] || 0));
+      let top = ids.filter(i => (n.w[i] || 0) === best && best > 0);
+      if (top.length > 1) {
+        const g = Math.max.apply(null, top.map(i => n.gd[i] || 0));
+        top = top.filter(i => (n.gd[i] || 0) === g);
+      }
+      n.top = top;
+    }
+    n.title = n.done ? n.top : [];
+    return n;
+  });
 }
-// how many series each side holds, and who is holding the most of them
+// how many nights each side has taken, and who leads on them
 function seriesTally() {
-  const by = {}, board = seriesBoard();
+  const board = nightBoard(), by = {};
   (DB.teams || []).forEach(t => by[t.id] = 0);
-  board.forEach(s => { if (s.held) by[s.held] = (by[s.held] || 0) + 1; });
+  board.forEach(n => n.title.forEach(id => { by[id] = (by[id] || 0) + 1; }));
   const best = Math.max(0, ...Object.keys(by).map(k => by[k]));
   const top = Object.keys(by).filter(k => by[k] === best && best > 0);
   return { by: by, board: board, best: best, top: top,
-    done: board.length > 0 && board.every(s => s.left === 0) };
+    nights: board.length, done: board.filter(n => n.done).length };
 }
 /* "Mata-mata": a knockout cup. Every tie is played once, the loser is out,
    and the last team standing wins it — so there is no table and no bracket
@@ -8519,6 +8546,55 @@ function packCourts(list, courts) {
   }
   return slots;
 }
+/* A RACHAO IS DRAWN FOR THE YEAR, not for a night. The same sides meet on
+   the same night every week (or fortnight, or whatever the gap says), and
+   nobody wants to redraw it every Thursday — so the schedule runs from the
+   first night to the same date a year later, and every night of it is the
+   full round robin, as many times round as the draw asks for.
+
+   Each night stands on its own: its games are packed onto its own clock,
+   its rounds are its own, and the night is numbered as the round so the
+   fixture list and the sheet read a night at a time. */
+const RACHAO_WEEKS = 53;
+function drawRachao(keepHistory) {
+  const bag = drawBag(), ids = bag.map(t => t.id);
+  const perNight = Math.max(1, +$('fxRounds').value || 1);
+  const startDate = snapToWeekday($('fxStart').value || todayISO(), +$('fxDay').value);
+  const first = toMins($('fxTime').value || '19:00');
+  const slot = Math.max(5, +$('fxSlot').value || 45);
+  const courts = Math.max(1, +$('fxCourts').value || 1);
+  const every = Math.max(1, $('fxGap').value === '' ? 7 : +$('fxGap').value || 7);
+  const season = seasonPairs(ids, perNight);          // one night, every time round
+  const limit = (() => { const d = new Date(startDate + 'T00:00:00');
+    d.setFullYear(d.getFullYear() + 1); return isoOf(d); })();
+  const fixtures = [];
+  let date = startDate, night = 0;
+  while (date < limit && night < RACHAO_WEEKS) {
+    night++;
+    const queue = [];
+    season.forEach((pairs, r) => pairs.forEach(p => queue.push({ round: r + 1, homeId: p[0], awayId: p[1] })));
+    const d0 = date;
+    packCourts(queue, courts).forEach((took, si) => took.forEach((q, ci) => fixtures.push({
+      id: uid(), stage: 'regular', round: night, homeId: q.homeId, awayId: q.awayId, date: d0,
+      time: fmtMins(first + si * slot), court: courts > 1 ? String(ci + 1) : '', status: 'scheduled',
+      homeGoals: 0, awayGoals: 0, events: []
+    })));
+    date = addDays(date, every);
+  }
+  if (keepHistory !== false) archiveSeason();
+  stampDraw(bag);
+  DB.fixtures = fixtures;
+  DB.season.draw = uid(); DB.season.drawnAs = DB.season.name; DB.season.drawnFormat = DB.season.format;
+  DB.season.gap = every;
+  DB.season.format = 'rachao';
+  DB.season.rounds = perNight;
+  DB.teams.forEach(t => { delete t.joinedRound; delete t.missedMatches; delete t.equivPoints; });
+  delete DB.season.cupByes; delete DB.season.noAutoFinals;
+  if (save() === false) return;
+  render(); liveTicker();
+  toast('Rachão drawn: ' + plural(night, 'night') + ' to ' + fmtDate(fixtures.length ? fixtures[fixtures.length - 1].date : startDate) +
+    ', ' + plural(season.length * (ids.length >> 1 || 1), 'game') + ' a night. Whoever wins the most takes the night.', 'ok');
+}
 /* The order they came out, kept on the teams themselves. A table of sides
    who have all played nothing has to list them in SOME order, and that
    order used to be the alphabet — which made a freshly drawn group look
@@ -8532,6 +8608,7 @@ function generateFixtures(keepHistory) {
   if ($('fxFormat').value === 'rachao' && teams.length > SERIES_MAX)
     return toast('A rachão is ' + SERIES_MAX + ' teams at the most \u2014 there are ' + teams.length +
       '. Use a league or a group stage for more.', 'bad');
+  if ($('fxFormat').value === 'rachao') return drawRachao(keepHistory);
   /* The hat. Everything below is built from the order the teams come out of
      it — which group a side lands in, where it sits inside that group, who
      it meets in round one, which half of the bracket it is in — so nothing
@@ -11725,40 +11802,56 @@ function editResult(id) {
 /* ══════════════ TABLE ══════════════ */
 /* The series board, as a rachão is actually read: who has beaten whom, how
    often, and which of those is settled. */
+/* The record of a rachao: a line for every night, and the titles that came
+   out of them. No table standing over it and no podium — a competition
+   that runs every week has no last day to be third on. */
 function paintSeries() {
   const card = $('tableSeriesCard');
   if (!card) return;
   card.style.display = isSeries() ? '' : 'none';
   if (!isSeries()) return;
-  const T = seriesTally();
-  const side = (tid, right) => '<span class="sd' + (right ? ' r' : '') + '">' +
-    (right ? '<b>' + esc(teamName(tid)) + '</b>' + crest(tid, 'md') : crest(tid, 'md') + '<b>' + esc(teamName(tid)) + '</b>') + '</span>';
-  $('tableSeries').innerHTML = T.board.length
-    ? T.board.map(s => {
-      const tag = s.held ? '<span class="stag held">' + esc(teamName(s.held)) + ' hold it</span>'
-        : s.lead ? '<span class="stag lead">' + esc(teamName(s.lead)) + ' lead</span>'
-        : s.played ? '<span class="stag">level</span>'
-        : '<span class="stag">to play</span>';
-      return '<div class="sser">' + side(s.a) +
-        '<span class="sw"><span class="' + (s.aw > s.bw ? 'won' : '') + '">' + s.aw + '</span>' +
-          '<i>\u2013</i><span class="' + (s.bw > s.aw ? 'won' : '') + '">' + s.bw + '</span></span>' +
-        side(s.b, true) + tag + '</div>';
-    }).join('')
-    : '<div class="empty">Add teams to see the series.</div>';
-  const nm = ids => ids.map(teamName).join(' & ');
-  const one = T.board.length === 1;        // two teams: there is only the one series
+  const T = seriesTally(), nm = ids => ids.map(teamName).join(' & ');
+  const ord = DB.teams.slice().sort((a, b) => (T.by[b.id] || 0) - (T.by[a.id] || 0) || a.name.localeCompare(b.name));
+  const titles = ord.map(t => '<div class="ttl' + ((T.by[t.id] || 0) === T.best && T.best ? ' lead' : '') + '">' +
+    crest(t.id, 'md') + '<span class="tnm">' + esc(t.name) + '</span>' +
+    '<b>' + (T.by[t.id] || 0) + '</b></div>').join('');
+  const night = n => {
+    const ids = DB.teams.filter(t => n.ids[t.id]);
+    const tag = n.done
+      ? (n.top.length === 1 ? '<span class="stag held">' + esc(teamName(n.top[0])) + ' take the night</span>'
+         : n.top.length ? '<span class="stag">shared · ' + esc(nm(n.top)) + '</span>'
+         : '<span class="stag">no winner</span>')
+      : n.played ? '<span class="stag lead">' + (n.top.length ? esc(nm(n.top)) + ' lead' : 'level') +
+          ' · ' + n.played + ' of ' + n.of + '</span>'
+      : '<span class="stag">' + plural(n.of, 'game') + ' to play</span>';
+    return '<div class="nrow">' +
+      '<span class="ndate">' + esc(fmtDate(n.date)) + '</span>' +
+      // a night nobody has played yet shows its badges, not a row of noughts
+      '<span class="nwins">' + (!n.played ? ids.map(t => '<span class="nw">' + crest(t.id, 'sm') + '</span>').join('') : ids.map(t => '<span class="nw' +
+        (n.done && n.top.indexOf(t.id) >= 0 ? ' won' : '') + '">' + crest(t.id, 'sm') +
+        (n.w[t.id] || 0) + '</span>').join('')) + '</span>' + tag + '</div>';
+  };
+  const done = T.board.filter(n => n.done), rest = T.board.filter(n => !n.done);
+  const show = rest.slice(0, 1).concat(done.slice().reverse().slice(0, 11));
+  $('tableSeries').innerHTML = !DB.teams.length ? '<div class="empty">Add teams to see the nights.</div>'
+    : '<div class="ttls">' + titles + '</div>' +
+      (T.board.length ? show.map(night).join('') +
+        (T.board.length > show.length ? '<div class="small muted" style="padding-top:8px">' +
+          plural(T.board.length - show.length, 'other night') + ' on the schedule.</div>' : '')
+        : '<div class="empty">No nights drawn yet.</div>');
   $('seriesNote').textContent = !T.board.length ? ''
-    : T.done
-      ? (!T.top.length ? (one ? 'The series is shared' : 'Every series shared')
-         : T.top.length > 1 ? 'Shared: ' + nm(T.top) + ', ' + plural(T.best, 'series') + ' each'
-         : one ? nm(T.top) + ' win the series'
-         : nm(T.top) + ' take it, ' + T.best + ' series of ' + T.board.length)
-      : (T.best ? nm(T.top) + ' ' + (T.top.length > 1 ? 'hold' : 'holds') + ' ' +
-           (one ? 'the series' : plural(T.best, 'series') + ' so far')
-         : 'Nothing settled yet');
+    : T.best ? nm(T.top) + ' — ' + plural(T.best, 'title') + ' from ' + plural(T.done, 'night') + ' played'
+    : T.done ? 'No titles yet' : 'The first night has still to be played';
 }
 function renderTable() {
   paintSeries();
+  /* A rachao carries nothing from one night to the next, so a table adding
+     every week up into one long season is not its record and would be read
+     as one. The nights and the titles are the record. */
+  const tbl = $('cardSeasonTable'), frm = $('cardForm');
+  if (tbl) tbl.style.display = isSeries() ? 'none' : '';
+  if (frm) frm.style.display = isSeries() ? 'none' : '';
+  if (isSeries()) return;
   /* The bracket at the top of Competition, from the moment there is one. */
   const koOn = isWorld() && DB.fixtures.some(f => (f.round || 0) > WC_GRD);
   $('tableBrkCard').style.display = koOn ? '' : 'none';
@@ -12309,6 +12402,8 @@ function podiumOf(metal) {
       done: !!winnerOf(fin) };
   }
   if (leagueOnly()) {
+    // a rachao has no final standing: it has nights, and the titles from them
+    if (isSeries()) return null;
     if (metal !== 'gold' || !seasonPhase().champion) return null;
     const st = standings();
     return { metal, league: true, first: st[0] ? st[0].id : null, second: st[1] ? st[1].id : null,
@@ -15666,22 +15761,33 @@ function publicPageHtml() {
       const line = (f, id) => {
         const done = f.status === 'final', w = done ? winnerOf(f) : null;
         const sc = done ? (id === f.homeId ? f.homeGoals : f.awayGoals) : '';
-        return '<div class="r"><span class="bn">' + dot(id) +
+        return '<div class="r' + (done && w === id ? ' w' : '') + '"><span class="bn">' + dot(id) +
           (id ? esc(teamName(id)) : '<i class="dim">to be decided</i>') + '</span>' +
           '<span class="bs">' + (done ? (w === id ? '<b>' + sc + '</b>' : sc) : '') + '</span></div>';
       };
       const card = (f, label, cls) => !f ? '' :
-        '<div class="brkm' + (cls ? ' ' + cls : '') + '"><div class="brkl">' + esc(label) + '</div>' +
+        '<div class="brkm' + (cls ? ' ' + cls : '') + (f.status === 'final' ? ' done' : '') + '">' +
+        '<div class="brkl">' + esc(label) +
+          (f.time || f.court ? '<span>' + esc([f.date ? fmtDate(f.date) : '', f.time || '',
+            f.court ? 'court ' + f.court : ''].filter(Boolean).join(' \u00b7 ')) + '</span>' : '') + '</div>' +
         line(f, f.homeId) + line(f, f.awayId) +
         (f.status === 'final' && koNote(f, true) ? '<div class="brkn">' + esc(koNote(f, true)) + '</div>' : '') +
         '</div>';
+      const champ = fin && fin.status === 'final' ? winnerOf(fin) : null;
       return '<div class="brk">' +
         '<div class="brkc">' + card(sf1, 'Semi-final 1') + card(sf2, 'Semi-final 2') + '</div>' +
-        '<div class="brkj" aria-hidden="true">\u203a</div>' +
-        '<div class="brkc">' + card(fin, 'Final', 'brkf') + card(p3, '3rd place') + '</div>' +
+        '<div class="brkj" aria-hidden="true"><i></i></div>' +
+        '<div class="brkc">' + card(fin, 'Grand final', 'brkf') + card(p3, '3rd place') +
+          (champ ? '<div class="brkw"><span class="brkwl">Champions</span>' + dot(champ) +
+            '<b>' + esc(teamName(champ)) + '</b></div>' : '') + '</div>' +
       '</div>';
     })();
-    return h2(isWorld() ? 'The knockout' : isCup() ? 'The cup' : 'Finals') + brk + '<div class="tw"><table>' + ko.map(f => {
+    /* With a bracket drawn there is no need for the list under it as well:
+       the same three ties, once as a shape and once as a table, is the page
+       saying the same thing twice. The list stays for a cup or a World Cup,
+       where the bracket only covers the last rounds. */
+    if (brk) return h2(isWorld() ? 'The knockout' : isCup() ? 'The cup' : 'Finals') + brk;
+    return h2(isWorld() ? 'The knockout' : isCup() ? 'The cup' : 'Finals') + '<div class="tw"><table>' + ko.map(f => {
       const done = f.status === 'final', w = done ? winnerOf(f) : null;
       const bold = (id, s) => w && w === id ? '<b>' + s + '</b>' : s;
       return '<tr style="--tc:' + tc(f.homeId) + '"><td class="sub dim">' +
@@ -15780,7 +15886,11 @@ function publicPageHtml() {
         '</table></div>' : empty('No teams yet.')) + '</div>') +
       (!bootShown() ? '' : '<div>' + h2('Golden Boot') + (scorers.length ? '<div class="tw"><table>' + scRows(scorers.slice(0, 10)) + '</table></div>'
         : empty('No goals logged yet.')) + '</div>') + '</div>' +
-    (koTop ? '' : koHtml);
+    (koTop ? '' : koHtml) +
+    /* Who is scoring them, as a share of the whole competition, at the foot
+       of the front page: the last thing read, and the one picture that says
+       at a glance which sides are carrying the goals. */
+    goalShare();
 
   /* Every man of the match of the competition, and who has the most of
      them — the player of the competition once it is over. */
@@ -15972,7 +16082,7 @@ function publicPageHtml() {
 }
 /* the bracket's own styles, kept out of the page's main sheet so the two
    can be read apart; the class names are the ones the tool uses */
-const PUB_CSS = ":root{--hue:#ff8a3d;--bg:#0e0f12;--card:#1b1c21;--card2:#22232a;--line:#30313a;--ink:#f4f2f0;--dim:#9c9ca6;--acc:#ff8a3d;--bad:#ff5f5f;\n  --grad:linear-gradient(135deg,#ff8a3d 0%,#ff5c00 100%);\n  --goldm:linear-gradient(135deg,#fff3b0 0%,#f2cc4d 24%,#b8860b 52%,#f7dc6f 74%,#9a6b00 100%);\n  --silverm:linear-gradient(135deg,#ffffff 0%,#d9dde3 26%,#9ba3ae 52%,#eef1f4 74%,#7d8590 100%);\n  --bronzem:linear-gradient(135deg,#ffe2c4 0%,#e4a46a 26%,#a8622c 52%,#f2c08f 74%,#80461c 100%)}\n*{box-sizing:border-box}[hidden]{display:none!important}\nbody{margin:0;color:var(--ink);font:15px/1.5 \"Segoe UI\",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;\n  background:radial-gradient(60% 40% at 12% 0%,rgba(255,122,26,.16),transparent 62%),radial-gradient(50% 36% at 92% 8%,rgba(255,60,0,.1),transparent 62%),var(--bg);background-attachment:fixed}\n.wrap{max-width:1000px;margin:0 auto;padding:0 16px}\nheader{padding:20px 0 16px;background:linear-gradient(180deg,#0a0807,#140d09);color:var(--hue);\n  box-shadow:0 10px 30px -18px currentColor}\n.brand{display:flex;align-items:center;gap:14px}.bt{min-width:0}\n.ring{flex:0 0 auto;width:62px;height:62px;padding:3px;border:3px solid currentColor;border-radius:50%;display:grid;place-items:center;box-shadow:0 0 18px -4px currentColor}\n.ring img{width:100%;height:100%;border-radius:50%;display:block;animation:spin 26s linear infinite}\nheader small{letter-spacing:3px;font:700 11px/1 Consolas,monospace;color:inherit;text-shadow:0 0 12px currentColor;text-transform:uppercase}\nheader small i{color:var(--dim);font-style:normal;font-weight:400;text-shadow:none}\nh1{margin:5px 0 2px;font-size:25px;line-height:1.2;color:var(--ink)}header p{margin:0;color:var(--dim)}\n.upd{color:var(--dim);font-size:12.5px;margin-top:6px}\n.lvp{display:inline-block;background:var(--bad);color:#fff;border-radius:999px;padding:1px 9px;font-weight:800;font-size:11px;letter-spacing:1px;margin-right:8px;animation:pulse 1.6s infinite}\nnav{position:sticky;top:0;z-index:5;padding:10px 0;background:rgba(14,15,18,.92);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}\n/* the tabs sit in a rounded frame, and the frame is what carries the colour\n   the ball is turning through — a shape rather than a rule across the page */\n.tabs{display:flex;gap:4px;width:max-content;max-width:100%;overflow-x:auto;scrollbar-width:none;padding:5px;\n  border:2px solid var(--hue);border-radius:16px;background:var(--card);\n  box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 24px -10px var(--hue),inset 0 1px 0 rgba(255,255,255,.05)}\n.tabs::-webkit-scrollbar{display:none}\nnav button{font:inherit;font-size:14px;font-weight:600;color:var(--dim);background:none;border:0;border-radius:10px;padding:8px 16px;cursor:pointer;white-space:nowrap}\nnav button.on{color:#1d0f05;background:linear-gradient(135deg,#f99c5a 0%,#ec7731 100%);box-shadow:0 6px 16px -9px rgba(236,119,49,.8)}\nmain{padding-top:4px!important;padding-bottom:36px!important}\nh2{display:flex;align-items:center;gap:8px;font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);margin:26px 0 10px}\nh2::before{content:'';width:3px;height:13px;border-radius:2px;background:var(--grad);flex:0 0 auto}\nh2 .dt{letter-spacing:.3px;text-transform:none;font-weight:400;margin-left:4px}\nh2.g{color:#f0cf6a}h2.g::before{background:var(--goldm)}h2.s{color:#d3d8df}h2.s::before{background:var(--silverm)}\n.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}\n.grid.one{grid-template-columns:1fr}\n.m{border:1px solid var(--line);border-radius:14px;padding:11px 13px;\n  background:linear-gradient(90deg,color-mix(in srgb,var(--hc) 16%,transparent),transparent 34%,transparent 66%,color-mix(in srgb,var(--ac) 16%,transparent)),var(--card);\n  box-shadow:inset 3px 0 0 var(--hc),inset -3px 0 0 var(--ac),0 8px 22px -14px rgba(0,0,0,.7)}\n.m.on{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad) inset}\n.m.gold{border-color:#c9a33a;background:linear-gradient(160deg,rgba(242,204,77,.18),var(--card) 62%)}\n.m.silver{border-color:#9aa1ad;background:linear-gradient(160deg,rgba(220,225,232,.13),var(--card) 62%)}\n.m.bronze{border-color:#b8743a;background:linear-gradient(160deg,rgba(201,132,72,.17),var(--card) 62%)}\n.stg{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;border-radius:999px;padding:2px 10px;margin-bottom:8px;color:#241a00;background:var(--goldm)}\n.silver .stg{color:#1c2026;background:var(--silverm)}.bronze .stg{color:#2a1406;background:var(--bronzem)}\n.pods{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:16px}\n.pod{border:1px solid #c9a33a;border-radius:16px;padding:14px 14px 0;background:linear-gradient(180deg,rgba(242,204,77,.12),var(--card) 70%)}\n.pod.silver{border-color:#9aa1ad;background:linear-gradient(180deg,rgba(220,225,232,.1),var(--card) 70%)}\n.ph{text-align:center;font-size:12px;letter-spacing:1.6px;text-transform:uppercase;font-weight:800;color:#f0cf6a;margin-bottom:8px}.pod.silver .ph{color:#d3d8df}\n.pw{display:grid;grid-template-columns:1fr 1.12fr 1fr;align-items:end;gap:8px}.pc{text-align:center;min-width:0}\n.pm{font-size:26px;line-height:1.1}.pn{font-weight:700;font-size:13.5px;margin:4px 0;overflow-wrap:anywhere}\n.ps{border-radius:10px 10px 0 0;padding-top:6px;margin-top:6px}.ps b{font-size:24px;color:rgba(0,0,0,.55)}\n.p1 .ps{height:104px;background:var(--goldm)}.p2 .ps{height:76px;background:var(--silverm)}.p3 .ps{height:54px;background:var(--bronzem)}\n.mr{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px}\n.t{display:flex;align-items:center;min-width:0;white-space:nowrap}.t.h{justify-content:flex-end}.t.w{font-weight:800}\n.t .nm{overflow:hidden;text-overflow:ellipsis;min-width:0}.t .cr{flex:0 0 auto}\n.sc{font-weight:800;font-size:21px;font-variant-numeric:tabular-nums;white-space:nowrap}.sc i{font-style:normal;color:var(--dim);margin:0 5px}\n.sc.v{font-size:14px;color:var(--acc)}\n.cr{display:inline-block;width:24px;height:24px;margin:-4px 7px -3px;vertical-align:middle;background:center/contain no-repeat}\n.cr.none{background-image:url(\"data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 40 44%27%3E%3Cpath d=%27M20 2 36 7v13c0 11-7 18-16 22C11 38 4 31 4 20V7z%27 fill=%27%23363a44%27 stroke=%27%2359606d%27 stroke-width=%272%27/%3E%3Cpath d=%27M20 8.5 30.5 12v8c0 7.6-4.5 12.6-10.5 15.5C14 32.6 9.5 27.6 9.5 20v-8z%27 fill=%27none%27 stroke=%27%234b515d%27 stroke-width=%271.3%27/%3E%3Ccircle cx=%2720%27 cy=%2721%27 r=%275%27 fill=%27none%27 stroke=%27%23626977%27 stroke-width=%271.5%27/%3E%3C/svg%3E\")}\n.sub .cr{width:16px;height:16px;margin-left:0}.pn .cr{display:block;width:50px;height:50px;margin:0 auto 4px}.p1 .pn .cr{width:62px;height:62px}\ntd .cr{margin-left:0}\n.kon{text-align:center;color:#f0b44c;font-weight:700;font-size:12.5px;margin-top:5px}.kon i{font-style:normal;color:var(--dim);margin:0 3px}\n.evs{display:grid;grid-template-columns:1fr 1fr;gap:14px;color:var(--dim);font-size:12.5px;margin-top:6px}.evs>span:first-child{text-align:right}.evs b{color:var(--ink)}\n.evs .ev{display:block;line-height:1.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}\n.evs .ev i{font-style:normal;color:var(--dim);font-variant-numeric:tabular-nums;margin-right:5px}\n.evs .ev::before{content:'';display:inline-block;vertical-align:-1px;margin-right:5px}\n.evs .ev.goal::before,.evs .ev.own::before{width:11px;height:11px;vertical-align:-2px;background:url(\"data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Ccircle cx=%278%27 cy=%278%27 r=%277.2%27 fill=%27%23f7f5f2%27 stroke=%27%231f2026%27 stroke-width=%271.3%27/%3E%3Cpath d=%27M8 3.9 11.1 6.2 9.9 9.9H6.1L4.9 6.2Z%27 fill=%27%231f2026%27/%3E%3Cg stroke=%27%231f2026%27 stroke-width=%271.25%27 stroke-linecap=%27round%27%3E%3Cpath d=%27M8 3.9V1.2%27/%3E%3Cpath d=%27M4.9 6.2 2.2 5.1%27/%3E%3Cpath d=%27M11.1 6.2 13.8 5.1%27/%3E%3Cpath d=%27M6.1 9.9 4.7 12.8%27/%3E%3Cpath d=%27M9.9 9.9 11.3 12.8%27/%3E%3C/g%3E%3C/svg%3E\") center/contain no-repeat}\n.evs .ev.own::before{opacity:.5}\n.evs .ev.yellow::before{width:7px;height:10px;border-radius:1px;background:#f2c14e}\n.evs .ev.red::before{width:7px;height:10px;border-radius:1px;background:#d9483f}\n.evs .ev.yellow,.evs .ev.red{color:var(--dim)}\n.meta{text-align:center;color:var(--dim);font-size:12px;margin-top:6px}.lv{color:var(--bad)}\n.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:16px}\n.tile{position:relative;overflow:hidden;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,0)),var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 13px 11px 16px}\n.tile::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--grad)}\n.tile:nth-child(even){border-color:rgba(255,138,61,.35);background:linear-gradient(180deg,rgba(255,138,61,.14),rgba(255,138,61,.03)),var(--card)}\n.tile span{display:block;font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim)}\n.tile b{display:flex;align-items:center;font-size:19px;margin-top:2px;min-width:0}\n.tile b .cr{flex:0 0 auto;width:26px;height:26px;margin:0 8px 0 0}\n.tile.gold{border-color:#c9a33a;background:linear-gradient(160deg,rgba(242,204,77,.2),var(--card) 70%)}.tile.gold::before{background:var(--goldm)}.tile.gold span{color:#f0cf6a}\n.tile.silver{border-color:#9aa1ad;background:linear-gradient(160deg,rgba(220,225,232,.14),var(--card) 70%)}.tile.silver::before{background:var(--silverm)}.tile.silver span{color:#d3d8df}\n.tmpick{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0 14px}\n.tmb{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font:inherit;font-size:13.5px;font-weight:600;\n  color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 13px}\n.tmb.on{border-color:var(--acc);color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}\n.tmb .cr{margin:0}\nh2.dt{align-items:center}h2.dt .cr{width:20px;height:20px;margin:0 2px 0 0}\nh2.dt span{margin-left:auto;letter-spacing:0;text-transform:none;font-weight:400;color:var(--dim)}\n.gt{color:var(--acc)}\n.brk{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin:14px 0 4px}\n.brkc{display:grid;gap:10px;min-width:0}\n.brkj{color:var(--dim);font-size:22px;line-height:1}\n.brkm{border:1px solid var(--line);border-radius:12px;padding:8px 11px;background:var(--card);min-width:0}\n.brkm.brkf{border-color:#c9a33a;background:linear-gradient(160deg,rgba(242,204,77,.14),var(--card) 70%)}\n.brkl{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim);margin-bottom:5px}\n.brkm .r{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}\n.brkm .r+.r{margin-top:4px;padding-top:4px;border-top:1px dashed var(--line)}\n.brkm .bn{display:flex;align-items:center;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}\n.brkm .bs{font-variant-numeric:tabular-nums;font-weight:800;flex:0 0 auto}\n.brkn{margin-top:5px;color:var(--dim);font-size:11.5px}\n@media (max-width:640px){.brk{grid-template-columns:1fr;gap:8px}.brkj{transform:rotate(90deg);text-align:center}}\n.mvp{text-align:center;font-size:12.5px;margin-top:6px;color:var(--ink)}.mvp span{font-size:10px;font-weight:800;letter-spacing:1.2px;color:#1d0f05;background:#f3a06b;border-radius:999px;padding:1px 7px;margin-right:2px}.tile em{font-style:normal;color:var(--dim);font-size:12px}\n.two{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}\n.tw{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 10px;box-shadow:0 8px 22px -14px rgba(0,0,0,.7)}.tw.pad{padding:12px}\ntable{width:100%;border-collapse:collapse;font-size:14px}\nth{font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);text-align:left;padding:8px 6px;border-bottom:2px solid var(--line);white-space:nowrap}\ntd{padding:8px 6px;border-bottom:1px solid var(--line)}tr:last-child td{border-bottom:0}\ntd.tm{box-shadow:inset 3px 0 0 var(--tc,transparent);background:linear-gradient(90deg,color-mix(in srgb,var(--tc,transparent) 20%,transparent),transparent 85%);padding-left:10px}\ntd:has(>.tmv){white-space:nowrap}\n.tmv{display:inline-flex;align-items:center;justify-content:center;width:1em;height:1em;margin-left:4px;vertical-align:-2px}\n.tmv svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}\n.tmv.up{color:#2f9e63}.tmv.dn{color:#d9483f}.tmv.dn svg{transform:rotate(180deg)}.tmv.same{color:var(--dim);font-weight:700}\n.n{text-align:right;font-variant-numeric:tabular-nums}.dim{color:var(--dim)}.sub{font-size:12px;color:var(--dim)}\ntr.qg td:first-child{box-shadow:inset 3px 0 #e2b93b}tr.qs td:first-child{box-shadow:inset 3px 0 #b9c0ca}\n.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(290px,100%),1fr));gap:10px}\n.pgrp{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 12px 8px}\n.pgrp h3{margin:10px 0 2px;font:700 11px/1 Consolas,monospace;letter-spacing:2px;text-transform:uppercase;color:var(--dim)}\n.pgrp table{font-size:13px;table-layout:fixed}\n.pgrp td,.pgrp th{padding:6px 3px}\n.pgrp td.tm{white-space:normal;overflow-wrap:anywhere;padding-left:8px}\n.pgrp .cr{width:17px;height:17px;margin:-2px 5px -2px 0}\n.legend{display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--dim);font-size:12px;margin-top:8px}\n.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}.lg{background:var(--goldm)}.ls{background:var(--silverm)}\n.fm a{text-decoration:none;cursor:pointer}.fm{display:inline-flex;gap:3px}.fm i,.fm a{width:20px;height:20px;border-radius:6px;font:800 10.5px/20px sans-serif;text-align:center;font-style:normal;color:#fff}\n.fm a{display:inline-block;width:20px;height:20px;border-radius:6px;font:800 10.5px/20px sans-serif;text-align:center;color:#fff}.fm .W{background:#2f9e63}.fm .D{background:#6b6c75}.fm .L{background:#d9483f}\n.gboot{display:inline-block;width:1.35em;height:1.35em;vertical-align:-.34em;margin-right:5px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}\n.gboot img{display:block;width:100%;height:100%;object-fit:contain}\ntd.n .gboot{margin:0}\n.tile b .gboot{flex:0 0 auto}\n.pg{font-size:12.5px;white-space:nowrap}.barc{width:30%}.bar{height:8px;background:var(--line);border-radius:4px}.bar i{display:block;height:8px;border-radius:4px;background:var(--acc)}\n.champ{text-align:center;margin-top:16px;padding:18px;border-radius:16px;border:1px solid #c9a33a;background:linear-gradient(160deg,rgba(242,204,77,.22),var(--card) 70%)}\n.champ span{display:block;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--dim)}\n.champ b{display:block;font:700 28px/1.25 Georgia,serif;background:var(--goldm);-webkit-background-clip:text;background-clip:text;color:transparent;margin-top:4px}\n.champ em{display:block;font-style:normal;color:#f0b44c;font-weight:700;font-size:13px;margin-top:4px}\n.rtot{color:var(--dim);font-size:13px;margin:0 0 6px}.rtot b{color:var(--ink);font-size:20px;margin-right:2px}.rtot span{color:#f2b81c;font-weight:700}.ravg{position:relative;height:170px;display:flex;align-items:flex-end;gap:6px;padding-top:18px;padding-left:34px}\n.ravg div{flex:1 1 0;min-width:0;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center}\n.ravg i{display:block;width:100%;max-width:34px;border-radius:5px 5px 0 0;background:var(--grad)}.ravg em{font-style:normal;font-size:11px;color:var(--dim)}\n.avl{position:absolute;left:0;right:0;border-top:1.5px dashed #8a8b94;font-weight:400}.avl span{position:absolute;left:0;top:-9px;width:30px;text-align:left;font-size:12px;line-height:16px;font-weight:800;color:#f2b81c;background:var(--card)}\n.ravg-x{display:flex;gap:6px;margin-top:4px;padding-left:34px}.ravg-x span{flex:1 1 0;min-width:0;text-align:center;font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden}\n.ravg em{white-space:nowrap}\n@media (max-width:640px){.ravg,.ravg-x{gap:3px}.ravg em{font-size:9px}.ravg-x span{font-size:9px}.ravg{height:150px}}\n.empty{color:var(--dim);padding:16px;text-align:center;background:var(--card);border:1px dashed var(--line);border-radius:14px;margin-top:16px}\n.note{color:var(--dim);font-size:13px;margin-top:12px}\n.rsec{border:1px solid #3a3b44;border-radius:16px;padding:2px 12px 12px;margin-top:14px;background:linear-gradient(180deg,#26272d,#202126)}\n.rsec.b{background:linear-gradient(180deg,rgba(255,138,61,.13),rgba(255,138,61,.04)),var(--bg);border-color:rgba(255,138,61,.35)}\n.rsec.ko{background:linear-gradient(180deg,rgba(242,204,77,.13),rgba(242,204,77,.03));border-color:rgba(242,204,77,.45)}\n.rsec.semi{background:linear-gradient(180deg,rgba(176,196,222,.16),rgba(176,196,222,.04));border-color:rgba(176,196,222,.5)}\n.rsec h2{margin:14px 0 12px}\n.rforms{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:8px}\n.rform{position:relative;overflow:hidden;display:flex;align-items:center;gap:9px;padding:8px 10px 8px 12px;border-radius:11px;border:1px solid var(--line);border-left:4px solid var(--tc);background:var(--card)}\n.rform::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,var(--tc),transparent 72%);opacity:.2;pointer-events:none}\n.rform>*{position:relative}.rform .cr{margin:0}\n.rfn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;font-size:14px}\n.rfc{display:flex;gap:4px;flex:0 0 auto}\n.rfc .fc{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:11.5px;color:#fff;text-decoration:none}\n.rfc .W{background:#2f9e63}.rfc .D{background:#6b6c75}.rfc .L{background:#d9483f}.rfc .n{border:1px dashed var(--line)}\n.rfc .au{box-shadow:0 0 0 2px #ffc53d}.rfc .sv{box-shadow:0 0 0 2px #c9d1db}\n.m.hit{animation:hit 1.8s ease-out}\n@keyframes hit{0%,40%{box-shadow:0 0 0 3px #f99c5a,0 0 26px rgba(249,156,90,.6)}100%{box-shadow:none}}\n/* a team's titles: the crown and the number, once */\nspan.gstar{display:inline-flex;align-items:baseline;gap:2px;margin-left:5px;white-space:nowrap;letter-spacing:0;text-transform:none;font-weight:800;color:#f2cc4d;vertical-align:-2px}\n.gcrown{display:inline-block;width:1.12em;height:1.12em;align-self:center}\n.gcrown svg{width:100%;height:100%;display:block}\n/* a round that is not being played, said once at the top of the page */\n.cxbox{margin:16px 0 4px;display:grid;gap:7px}\n.cxl{border:1px solid #ff8a80;border-left:6px solid #ff5247;border-radius:12px;padding:13px 16px;font-size:14.5px;font-weight:700;\n  color:#fff;background:linear-gradient(180deg,#cf342a,#8e1a13);box-shadow:0 0 0 1px rgba(0,0,0,.45),0 14px 32px -16px rgba(255,82,71,.9)}\n.cxl:before{content:'\\26A0\\FE0F';margin-right:9px}\n.cxl.mv{border-color:#ffd98a;border-left-color:#f2b81c;color:#2a1e00;background:linear-gradient(180deg,#ffd978,#e9a900);box-shadow:none}\n.cxl.mv:before{content:'\\1F4C5'}\n.rsx{color:#ff6a60;font-weight:800;font-size:.8em;letter-spacing:.6px;text-transform:uppercase;white-space:nowrap}\n.m.offm{opacity:.75;border-style:dashed}\n.offtag{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;\n  border-radius:999px;padding:2px 10px;margin-bottom:8px;color:#2a0b0b;background:#ff9a9a}\n.meta .wo{color:#f2cc4d}\n.gt{color:var(--ink)}\n.st{color:var(--ink)}\n.bt3{color:var(--ink)}\n.curch{display:inline-block;white-space:nowrap;font-size:11px;font-weight:700;color:#ffc53d;border:1px solid rgba(255,197,61,.6);background:rgba(255,197,61,.12);border-radius:999px;padding:1px 8px;margin-left:4px}\ndetails.rsec>summary{list-style:none;cursor:pointer;-webkit-user-select:none;user-select:none}\ndetails.rsec>summary::-webkit-details-marker{display:none}\ndetails.rsec>summary h2::after{content:'';width:8px;height:8px;margin-left:auto;border-right:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:rotate(-45deg);transition:transform .2s;flex:0 0 auto}\ndetails.rsec[open]>summary h2::after{transform:rotate(45deg)}\ndetails.rsec:not([open]){padding-bottom:2px}\n.rtag{font-size:10px;letter-spacing:1px;padding:1px 8px;border-radius:999px;margin-left:8px;background:#3a3b44;color:var(--ink)}\n.rtag.nx{background:#f3a06b;color:#1d0f05}.rtag.ls{background:#d6d3ce;color:#1d0f05}\n@media (max-width:640px){.two{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.hs{display:none}h1{font-size:22px}.ring{width:52px;height:52px}\n  .m{padding:10px 9px}.mr{gap:6px}.t{font-size:13.5px}.sc{font-size:18px}.sc i{margin:0 3px}.t .cr{width:20px;height:20px;margin:0 5px}.mr .gstar{display:none}}\n@keyframes hue{0%,100%{color:#ff5700}12.5%{color:#ff8500}25%{color:#ff924d}37.5%{color:#00a8a8}50%{color:#9ad3da}62.5%{color:#d6d3ce}75%{color:#ada69c}87.5%{color:#e66414}}\n@keyframes spin{to{transform:rotate(360deg)}}\n@keyframes pulse{50%{opacity:.55}}\n@media (prefers-reduced-motion:reduce){.ring img{animation:none}}";
+const PUB_CSS = ":root{--hue:#ff8a3d;--bg:#0e0f12;--card:#1b1c21;--card2:#22232a;--line:#30313a;--ink:#f4f2f0;--dim:#9c9ca6;--acc:#ff8a3d;--bad:#ff5f5f;\n  --grad:linear-gradient(135deg,#ff8a3d 0%,#ff5c00 100%);\n  --goldm:linear-gradient(135deg,#fff3b0 0%,#f2cc4d 24%,#b8860b 52%,#f7dc6f 74%,#9a6b00 100%);\n  --silverm:linear-gradient(135deg,#ffffff 0%,#d9dde3 26%,#9ba3ae 52%,#eef1f4 74%,#7d8590 100%);\n  --bronzem:linear-gradient(135deg,#ffe2c4 0%,#e4a46a 26%,#a8622c 52%,#f2c08f 74%,#80461c 100%)}\n*{box-sizing:border-box}[hidden]{display:none!important}\nbody{margin:0;color:var(--ink);font:15px/1.5 \"Segoe UI\",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;\n  background:radial-gradient(60% 40% at 12% 0%,rgba(255,122,26,.16),transparent 62%),radial-gradient(50% 36% at 92% 8%,rgba(255,60,0,.1),transparent 62%),var(--bg);background-attachment:fixed}\n.wrap{max-width:1000px;margin:0 auto;padding:0 16px}\nheader{padding:20px 0 16px;background:linear-gradient(180deg,#0a0807,#140d09);color:var(--hue);\n  box-shadow:0 10px 30px -18px currentColor}\n.brand{display:flex;align-items:center;gap:14px}.bt{min-width:0}\n.ring{flex:0 0 auto;width:62px;height:62px;padding:3px;border:3px solid currentColor;border-radius:50%;display:grid;place-items:center;box-shadow:0 0 18px -4px currentColor}\n.ring img{width:100%;height:100%;border-radius:50%;display:block;animation:spin 26s linear infinite}\nheader small{letter-spacing:3px;font:700 11px/1 Consolas,monospace;color:inherit;text-shadow:0 0 12px currentColor;text-transform:uppercase}\nheader small i{color:var(--dim);font-style:normal;font-weight:400;text-shadow:none}\nh1{margin:5px 0 2px;font-size:25px;line-height:1.2;color:var(--ink)}header p{margin:0;color:var(--dim)}\n.upd{color:var(--dim);font-size:12.5px;margin-top:6px}\n.lvp{display:inline-block;background:var(--bad);color:#fff;border-radius:999px;padding:1px 9px;font-weight:800;font-size:11px;letter-spacing:1px;margin-right:8px;animation:pulse 1.6s infinite}\nnav{position:sticky;top:0;z-index:5;padding:10px 0;background:rgba(14,15,18,.92);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}\n/* the tabs sit in a rounded frame, and the frame is what carries the colour\n   the ball is turning through — a shape rather than a rule across the page */\n.tabs{display:flex;gap:4px;width:max-content;max-width:100%;overflow-x:auto;scrollbar-width:none;padding:5px;\n  border:2px solid var(--hue);border-radius:16px;background:var(--card);\n  box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 24px -10px var(--hue),inset 0 1px 0 rgba(255,255,255,.05)}\n.tabs::-webkit-scrollbar{display:none}\nnav button{font:inherit;font-size:14px;font-weight:600;color:var(--dim);background:none;border:0;border-radius:10px;padding:8px 16px;cursor:pointer;white-space:nowrap}\nnav button.on{color:#1d0f05;background:linear-gradient(135deg,#f99c5a 0%,#ec7731 100%);box-shadow:0 6px 16px -9px rgba(236,119,49,.8)}\nmain{padding-top:4px!important;padding-bottom:36px!important}\nh2{display:flex;align-items:center;gap:8px;font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);margin:26px 0 10px}\nh2::before{content:'';width:3px;height:13px;border-radius:2px;background:var(--grad);flex:0 0 auto}\nh2 .dt{letter-spacing:.3px;text-transform:none;font-weight:400;margin-left:4px}\nh2.g{color:#f0cf6a}h2.g::before{background:var(--goldm)}h2.s{color:#d3d8df}h2.s::before{background:var(--silverm)}\n.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}\n.grid.one{grid-template-columns:1fr}\n.m{border:1px solid var(--line);border-radius:14px;padding:11px 13px;\n  background:linear-gradient(90deg,color-mix(in srgb,var(--hc) 16%,transparent),transparent 34%,transparent 66%,color-mix(in srgb,var(--ac) 16%,transparent)),var(--card);\n  box-shadow:inset 3px 0 0 var(--hc),inset -3px 0 0 var(--ac),0 8px 22px -14px rgba(0,0,0,.7)}\n.m.on{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad) inset}\n.m.gold{border-color:#c9a33a;background:linear-gradient(160deg,rgba(242,204,77,.18),var(--card) 62%)}\n.m.silver{border-color:#9aa1ad;background:linear-gradient(160deg,rgba(220,225,232,.13),var(--card) 62%)}\n.m.bronze{border-color:#b8743a;background:linear-gradient(160deg,rgba(201,132,72,.17),var(--card) 62%)}\n.stg{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;border-radius:999px;padding:2px 10px;margin-bottom:8px;color:#241a00;background:var(--goldm)}\n.silver .stg{color:#1c2026;background:var(--silverm)}.bronze .stg{color:#2a1406;background:var(--bronzem)}\n.pods{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:16px}\n.pod{border:1px solid #c9a33a;border-radius:16px;padding:14px 14px 0;background:linear-gradient(180deg,rgba(242,204,77,.12),var(--card) 70%)}\n.pod.silver{border-color:#9aa1ad;background:linear-gradient(180deg,rgba(220,225,232,.1),var(--card) 70%)}\n.ph{text-align:center;font-size:12px;letter-spacing:1.6px;text-transform:uppercase;font-weight:800;color:#f0cf6a;margin-bottom:8px}.pod.silver .ph{color:#d3d8df}\n.pw{display:grid;grid-template-columns:1fr 1.12fr 1fr;align-items:end;gap:8px}.pc{text-align:center;min-width:0}\n.pm{font-size:26px;line-height:1.1}.pn{font-weight:700;font-size:13.5px;margin:4px 0;overflow-wrap:anywhere}\n.ps{border-radius:10px 10px 0 0;padding-top:6px;margin-top:6px}.ps b{font-size:24px;color:rgba(0,0,0,.55)}\n.p1 .ps{height:104px;background:var(--goldm)}.p2 .ps{height:76px;background:var(--silverm)}.p3 .ps{height:54px;background:var(--bronzem)}\n.mr{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px}\n.t{display:flex;align-items:center;min-width:0;white-space:nowrap}.t.h{justify-content:flex-end}.t.w{font-weight:800}\n.t .nm{overflow:hidden;text-overflow:ellipsis;min-width:0}.t .cr{flex:0 0 auto}\n.sc{font-weight:800;font-size:21px;font-variant-numeric:tabular-nums;white-space:nowrap}.sc i{font-style:normal;color:var(--dim);margin:0 5px}\n.sc.v{font-size:14px;color:var(--acc)}\n.cr{display:inline-block;width:24px;height:24px;margin:-4px 7px -3px;vertical-align:middle;background:center/contain no-repeat}\n.cr.none{background-image:url(\"data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 40 44%27%3E%3Cpath d=%27M20 2 36 7v13c0 11-7 18-16 22C11 38 4 31 4 20V7z%27 fill=%27%23363a44%27 stroke=%27%2359606d%27 stroke-width=%272%27/%3E%3Cpath d=%27M20 8.5 30.5 12v8c0 7.6-4.5 12.6-10.5 15.5C14 32.6 9.5 27.6 9.5 20v-8z%27 fill=%27none%27 stroke=%27%234b515d%27 stroke-width=%271.3%27/%3E%3Ccircle cx=%2720%27 cy=%2721%27 r=%275%27 fill=%27none%27 stroke=%27%23626977%27 stroke-width=%271.5%27/%3E%3C/svg%3E\")}\n.sub .cr{width:16px;height:16px;margin-left:0}.pn .cr{display:block;width:50px;height:50px;margin:0 auto 4px}.p1 .pn .cr{width:62px;height:62px}\ntd .cr{margin-left:0}\n.kon{text-align:center;color:#f0b44c;font-weight:700;font-size:12.5px;margin-top:5px}.kon i{font-style:normal;color:var(--dim);margin:0 3px}\n.evs{display:grid;grid-template-columns:1fr 1fr;gap:14px;color:var(--dim);font-size:12.5px;margin-top:6px}.evs>span:first-child{text-align:right}.evs b{color:var(--ink)}\n.evs .ev{display:block;line-height:1.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}\n.evs .ev i{font-style:normal;color:var(--dim);font-variant-numeric:tabular-nums;margin-right:5px}\n.evs .ev::before{content:'';display:inline-block;vertical-align:-1px;margin-right:5px}\n.evs .ev.goal::before,.evs .ev.own::before{width:11px;height:11px;vertical-align:-2px;background:url(\"data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Ccircle cx=%278%27 cy=%278%27 r=%277.2%27 fill=%27%23f7f5f2%27 stroke=%27%231f2026%27 stroke-width=%271.3%27/%3E%3Cpath d=%27M8 3.9 11.1 6.2 9.9 9.9H6.1L4.9 6.2Z%27 fill=%27%231f2026%27/%3E%3Cg stroke=%27%231f2026%27 stroke-width=%271.25%27 stroke-linecap=%27round%27%3E%3Cpath d=%27M8 3.9V1.2%27/%3E%3Cpath d=%27M4.9 6.2 2.2 5.1%27/%3E%3Cpath d=%27M11.1 6.2 13.8 5.1%27/%3E%3Cpath d=%27M6.1 9.9 4.7 12.8%27/%3E%3Cpath d=%27M9.9 9.9 11.3 12.8%27/%3E%3C/g%3E%3C/svg%3E\") center/contain no-repeat}\n.evs .ev.own::before{opacity:.5}\n.evs .ev.yellow::before{width:7px;height:10px;border-radius:1px;background:#f2c14e}\n.evs .ev.red::before{width:7px;height:10px;border-radius:1px;background:#d9483f}\n.evs .ev.yellow,.evs .ev.red{color:var(--dim)}\n.meta{text-align:center;color:var(--dim);font-size:12px;margin-top:6px}.lv{color:var(--bad)}\n.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:16px}\n.tile{position:relative;overflow:hidden;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,0)),var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 13px 11px 16px}\n.tile::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--grad)}\n.tile:nth-child(even){border-color:rgba(255,138,61,.35);background:linear-gradient(180deg,rgba(255,138,61,.14),rgba(255,138,61,.03)),var(--card)}\n.tile span{display:block;font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim)}\n.tile b{display:flex;align-items:center;font-size:19px;margin-top:2px;min-width:0}\n.tile b .cr{flex:0 0 auto;width:26px;height:26px;margin:0 8px 0 0}\n.tile.gold{border-color:#c9a33a;background:linear-gradient(160deg,rgba(242,204,77,.2),var(--card) 70%)}.tile.gold::before{background:var(--goldm)}.tile.gold span{color:#f0cf6a}\n.tile.silver{border-color:#9aa1ad;background:linear-gradient(160deg,rgba(220,225,232,.14),var(--card) 70%)}.tile.silver::before{background:var(--silverm)}.tile.silver span{color:#d3d8df}\n.tmpick{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0 14px}\n.tmb{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font:inherit;font-size:13.5px;font-weight:600;\n  color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 13px}\n.tmb.on{border-color:var(--acc);color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}\n.tmb .cr{margin:0}\nh2.dt{align-items:center}h2.dt .cr{width:20px;height:20px;margin:0 2px 0 0}\nh2.dt span{margin-left:auto;letter-spacing:0;text-transform:none;font-weight:400;color:var(--dim)}\n.gt{color:var(--acc)}\n.brk{display:grid;grid-template-columns:1fr 34px 1fr;gap:10px;align-items:center;margin:16px 0 6px}\n.brkc{display:grid;gap:12px;min-width:0}\n/* the tie line, drawn the way the tool draws it: out of the two semis and\n   along into the final */\n.brkj{position:relative;height:100%;min-height:90px}\n.brkj i{position:absolute;left:0;right:0;top:25%;bottom:25%;border:2px solid var(--line);border-left:0;border-radius:0 10px 10px 0}\n.brkj::after{content:'';position:absolute;right:-5px;top:50%;width:9px;height:9px;margin-top:-4px;border-radius:50%;background:var(--acc)}\n.brkm{position:relative;border:1px solid var(--line);border-radius:12px;padding:9px 12px;background:var(--card);min-width:0;\n  box-shadow:0 8px 22px -18px rgba(0,0,0,.8)}\n.brkm::before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:#5a6270}\n.brkm.brkf{border-color:#c9a33a;background:linear-gradient(160deg,rgba(242,204,77,.16),var(--card) 70%)}\n.brkm.brkf::before{background:var(--goldm)}\n.brkl{display:flex;align-items:baseline;gap:8px;font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim);margin-bottom:6px}\n.brkl span{margin-left:auto;letter-spacing:.2px;text-transform:none}\n.brkm .r{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:3px 0;color:var(--dim)}\n.brkm .r+.r{border-top:1px dashed var(--line)}\n.brkm.done .r.w{color:var(--ink)}\n.brkm .bn{display:flex;align-items:center;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}\n.brkm .r.w .bn{font-weight:800}\n.brkm .bs{font-variant-numeric:tabular-nums;font-weight:800;flex:0 0 auto}\n.brkn{margin-top:6px;color:var(--dim);font-size:11.5px}\n.brkw{display:flex;align-items:center;gap:8px;border:1px solid #c9a33a;border-radius:12px;padding:9px 12px;\n  background:linear-gradient(160deg,rgba(242,204,77,.2),var(--card) 70%)}\n.brkw b{font-size:15px}\n.brkwl{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:#f0cf6a}\n@media (max-width:640px){.brk{grid-template-columns:1fr;gap:10px}.brkj{display:none}}\n.mvp{text-align:center;font-size:12.5px;margin-top:6px;color:var(--ink)}.mvp span{font-size:10px;font-weight:800;letter-spacing:1.2px;color:#1d0f05;background:#f3a06b;border-radius:999px;padding:1px 7px;margin-right:2px}.tile em{font-style:normal;color:var(--dim);font-size:12px}\n.two{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}\n.tw{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 10px;box-shadow:0 8px 22px -14px rgba(0,0,0,.7)}.tw.pad{padding:12px}\ntable{width:100%;border-collapse:collapse;font-size:14px}\nth{font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);text-align:left;padding:8px 6px;border-bottom:2px solid var(--line);white-space:nowrap}\ntd{padding:8px 6px;border-bottom:1px solid var(--line)}tr:last-child td{border-bottom:0}\ntd.tm{box-shadow:inset 3px 0 0 var(--tc,transparent);background:linear-gradient(90deg,color-mix(in srgb,var(--tc,transparent) 20%,transparent),transparent 85%);padding-left:10px}\ntd:has(>.tmv){white-space:nowrap}\n.tmv{display:inline-flex;align-items:center;justify-content:center;width:1em;height:1em;margin-left:4px;vertical-align:-2px}\n.tmv svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}\n.tmv.up{color:#2f9e63}.tmv.dn{color:#d9483f}.tmv.dn svg{transform:rotate(180deg)}.tmv.same{color:var(--dim);font-weight:700}\n.n{text-align:right;font-variant-numeric:tabular-nums}.dim{color:var(--dim)}.sub{font-size:12px;color:var(--dim)}\ntr.qg td:first-child{box-shadow:inset 3px 0 #e2b93b}tr.qs td:first-child{box-shadow:inset 3px 0 #b9c0ca}\n.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(290px,100%),1fr));gap:10px}\n.pgrp{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 12px 8px}\n.pgrp h3{margin:10px 0 2px;font:700 11px/1 Consolas,monospace;letter-spacing:2px;text-transform:uppercase;color:var(--dim)}\n.pgrp table{font-size:13px;table-layout:fixed}\n.pgrp td,.pgrp th{padding:6px 3px}\n.pgrp td.tm{white-space:normal;overflow-wrap:anywhere;padding-left:8px}\n.pgrp .cr{width:17px;height:17px;margin:-2px 5px -2px 0}\n.legend{display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--dim);font-size:12px;margin-top:8px}\n.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}.lg{background:var(--goldm)}.ls{background:var(--silverm)}\n.fm a{text-decoration:none;cursor:pointer}.fm{display:inline-flex;gap:3px}.fm i,.fm a{width:20px;height:20px;border-radius:6px;font:800 10.5px/20px sans-serif;text-align:center;font-style:normal;color:#fff}\n.fm a{display:inline-block;width:20px;height:20px;border-radius:6px;font:800 10.5px/20px sans-serif;text-align:center;color:#fff}.fm .W{background:#2f9e63}.fm .D{background:#6b6c75}.fm .L{background:#d9483f}\n.gboot{display:inline-block;width:1.35em;height:1.35em;vertical-align:-.34em;margin-right:5px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}\n.gboot img{display:block;width:100%;height:100%;object-fit:contain}\ntd.n .gboot{margin:0}\n.tile b .gboot{flex:0 0 auto}\n.pg{font-size:12.5px;white-space:nowrap}.barc{width:30%}.bar{height:8px;background:var(--line);border-radius:4px}.bar i{display:block;height:8px;border-radius:4px;background:var(--acc)}\n.champ{text-align:center;margin-top:16px;padding:18px;border-radius:16px;border:1px solid #c9a33a;background:linear-gradient(160deg,rgba(242,204,77,.22),var(--card) 70%)}\n.champ span{display:block;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--dim)}\n.champ b{display:block;font:700 28px/1.25 Georgia,serif;background:var(--goldm);-webkit-background-clip:text;background-clip:text;color:transparent;margin-top:4px}\n.champ em{display:block;font-style:normal;color:#f0b44c;font-weight:700;font-size:13px;margin-top:4px}\n.rtot{color:var(--dim);font-size:13px;margin:0 0 6px}.rtot b{color:var(--ink);font-size:20px;margin-right:2px}.rtot span{color:#f2b81c;font-weight:700}.ravg{position:relative;height:170px;display:flex;align-items:flex-end;gap:6px;padding-top:18px;padding-left:34px}\n.ravg div{flex:1 1 0;min-width:0;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center}\n.ravg i{display:block;width:100%;max-width:34px;border-radius:5px 5px 0 0;background:var(--grad)}.ravg em{font-style:normal;font-size:11px;color:var(--dim)}\n.avl{position:absolute;left:0;right:0;border-top:1.5px dashed #8a8b94;font-weight:400}.avl span{position:absolute;left:0;top:-9px;width:30px;text-align:left;font-size:12px;line-height:16px;font-weight:800;color:#f2b81c;background:var(--card)}\n.ravg-x{display:flex;gap:6px;margin-top:4px;padding-left:34px}.ravg-x span{flex:1 1 0;min-width:0;text-align:center;font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden}\n.ravg em{white-space:nowrap}\n@media (max-width:640px){.ravg,.ravg-x{gap:3px}.ravg em{font-size:9px}.ravg-x span{font-size:9px}.ravg{height:150px}}\n.empty{color:var(--dim);padding:16px;text-align:center;background:var(--card);border:1px dashed var(--line);border-radius:14px;margin-top:16px}\n.note{color:var(--dim);font-size:13px;margin-top:12px}\n.rsec{border:1px solid #3a3b44;border-radius:16px;padding:2px 12px 12px;margin-top:14px;background:linear-gradient(180deg,#26272d,#202126)}\n.rsec.b{background:linear-gradient(180deg,rgba(255,138,61,.13),rgba(255,138,61,.04)),var(--bg);border-color:rgba(255,138,61,.35)}\n.rsec.ko{background:linear-gradient(180deg,rgba(242,204,77,.13),rgba(242,204,77,.03));border-color:rgba(242,204,77,.45)}\n.rsec.semi{background:linear-gradient(180deg,rgba(176,196,222,.16),rgba(176,196,222,.04));border-color:rgba(176,196,222,.5)}\n.rsec h2{margin:14px 0 12px}\n.rforms{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:8px}\n.rform{position:relative;overflow:hidden;display:flex;align-items:center;gap:9px;padding:8px 10px 8px 12px;border-radius:11px;border:1px solid var(--line);border-left:4px solid var(--tc);background:var(--card)}\n.rform::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,var(--tc),transparent 72%);opacity:.2;pointer-events:none}\n.rform>*{position:relative}.rform .cr{margin:0}\n.rfn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;font-size:14px}\n.rfc{display:flex;gap:4px;flex:0 0 auto}\n.rfc .fc{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:11.5px;color:#fff;text-decoration:none}\n.rfc .W{background:#2f9e63}.rfc .D{background:#6b6c75}.rfc .L{background:#d9483f}.rfc .n{border:1px dashed var(--line)}\n.rfc .au{box-shadow:0 0 0 2px #ffc53d}.rfc .sv{box-shadow:0 0 0 2px #c9d1db}\n.m.hit{animation:hit 1.8s ease-out}\n@keyframes hit{0%,40%{box-shadow:0 0 0 3px #f99c5a,0 0 26px rgba(249,156,90,.6)}100%{box-shadow:none}}\n/* a team's titles: the crown and the number, once */\nspan.gstar{display:inline-flex;align-items:baseline;gap:2px;margin-left:5px;white-space:nowrap;letter-spacing:0;text-transform:none;font-weight:800;color:#f2cc4d;vertical-align:-2px}\n.gcrown{display:inline-block;width:1.12em;height:1.12em;align-self:center}\n.gcrown svg{width:100%;height:100%;display:block}\n/* a round that is not being played, said once at the top of the page */\n.cxbox{margin:16px 0 4px;display:grid;gap:7px}\n.cxl{border:1px solid #ff8a80;border-left:6px solid #ff5247;border-radius:12px;padding:13px 16px;font-size:14.5px;font-weight:700;\n  color:#fff;background:linear-gradient(180deg,#cf342a,#8e1a13);box-shadow:0 0 0 1px rgba(0,0,0,.45),0 14px 32px -16px rgba(255,82,71,.9)}\n.cxl:before{content:'\\26A0\\FE0F';margin-right:9px}\n.cxl.mv{border-color:#ffd98a;border-left-color:#f2b81c;color:#2a1e00;background:linear-gradient(180deg,#ffd978,#e9a900);box-shadow:none}\n.cxl.mv:before{content:'\\1F4C5'}\n.rsx{color:#ff6a60;font-weight:800;font-size:.8em;letter-spacing:.6px;text-transform:uppercase;white-space:nowrap}\n.m.offm{opacity:.75;border-style:dashed}\n.offtag{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;\n  border-radius:999px;padding:2px 10px;margin-bottom:8px;color:#2a0b0b;background:#ff9a9a}\n.meta .wo{color:#f2cc4d}\n.gt{color:var(--ink)}\n.st{color:var(--ink)}\n.bt3{color:var(--ink)}\n.curch{display:inline-block;white-space:nowrap;font-size:11px;font-weight:700;color:#ffc53d;border:1px solid rgba(255,197,61,.6);background:rgba(255,197,61,.12);border-radius:999px;padding:1px 8px;margin-left:4px}\ndetails.rsec>summary{list-style:none;cursor:pointer;-webkit-user-select:none;user-select:none}\ndetails.rsec>summary::-webkit-details-marker{display:none}\ndetails.rsec>summary h2::after{content:'';width:8px;height:8px;margin-left:auto;border-right:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:rotate(-45deg);transition:transform .2s;flex:0 0 auto}\ndetails.rsec[open]>summary h2::after{transform:rotate(45deg)}\ndetails.rsec:not([open]){padding-bottom:2px}\n.rtag{font-size:10px;letter-spacing:1px;padding:1px 8px;border-radius:999px;margin-left:8px;background:#3a3b44;color:var(--ink)}\n.rtag.nx{background:#f3a06b;color:#1d0f05}.rtag.ls{background:#d6d3ce;color:#1d0f05}\n@media (max-width:640px){.two{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.hs{display:none}h1{font-size:22px}.ring{width:52px;height:52px}\n  .m{padding:10px 9px}.mr{gap:6px}.t{font-size:13.5px}.sc{font-size:18px}.sc i{margin:0 3px}.t .cr{width:20px;height:20px;margin:0 5px}.mr .gstar{display:none}}\n@keyframes hue{0%,100%{color:#ff5700}12.5%{color:#ff8500}25%{color:#ff924d}37.5%{color:#00a8a8}50%{color:#9ad3da}62.5%{color:#d6d3ce}75%{color:#ada69c}87.5%{color:#e66414}}\n@keyframes spin{to{transform:rotate(360deg)}}\n@keyframes pulse{50%{opacity:.55}}\n@media (prefers-reduced-motion:reduce){.ring img{animation:none}}";
 /* The page's own script, sent as its source text. It runs on the page, never
    in this tool: the tabs, "updated 3 min ago", and — when it is served by the
    league's web app — new results swapped in every 30 seconds with no reload. */
@@ -18370,7 +18480,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '22 Nov 11:20 · c3e7dcb'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '22 Nov 11:45 · 62b6d41'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
