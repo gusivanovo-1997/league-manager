@@ -1835,7 +1835,8 @@ td.num .gboot,th .gboot{margin:0}
 .ttls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .ttl{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:7px 13px;background:var(--panel)}
 .ttl.lead{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
-.ttl .tnm{font-weight:700;font-size:calc(13.5px * var(--fs))}
+.ttl .tnm{font-weight:700;font-size:calc(13.5px * var(--fs));line-height:1.25}
+.ttl .tnm i{display:block;font-style:normal;font-weight:600;font-size:calc(10.5px * var(--fs));color:var(--dim)}
 .ttl b{font-size:calc(19px * var(--fs));font-variant-numeric:tabular-nums;margin-left:4px}
 .ttl.lead b{color:var(--accent)}
 .nrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 2px;border-top:1px solid var(--line)}
@@ -1865,15 +1866,18 @@ td.num .gboot,th .gboot{margin:0}
 .prow .pct{font-variant-numeric:tabular-nums;font-size:calc(19px * var(--fs));min-width:1.2em;text-align:right}
 .prow.up{background:linear-gradient(90deg,rgba(255,138,61,.12),transparent 70%);border-radius:8px}
 .prow.won .pct{color:var(--ok)}
-.pk{display:inline-grid;place-items:center;width:calc(26px * var(--fs));height:calc(26px * var(--fs));border-radius:50%;
+.pkk{display:inline-grid;place-items:center;width:calc(26px * var(--fs));height:calc(26px * var(--fs));border-radius:50%;
   font-style:normal;font-weight:800;font-size:calc(13px * var(--fs));border:1.5px solid var(--line2);color:var(--dim)}
-.pk.in{background:var(--grad-ok);border-color:transparent;color:#07301b}
-.pk.out{background:var(--grad-bad);border-color:transparent;color:#3a0b10}
-.pk.todo{border-style:dashed;opacity:.55}
-.pk.last{animation:penpop .45s var(--bounce)}
+.pkk.in{background:var(--grad-ok);border-color:transparent;color:#07301b}
+.pkk.out{background:var(--grad-bad);border-color:transparent;color:#3a0b10}
+.pkk.todo{border-style:dashed;opacity:.55}
+.pkk.last{animation:penpop .45s var(--bounce)}
 @keyframes penpop{0%{transform:scale(.2) rotate(-18deg);opacity:0}60%{transform:scale(1.25) rotate(4deg)}100%{transform:scale(1)}}
-@media (prefers-reduced-motion:reduce){.pk.last{animation:none}}
+@media (prefers-reduced-motion:reduce){.pkk.last{animation:none}}
 .pnext .btn{min-width:7.5em}
+.pencall{border-style:dashed}
+.pencall .row{gap:10px}
+.pball{margin-right:7px;font-size:1.1em;line-height:1}
 .courts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .courts:empty{display:none}
 .crt{display:inline-flex;align-items:center;gap:6px;cursor:pointer;
@@ -2586,7 +2590,7 @@ tspan.gstar{fill:var(--gold)}
     <!-- A rachão is decided pair by pair, so the pairs lead the page. -->
     <div class="card" id="tableSeriesCard" style="display:none">
       <div class="row" style="margin-bottom:10px">
-        <h3 style="margin:0">Nights &amp; titles</h3>
+        <h3 style="margin:0">Titles &mdash; one for every night won</h3>
         <div class="spacer"></div>
         <span class="muted small" id="seriesNote"></span>
       </div>
@@ -3142,6 +3146,7 @@ function blankLeague() {
     fixtures: [],      // {id,stage,round,homeId,awayId,date,time,court,status,events[],homePens,awayPens}
     regs: [],          // inbox: pending/approved/rejected submissions
     honours: [],       // past winners
+    titles: [],        // a rachão's nights, won and kept: {date, won:[teamId], w:{teamId:games}}
     archive: [],       // each finished season, player by player (Players tab)
     bulletin: { subject: '', sender: '', intro: null, opts: null, log: [] },     // intro null = the default note, which follows the season name
     finals3rd: false
@@ -3157,7 +3162,7 @@ function blankRoot() {
 }
 // the old single-league shape, still used for defaults (blankDB().season, …)
 function blankDB() { return Object.assign({ version: 1, people: [], access: { managerPin: '4564', refPin: '2026' } }, blankLeague()); }
-const LEAGUE_KEYS = ['id', 'name', 'season', 'form', 'people', 'teams', 'fixtures', 'regs', 'honours', 'archive', 'bulletin', 'finals3rd', 'publish', 'demo'];
+const LEAGUE_KEYS = ['id', 'name', 'season', 'form', 'people', 'teams', 'fixtures', 'regs', 'honours', 'titles', 'archive', 'bulletin', 'finals3rd', 'publish', 'demo'];
 const ROOT_KEYS = ['version', 'access', 'staff'];
 let ROOT = blankRoot();
 const leagueById = id => ROOT.leagues.find(l => l.id === id);
@@ -3314,6 +3319,7 @@ function save() {
   if (typeof cupAdvance === 'function') cupAdvance();   // a cup: the winners meet in the next round
   if (typeof worldAdvance === 'function') worldAdvance();  // a World Cup: the groups feed the last 32, and on
   if (typeof autoFinals === 'function') autoFinals();   // the season is over: draw the semis
+  if (typeof rollNights === 'function') rollNights();   // a rachão night that is over is written into the record
   syncFinals();                                   // a decided semi always has its final, in every save
   // not while the sync is writing: records that have just come down from the
   // shared copy are read, not corrected, or every tablet rewrites the others
@@ -5249,6 +5255,7 @@ function paintSubTabs() {
      the referee's way. */
   const hide = simpleComp() ? { attend: 1, finance: 1 } : {};
   if (isCup()) hide.table = 1;                 // a knockout cup has no table to show
+  if (isSeries()) hide.finals = 1;             // a rachão is won night by night: there are none
   const grp = role ? (SUBTABS[parentOf(currentView)] || []).filter(([k]) => allowedView(k) && !hide[k]) : [];
   if (grp.length < 2) { el.hidden = true; el.innerHTML = ''; return; }
   const gold = finalsGold(), pend = DB.regs.filter(r => r.status === 'pending').length;
@@ -6353,15 +6360,58 @@ function seriesHeadline(ph) {
   return (last.top.length === 1 ? who + ' take the night' : last.top.length ? who + ' share the night' : 'The night was drawn') +
     ' — ' + fmtDate(last.date);
 }
-// how many nights each side has taken, and who leads on them
+/* THE RECORD. A night that has been played is written down — the date, who
+   took it, and how many games each side won on it — and it stays written
+   whatever happens to the schedule afterwards. Redrawing the year, or
+   starting again, leaves every title already won exactly where it was.
+   Called from save, so the record is made as the nights are played. */
+function rollNights() {
+  if (!isSeries()) return false;
+  const roll = (DB.titles || []).slice(), at = {};
+  const live = {};
+  nightBoard().forEach(x => { live[x.date] = x; });
+  let changed = false;
+  roll.forEach(r => at[r.date] = r);
+  const kept = roll;
+  Object.keys(live).forEach(d => {
+    const x = live[d];
+    if (!x.done) return;
+    const rec = { date: d, won: x.title.slice(), w: Object.assign({}, x.w),
+      ids: Object.keys(x.ids || {}), of: x.of };
+    const old = at[d];
+    if (!old) { kept.push(rec); changed = true; return; }
+    if (old.won.join() !== rec.won.join() || JSON.stringify(old.w) !== JSON.stringify(rec.w) ||
+        (old.ids || []).join() !== rec.ids.join()) {
+      Object.assign(old, rec); changed = true;
+    }
+  });
+  if (changed) DB.titles = kept.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  return changed;
+}
+/* What to count from: every night already on the record, plus the nights of
+   the schedule as it stands. A night that is in both is read from the
+   schedule, so a correction shows at once. */
+function rollView() {
+  const at = {}, out = [];
+  (DB.titles || []).forEach(r => { if (r && r.date) at[r.date] = r; });
+  // a night of the schedule that has been played out writes over its own record
+  nightBoard().forEach(x => { if (x.done) at[x.date] =
+    { date: x.date, won: x.title.slice(), w: x.w, ids: Object.keys(x.ids || {}), of: x.of }; });
+  Object.keys(at).forEach(d => out.push(at[d]));
+  return out.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+}
+// the titles each side holds, the games they won taking them, and who leads
 function seriesTally() {
-  const board = nightBoard(), by = {};
-  (DB.teams || []).forEach(t => by[t.id] = 0);
-  board.forEach(n => n.title.forEach(id => { by[id] = (by[id] || 0) + 1; }));
+  const board = nightBoard(), roll = rollView(), by = {}, games = {}, when = {};
+  (DB.teams || []).forEach(t => { by[t.id] = 0; games[t.id] = 0; when[t.id] = []; });
+  roll.forEach(r => {
+    (r.won || []).forEach(id => { by[id] = (by[id] || 0) + 1; (when[id] = when[id] || []).push(r.date); });
+    Object.keys(r.w || {}).forEach(id => { games[id] = (games[id] || 0) + (r.w[id] || 0); });
+  });
   const best = Math.max(0, ...Object.keys(by).map(k => by[k]));
   const top = Object.keys(by).filter(k => by[k] === best && best > 0);
-  return { by: by, board: board, best: best, top: top,
-    nights: board.length, done: board.filter(n => n.done).length };
+  return { by: by, games: games, when: when, board: board, roll: roll, best: best, top: top,
+    nights: board.length, done: roll.length };
 }
 /* "Mata-mata": a knockout cup. Every tie is played once, the loser is out,
    and the last team standing wins it — so there is no table and no bracket
@@ -10465,6 +10515,24 @@ function penStart(fid, who) {
    and eighth as sudden death goes on; the kick just taken comes in with a
    flick, so the referee can see it land without looking away from the
    pitch for longer than it takes to press one button. */
+/* A SHOOT-OUT BOARD ON A MATCH THAT MAY NEVER NEED ONE is a board in the
+   way: a tie is level at 0–0 for the first minute of it, and the referee
+   is not taking kicks yet. So it keeps out of sight until one of three
+   things is true — kicks have been taken, both halves (or extra time)
+   have run and it is still level, or the referee has called for it. */
+function penZone(f, level) {
+  if (!isKO(f) || !level) return '';
+  const kicks = (f.pens || []).length;
+  const ft = !!(f.ran && f.ran.H1 && f.ran.H2);          // both halves have run to the end
+  if (kicks || live.penOpen === f.id || (f.status !== 'final' && ft)) return penBox(f);
+  if (f.status === 'final' && !isMgr()) return '';
+  return '<div class="card pencall"><div class="row">' +
+    '<button class="btn accent" id="btnPenOpen">' + BALL_DOT + 'Penalty shoot-out</button>' +
+    '<span class="small muted">Level at ' + score(f).h + '\u2013' + score(f).a +
+      (ft ? '. Take the kicks when they start.' : ' \u2014 the board opens on its own at full time if it stays that way.') +
+    '</span></div></div>';
+}
+const BALL_DOT = '<span class="pball">\u26bd</span>';
 function penBox(f) {
   const p = penSync(f);
   const nm = s => teamName(s === 'h' ? f.homeId : f.awayId);
@@ -10472,9 +10540,9 @@ function penBox(f) {
   const marks = s => { const st = s === 'h' ? p.h : p.a, out = [];
     let i = 0;
     p.ks.forEach((k, ix) => { if (k.t !== s) return;
-      out.push('<i class="pk ' + (k.ok ? 'in' : 'out') + (ix === p.ks.length - 1 ? ' last' : '') + '">' +
+      out.push('<i class="pkk ' + (k.ok ? 'in' : 'out') + (ix === p.ks.length - 1 ? ' last' : '') + '">' +
         (k.ok ? '\u2713' : '\u2715') + '</i>'); i++; });
-    for (; i < slots; i++) out.push('<i class="pk todo"></i>');
+    for (; i < slots; i++) out.push('<i class="pkk todo"></i>');
     return out.join('');
   };
   const side = s => '<div class="prow' + (p.over && p.winner === s ? ' won' : '') + (p.next === s && !p.over ? ' up' : '') + '">' +
@@ -10849,7 +10917,7 @@ function drawLive() {
     '<div id="liveScroll">' +
     /* Level in a knockout, so there is a shoot-out to come: the board for it
        goes above the log, where the next thing to happen belongs. */
-    (isKO(f) && shown.h === shown.a && (f.status !== 'final' || (f.pens || []).length || isSeries()) ? penBox(f) : '') +
+    penZone(f, shown.h === shown.a) +
     '<div class="card"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">Match log</h3>' +
       '<div class="spacer"></div>' +
       (isMgr() ? '<button class="btn sm bad" id="btnWipe" data-tip="Wipe it back to unplayed, as if it never happened">Reset as unplayed</button>' : '') +
@@ -10994,6 +11062,7 @@ function drawLive() {
   };
   if ($('btnClose')) $('btnClose').onclick = () => closeMatch(f);
   if ($('btnWipe')) $('btnWipe').onclick = () => resetMatch(f);
+  if ($('btnPenOpen')) $('btnPenOpen').onclick = () => { live.penOpen = f.id; renderLive(); };
   if ($('btnFullTimeFinal')) $('btnFullTimeFinal').onclick = () => finaliseMatch(f);
   if ($('btnFinal')) $('btnFinal').onclick = () => finaliseMatch(f);
   if ($('btnPens')) $('btnPens').onclick = () => {
@@ -11906,35 +11975,44 @@ function paintSeries() {
   if (!isSeries()) return;
   const T = seriesTally(), nm = nameList;
   const ord = DB.teams.slice().sort((a, b) => (T.by[b.id] || 0) - (T.by[a.id] || 0) || a.name.localeCompare(b.name));
-  const titles = ord.map(t => '<div class="ttl' + ((T.by[t.id] || 0) === T.best && T.best ? ' lead' : '') + '">' +
-    crest(t.id, 'md') + '<span class="tnm">' + esc(t.name) + '</span>' +
-    '<b>' + (T.by[t.id] || 0) + '</b></div>').join('');
+  const titles = ord.map(t => {
+    const won = (T.when[t.id] || []).map(fmtDate);
+    return '<div class="ttl' + ((T.by[t.id] || 0) === T.best && T.best ? ' lead' : '') + '"' +
+      (won.length ? ' data-tip="Nights won: ' + esc(won.join(', ')) + '"' : '') + '>' +
+      crest(t.id, 'md') + '<span class="tnm">' + esc(t.name) +
+        '<i>' + plural(T.games[t.id] || 0, 'game') + ' won</i></span>' +
+      '<b>' + (T.by[t.id] || 0) + '</b></div>';
+  }).join('');
   const night = n => {
-    const ids = DB.teams.filter(t => n.ids[t.id]);
-    const tag = n.done
-      ? (n.top.length === 1 ? '<span class="stag held">' + esc(teamName(n.top[0])) + ' take the night</span>'
-         : n.top.length ? '<span class="stag">' + (n.top.length >= ids.length ? 'the night is shared'
-             : 'shared · ' + esc(nm(n.top))) + '</span>'
+    const won = n.top || n.won || [], over = n.done !== false && (n.done || won.length || n.w);
+    const held = n.ids && !Array.isArray(n.ids) ? DB.teams.filter(t => n.ids[t.id])
+      : DB.teams.filter(t => (n.ids || []).indexOf(t.id) >= 0);
+    const ids = held.length ? held : DB.teams.filter(t => (n.w || {})[t.id] != null || won.indexOf(t.id) >= 0);
+    const tag = n.done !== false
+      ? (won.length === 1 ? '<span class="stag held">' + esc(teamName(won[0])) + ' take the night</span>'
+         : won.length ? '<span class="stag">' + (won.length >= ids.length ? 'the night is shared'
+             : 'shared · ' + esc(nm(won))) + '</span>'
          : '<span class="stag">no winner</span>')
-      : n.played ? '<span class="stag lead">' + (n.top.length ? esc(nm(n.top)) + ' lead' : 'level') +
+      : n.played ? '<span class="stag lead">' + (won.length ? esc(nm(won)) + ' lead' : 'level') +
           ' · ' + n.played + ' of ' + n.of + '</span>'
       : '<span class="stag">' + plural(n.of, 'game') + ' to play</span>';
+    const blank = n.done === false && !n.played;
     return '<div class="nrow">' +
       '<span class="ndate">' + esc(fmtDate(n.date)) + '</span>' +
       // a night nobody has played yet shows its badges, not a row of noughts
-      '<span class="nwins">' + (!n.played ? ids.map(t => '<span class="nw">' + crest(t.id, 'sm') + '</span>').join('') : ids.map(t => '<span class="nw' +
-        (n.done && n.top.indexOf(t.id) >= 0 ? ' won' : '') + '">' + crest(t.id, 'sm') +
-        (n.w[t.id] || 0) + '</span>').join('')) + '</span>' + tag + '</div>';
+      '<span class="nwins">' + (blank ? ids.map(t => '<span class="nw">' + crest(t.id, 'sm') + '</span>').join('') : ids.map(t => '<span class="nw' +
+        (over && won.indexOf(t.id) >= 0 ? ' won' : '') + '">' + crest(t.id, 'sm') +
+        ((n.w || {})[t.id] || 0) + '</span>').join('')) + '</span>' + tag + '</div>';
   };
-  const done = T.board.filter(n => n.done), rest = T.board.filter(n => !n.done);
-  const show = rest.slice(0, 1).concat(done.slice().reverse().slice(0, 11));
+  const rest = T.board.filter(n => !n.done).map(x => Object.assign({}, x, { done: false }));
+  const show = rest.slice(0, 1).concat(T.roll.slice().reverse().slice(0, 11));
   $('tableSeries').innerHTML = !DB.teams.length ? '<div class="empty">Add teams to see the nights.</div>'
     : '<div class="ttls">' + titles + '</div>' +
-      (T.board.length ? show.map(night).join('') +
-        (T.board.length > show.length ? '<div class="small muted" style="padding-top:8px">' +
-          plural(T.board.length - show.length, 'other night') + ' on the schedule.</div>' : '')
+      (show.length ? show.map(night).join('') +
+        ((x => x > 0 ? '<div class="small muted" style="padding-top:8px">' +
+          plural(x, 'other night') + ' \u2014 played or still to come.</div>' : '')(T.board.length + T.roll.length - rest.length - show.length))
         : '<div class="empty">No nights drawn yet.</div>');
-  $('seriesNote').textContent = !T.board.length ? ''
+  $('seriesNote').textContent = !T.board.length && !T.done ? ''
     : T.best ? nm(T.top) + ' — ' + plural(T.best, 'title') + ' from ' + plural(T.done, 'night') + ' played'
     : T.done ? 'No titles yet' : 'The first night has still to be played';
 }
@@ -11946,7 +12024,12 @@ function renderTable() {
   const tbl = $('cardSeasonTable'), frm = $('cardForm');
   if (tbl) tbl.style.display = isSeries() ? 'none' : '';
   if (frm) frm.style.display = isSeries() ? 'none' : '';
-  if (isSeries()) return;
+  if (isSeries()) {
+    const brk = $('tableBrkCard');
+    if (brk) { brk.style.display = 'none'; $('tableBrk').innerHTML = ''; }
+    $('tableTbl').innerHTML = ''; $('tableLegend').innerHTML = ''; $('tableNote').innerHTML = ''; $('gridWrap').innerHTML = '';
+    return;
+  }
   /* The bracket at the top of Competition, from the moment there is one. */
   const koOn = isWorld() && DB.fixtures.some(f => (f.round || 0) > WC_GRD);
   $('tableBrkCard').style.display = koOn ? '' : 'none';
@@ -15562,7 +15645,8 @@ const PUB_NIGHT_CSS =
   '.ttls{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px}' +
   '.ttl{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:12px;padding:7px 13px;background:var(--card)}' +
   '.ttl.lead{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}' +
-  '.ttl .tnm{font-weight:700;font-size:13.5px}' +
+  '.ttl .tnm{font-weight:700;font-size:13.5px;line-height:1.25}' +
+  '.ttl .tnm i{display:block;font-style:normal;font-weight:600;font-size:10.5px;color:var(--dim)}' +
   '.ttl b{font-size:19px;font-variant-numeric:tabular-nums;margin-left:4px}.ttl.lead b{color:var(--acc)}' +
   '.nights{margin-top:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:2px 12px;' +
     'box-shadow:0 8px 22px -14px rgba(0,0,0,.7)}' +
@@ -15599,6 +15683,19 @@ const PUB_SHARE_CSS =
   '@media (max-width:700px){.share{aspect-ratio:1/1;min-height:0}}' +
   '@media (prefers-reduced-motion:reduce){.sh-t{animation:none}}';
 
+/* the count of people on the page, top right of its heading */
+const PUB_HERE_CSS =
+  '.hereb{margin-left:auto;align-self:flex-start;display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;' +
+    'border:1px solid rgba(255,138,61,.5);background:rgba(255,138,61,.12);border-radius:999px;padding:5px 12px;color:var(--hue)}' +
+  '.hereb svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}' +
+  '.hereb b{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--ink)}' +
+  '.hereb em{font-style:normal;font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--dim)}' +
+  '.hereb .hd{width:7px;height:7px;border-radius:50%;background:#49d17a;box-shadow:0 0 8px #49d17a;animation:pulse 1.8s infinite}' +
+  '@media (max-width:640px){.hereb{padding:4px 9px;gap:5px}.hereb em{display:none}}';
+const PUB_HERE = '<span class="hereb" id="hereb" hidden title="Watching this page right now">' +
+  '<i class="hd"></i><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/>' +
+  '<path d="M3 19c0-3.3 2.7-5.3 6-5.3s6 2 6 5.3"/><circle cx="17.2" cy="9.2" r="2.4"/>' +
+  '<path d="M15.7 14.3c.5-.2 1-.3 1.6-.3 2.6 0 4.2 1.6 4.2 4"/></svg><b>1</b><em>watching</em></span>';
 const PUB_RACE_CSS =
   '.viz-race{width:100%;height:330px;overflow:visible}' +
   '.race-line{fill:none;stroke:#6b6c75;stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round;opacity:.5}' +
@@ -16007,33 +16104,39 @@ function publicPageHtml() {
   const pubNights = full => {
     const T = seriesTally(), nm = nameList;
     const ord = DB.teams.slice().sort((a, b) => (T.by[b.id] || 0) - (T.by[a.id] || 0) || a.name.localeCompare(b.name));
-    const titles = ord.map(x => '<div class="ttl' + ((T.by[x.id] || 0) === T.best && T.best ? ' lead' : '') + '">' +
-      dot(x.id) + '<span class="tnm">' + esc(x.name) + '</span><b>' + (T.by[x.id] || 0) + '</b></div>').join('');
+    const titles = ord.map(x => '<div class="ttl' + ((T.by[x.id] || 0) === T.best && T.best ? ' lead' : '') + '"' +
+      ((T.when[x.id] || []).length ? ' title="Nights won: ' + esc((T.when[x.id] || []).map(fmtDate).join(', ')) + '"' : '') + '>' +
+      dot(x.id) + '<span class="tnm">' + esc(x.name) +
+        '<i>' + plural(T.games[x.id] || 0, 'game') + ' won</i></span><b>' + (T.by[x.id] || 0) + '</b></div>').join('');
     const night = x => {
-      const ids = DB.teams.filter(y => x.ids[y.id]);
-      const tag = x.done
-        ? (x.top.length === 1 ? '<span class="stag held">' + esc(teamName(x.top[0])) + ' take the night</span>'
-           : x.top.length ? '<span class="stag">' + (x.top.length >= ids.length ? 'the night is shared'
-               : 'shared &middot; ' + esc(nm(x.top))) + '</span>'
+      const won = x.top || x.won || [], over = x.done !== false;
+      const held = x.ids && !Array.isArray(x.ids) ? DB.teams.filter(y => x.ids[y.id])
+        : DB.teams.filter(y => (x.ids || []).indexOf(y.id) >= 0);
+      const ids = held.length ? held : DB.teams.filter(y => (x.w || {})[y.id] != null || won.indexOf(y.id) >= 0);
+      const tag = over
+        ? (won.length === 1 ? '<span class="stag held">' + esc(teamName(won[0])) + ' take the night</span>'
+           : won.length ? '<span class="stag">' + (won.length >= ids.length ? 'the night is shared'
+               : 'shared &middot; ' + esc(nm(won))) + '</span>'
            : '<span class="stag">no winner</span>')
-        : x.played ? '<span class="stag lead">' + (x.top.length ? esc(nm(x.top)) + ' lead' : 'level') +
+        : x.played ? '<span class="stag lead">' + (won.length ? esc(nm(won)) + ' lead' : 'level') +
             ' &middot; ' + x.played + ' of ' + x.of + '</span>'
         : '<span class="stag">' + plural(x.of, 'game') + ' to play</span>';
+      const blank = !over && !x.played;
       return '<div class="nrow"><span class="ndate">' + esc(fmtDate(x.date)) + '</span><span class="nwins">' +
-        (!x.played ? ids.map(y => '<span class="nw">' + dot(y.id) + '</span>').join('')
-          : ids.map(y => '<span class="nw' + (x.done && x.top.indexOf(y.id) >= 0 ? ' won' : '') + '">' +
-              dot(y.id) + (x.w[y.id] || 0) + '</span>').join('')) +
+        (blank ? ids.map(y => '<span class="nw">' + dot(y.id) + '</span>').join('')
+          : ids.map(y => '<span class="nw' + (over && won.indexOf(y.id) >= 0 ? ' won' : '') + '">' +
+              dot(y.id) + ((x.w || {})[y.id] || 0) + '</span>').join('')) +
         '</span>' + tag + '</div>';
     };
-    const over = T.board.filter(x => x.done), rest = T.board.filter(x => !x.done);
-    const show = full ? rest.slice(0, 3).concat(over.slice().reverse())
-      : rest.slice(0, 1).concat(over.slice().reverse().slice(0, 7));
-    const left = T.board.length - show.length;
+    const rest = T.board.filter(x => !x.done).map(x => Object.assign({}, x, { done: false }));
+    const show = full ? rest.slice(0, 3).concat(T.roll.slice().reverse())
+      : rest.slice(0, 1).concat(T.roll.slice().reverse().slice(0, 7));
+    const left = T.board.length + T.roll.length - rest.length - show.length;
     return '<style>' + PUB_NIGHT_CSS + '</style>' +
-      h2('Nights &amp; titles') +
+      h2('Titles &mdash; one for every night won') +
       (!DB.teams.length ? empty('No teams yet.')
         : '<div class="ttls">' + titles + '</div>' +
-          (T.board.length ? '<div class="nights">' + show.map(night).join('') + '</div>' +
+          (show.length ? '<div class="nights">' + show.map(night).join('') + '</div>' +
             (left > 0 ? '<div class="note">' + plural(left, 'other night') + ' on the schedule.</div>' : '')
             : empty('No nights drawn yet.')) +
           '<div class="note">Every night is its own competition: whoever wins the most games on it takes the night, and that is one title. Nothing is carried over.</div>');
@@ -16317,10 +16420,11 @@ function publicPageHtml() {
       ['teams', 'Teams'], ['stats', 'Stats'], ['honours', isSeries() ? 'Head to head' : 'Honours']]
     .filter(([k]) => !(isCup() && k === 'table'));
   const ball = ballBare();
-  const app = '<style>' + crestRules('.cr', 'data-c') + '</style>' + '<header><div class="wrap brand">' +
+  const app = '<style>' + PUB_HERE_CSS + crestRules('.cr', 'data-c') + '</style>' + '<header><div class="wrap brand">' +
       (ball ? '<span class="ring"><img src="' + ball + '" alt=""></span>' : '') +
       '<div class="bt"><small>League <i>Manager</i></small><h1>' + esc(DB.season.name) + '</h1><p>' + esc(d.headline) + '</p>' +
-      '<div class="upd">' + (live.length ? '<span class="lvp">LIVE</span>' : '') + '<span data-at="%%AT%%">Updated</span></div></div></div></header>' +
+      '<div class="upd">' + (live.length ? '<span class="lvp">LIVE</span>' : '') + '<span data-at="%%AT%%">Updated</span></div></div>' +
+      PUB_HERE + '</div></header>' +
     '<nav><div class="wrap"><div class="tabs">' + tabs.map(([k, l], i) => '<button data-t="' + k + '"' + (i ? '' : ' class="on"') + '>' + l + '</button>').join('') + '</div></div></nav>' +
     '<main class="wrap" data-ver="%%VER%%">' +
       tabs.map(([k], i) => '<section data-s="' + k + '"' + (i ? ' hidden' : '') + '>' +
@@ -16422,6 +16526,29 @@ function pubClient() {
       Math.round(a[1] + (b[1] - a[1]) * f) + ',' + Math.round(a[2] + (b[2] - a[2]) * f) + ')');
   }, 125);
   var run = window.google && google.script && google.script.run;
+  /* How many people have this page open. The id is this tab's own, made up
+     here and kept for as long as the tab lives; the web app counts the ids
+     that have checked in lately and tells each page the number. A page
+     nobody has updated the script for simply never hears back, and the
+     badge stays out of sight. */
+  var heads = 0, me = '';
+  try { me = sessionStorage.getItem('futsal.me') || ''; } catch (e) {}
+  if (!me) { me = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+    try { sessionStorage.setItem('futsal.me', me); } catch (e) {} }
+  function paintHere() {
+    var el = document.getElementById('hereb');
+    if (!el) return;
+    el.hidden = heads < 1;
+    var b = el.querySelector('b'); if (b) b.textContent = heads;
+  }
+  function ping() {
+    if (!run || document.hidden) return;
+    google.script.run
+      .withSuccessHandler(function (x) { heads = +x || 0; paintHere(); })
+      .withFailureHandler(function () { heads = 0; paintHere(); })
+      .here(me);
+  }
+  if (run) { ping(); setInterval(ping, 30000); }
   if (run) setInterval(function () {
     if (document.hidden) return;
     var m = document.querySelector('[data-ver]'), v = m && m.getAttribute('data-ver');
@@ -16431,7 +16558,7 @@ function pubClient() {
         if (!h) return;
         /* innerHTML never runs the scripts it brings in, so everything the
            page does for itself has to be started again by hand here. */
-        document.getElementById('app').innerHTML = h; show(cur); pickTeam(team); ago(); clocks();
+        document.getElementById('app').innerHTML = h; show(cur); pickTeam(team); ago(); clocks(); paintHere();
         if (window.__raceStart) window.__raceStart(1);
       }).body();
     }).version();
@@ -16714,6 +16841,19 @@ function appsLiveScript(key) {
     '    .addMetaTag("viewport", "width=device-width, initial-scale=1");',
     '}',
     '',
+    '// WHO IS WATCHING. Every open page checks in with an id of its own making;',
+    '// the count is of the pages that checked in within the last 95 seconds.',
+    '// Nothing is kept but those random ids, in the cache, for five minutes.',
+    'function here(id) {',
+    '  var c = CacheService.getScriptCache(), now = Date.now(), m = {};',
+    '  try { m = JSON.parse(c.get("HERE") || "{}"); } catch (x) { m = {}; }',
+    '  if (id) m[String(id).slice(0, 24)] = now;',
+    '  var keep = {}, n = 0;',
+    '  Object.keys(m).forEach(function (k) { if (now - m[k] < 95000 && n < 500) { keep[k] = m[k]; n++; } });',
+    '  try { c.put("HERE", JSON.stringify(keep), 300); } catch (x) {}',
+    '  return n;',
+    '}',
+    '',
     '// called by the open page to pick up new results',
     'function version() { return PropertiesService.getScriptProperties().getProperty("VER") || ""; }',
     'function body() {',
@@ -16844,7 +16984,7 @@ const SYNCKEY = 'futsal.sync.v1';
    this list, so starting a new season wrote that history on one device only:
    the other tablets took the cleared draw and the new name and ended up with
    players whose careers began this week. */
-const SYNC_META = ['name', 'season', 'form', 'regs', 'honours', 'bulletin', 'finals3rd', 'staff', 'archive'];
+const SYNC_META = ['name', 'season', 'form', 'regs', 'honours', 'titles', 'bulletin', 'finals3rd', 'staff', 'archive'];
 const SYNC_LISTS = ['fixtures', 'teams', 'people'];
 const SYNC_ROOT = { staff: 1 };
 const metaOf = k => SYNC_ROOT[k] ? staffDoc() : DB[k];
@@ -18732,7 +18872,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '22 Nov 13:33 · 523ec7e'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '23 Nov 07:52 · b6652e6'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
