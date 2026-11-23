@@ -1835,6 +1835,11 @@ td.num .gboot,th .gboot{margin:0}
 .ttls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .ttl{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:7px 13px;background:var(--panel)}
 .ttl.lead{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.hontbl .rr{text-align:right}
+.hontbl .hw{display:inline-flex;align-items:center;white-space:nowrap;color:var(--dim)}
+.hontbl .hw.won{font-weight:800;color:var(--text)}
+.hontbl .hsc{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.hontbl .hhow{color:var(--warn);font-size:calc(12px * var(--fs));white-space:nowrap}
 .ttl .tnm{font-weight:700;font-size:calc(13.5px * var(--fs));line-height:1.25}
 .ttl .tnm i{display:block;font-style:normal;font-weight:600;font-size:calc(10.5px * var(--fs));color:var(--dim)}
 .ttl b{font-size:calc(19px * var(--fs));font-variant-numeric:tabular-nums;margin-left:4px}
@@ -2596,6 +2601,7 @@ tspan.gstar{fill:var(--gold)}
       </div>
       <div id="tableSeries"></div>
     </div>
+    <div class="card leaguecard" id="tableRaceCard" style="display:none"><h3>Title race</h3><div id="tableRace"></div></div>
     <div class="card" id="cardSeasonTable">
       <div class="row" style="margin-bottom:10px">
         <h3 style="margin:0">Season table</h3>
@@ -2693,7 +2699,7 @@ tspan.gstar{fill:var(--gold)}
     </div>
     <!-- A rachao's record of who has played whom, in place of a roll of
          honour it cannot fill. -->
-    <div class="card" id="h2hCard" style="display:none" data-nostar><h3>Head to head</h3><div id="h2hBoard"></div></div>
+    <div class="card" id="h2hCard" style="display:none" data-nostar><h3>Honours &mdash; every game played</h3><div id="h2hBoard"></div></div>
     <div class="card hncard" data-nostar><h3 class="goldtxt">★ Titles</h3><div id="honourTitles"></div></div>
     <div class="card hncard" data-nostar><h3 class="goldtxt">Roll of honour</h3><div class="tbl-wrap"><table id="honourTbl"></table></div></div>
   </section>
@@ -5274,7 +5280,7 @@ function paintSubTabs() {
   if (grp.length < 2) { el.hidden = true; el.innerHTML = ''; return; }
   const gold = finalsGold(), pend = DB.regs.filter(r => r.status === 'pending').length;
   el.hidden = false;
-  el.innerHTML = grp.map(([k, label0]) => { const label = k === 'honours' && isSeries() ? 'Head to head' : label0;
+  el.innerHTML = grp.map(([k, label0]) => { const label = label0;
     return '<button class="subtab' + (k === currentView ? ' on' : '') + (k === 'finals' && gold ? ' gold' : '') +
     '" data-sub="' + k + '">' + icon(k) + label + (k === 'regs' && pend ? '<span class="badge">' + pend + '</span>' : '') + '</button>'; }).join('');
   el.querySelectorAll('[data-sub]').forEach(b => b.onclick = () => { if (b.dataset.sub === 'players') plSel = null; go(b.dataset.sub); });
@@ -12225,14 +12231,20 @@ function paintSeries() {
         (over && won.indexOf(t.id) >= 0 ? ' won' : '') + '">' + crest(t.id, 'sm') +
         ((n.w || {})[t.id] || 0) + '</span>').join('')) + '</span>' + tag + '</div>';
   };
-  const rest = T.board.filter(n => !n.done).map(x => Object.assign({}, x, { done: false }));
-  const show = rest.slice(0, 1).concat(T.roll.slice().reverse().slice(0, 11));
   $('tableSeries').innerHTML = !DB.teams.length ? '<div class="empty">Add teams to see the nights.</div>'
     : '<div class="ttls">' + titles + '</div>' +
-      (show.length ? show.map(night).join('') +
-        ((x => x > 0 ? '<div class="small muted" style="padding-top:8px">' +
-          plural(x, 'other night') + ' \u2014 played or still to come.</div>' : '')(T.board.length + T.roll.length - rest.length - show.length))
-        : '<div class="empty">No nights drawn yet.</div>');
+      '<div class="small muted" style="padding-top:9px">Every night is its own competition: whoever wins the most games on it takes ' +
+        'the night, and that is one title. Night by night is on Fixtures &amp; Results.</div>';
+  /* and under the count, the race for it — the year played through from the
+     first night to the last, the way the season is read everywhere else */
+  const rc = $('tableRaceCard');
+  if (rc) {
+    const svg = vizRace();
+    const on = svg.indexOf('<svg') >= 0;
+    rc.style.display = on ? '' : 'none';
+    if (on) { $('tableRace').innerHTML = svg; raceRun('tableRace'); }
+    else $('tableRace').innerHTML = '';
+  }
   $('seriesNote').textContent = !T.board.length && !T.done ? ''
     : T.best ? nm(T.top) + ' — ' + plural(T.best, 'title') + ' from ' + plural(T.done, 'night') + ' played'
     : T.done ? 'No titles yet' : 'The first night has still to be played';
@@ -13113,19 +13125,23 @@ function vizRoundAvg() {
   const hi = rs.reduce((a, b) => b.avg > a.avg ? b : a), lo = rs.reduce((a, b) => b.avg < a.avg ? b : a);
   const max = Math.max(...rs.map(r => r.avg)) * 1.08 || 1;
   const pct = v => (v / max * 100).toFixed(1);
+  const whole = v => String(Math.round(v));
+  // one name in every few, once there are more rounds than there is room for
+  const every = Math.max(1, Math.ceil(rs.length / 14));
   return '<div class="ravg-k">' +
-      '<div><span>Season average</span><b>' + season.toFixed(1) + '</b><span>goals a game</span></div>' +
-      '<div><span>Highest-scoring round</span><b>' + hi.avg.toFixed(1) + '</b><span>' + esc(hi.label) + '</span></div>' +
-      '<div><span>Lowest-scoring round</span><b>' + lo.avg.toFixed(1) + '</b><span>' + esc(lo.label) + '</span></div>' +
+      '<div><span>Season average</span><b>' + whole(season) + '</b><span>goals a game</span></div>' +
+      '<div><span>Highest-scoring round</span><b>' + whole(hi.avg) + '</b><span>' + esc(hi.label) + '</span></div>' +
+      '<div><span>Lowest-scoring round</span><b>' + whole(lo.avg) + '</b><span>' + esc(lo.label) + '</span></div>' +
       '<div><span>Goals so far</span><b>' + goals + '</b><span>' + plural(games, 'game') + '</span></div>' +
     '</div>' +
     '<div class="ravg" role="img" aria-label="Average goals per game in each round; the season average is ' + season.toFixed(1) + '">' +
       rs.map((r, i) => '<div class="col' + (r.stage === 'SEMI' ? ' semi' : r.stage === 'FINAL' ? ' fin' : r === hi ? ' hi' : '') + '" data-tip="' + esc(r.label + (r.date ? ' · ' + fmtDate(r.date) : '') +
           ' — ' + r.goals + ' goals in ' + plural(r.fx.length, 'game') + ', ' + r.avg.toFixed(1) + ' a game') + '">' +
-        '<em>' + r.avg.toFixed(1) + '</em><i style="height:' + pct(r.avg) + '%;animation-delay:' + (i * 40) + 'ms"></i></div>').join('') +
-      '<div class="avgline" style="bottom:' + pct(season) + '%"><span>' + season.toFixed(1) + '</span></div>' +
+        '<em>' + whole(r.avg) + '</em><i style="height:' + pct(r.avg) + '%;animation-delay:' + (i * 40) + 'ms"></i></div>').join('') +
+      '<div class="avgline" style="bottom:' + pct(season) + '%"><span>' + whole(season) + '</span></div>' +
     '</div>' +
-    '<div class="ravg-x">' + rs.map(r => '<span>' + esc(r.stage === 'SEMI' ? 'SF' : r.stage === 'FINAL' ? 'F' : r.short) + '</span>').join('') + '</div>';
+    '<div class="ravg-x">' + rs.map((r, i) => '<span>' + (i % every ? '' :
+      esc(r.stage === 'SEMI' ? 'SF' : r.stage === 'FINAL' ? 'F' : r.short)) + '</span>').join('') + '</div>';
 }
 /* hat-tricks this season: three or more named goals by one player in one played match */
 function hatMap() {
@@ -13393,21 +13409,31 @@ $('btnHonourNew').onclick = endHonourEdit;
    to a season. What it has instead is this — who has played whom, and how
    often. */
 function paintMeetings(el) {
-  const ms = meetings();
-  if (!ms.length) return el.innerHTML = '<div class="empty">No fixtures drawn yet.</div>';
-  const per = perNightMeets();
-  const side = (m, id) => crest(id, 'sm') + esc(teamName(id));
-  el.innerHTML = '<div class="tbl-wrap"><table>' +
-    '<tr><th>Pairing</th><th class="num">Met</th><th class="num">Record</th><th class="num">Goals</th></tr>' +
-    ms.map(m => {
-      const wa = m.w[m.a] || 0, wb = m.w[m.b] || 0;
-      return '<tr><td>' + side(m, m.a) + ' <span class="muted">v</span> ' + side(m, m.b) + '</td>' +
-        '<td class="num"><b>' + m.met + '</b><span class="muted small"> of ' + m.of + '</span></td>' +
-        '<td class="num">' + (m.met ? wa + ' – ' + m.drawn + ' – ' + wb : '<span class="muted">—</span>') + '</td>' +
-        '<td class="num muted">' + (m.met ? (m.gf[m.a] || 0) + ' – ' + (m.gf[m.b] || 0) : '—') + '</td></tr>';
+  const done = DB.fixtures.filter(f => f.status === 'final' && !isOff(f) && f.homeId && f.awayId)
+    .sort((a, b) => String((b.date || '') + (b.time || '')).localeCompare(String((a.date || '') + (a.time || ''))));
+  if (!done.length) return el.innerHTML = '<div class="empty">No game has been played yet.</div>';
+  const side = (f, id, right) => { const w = winnerOf(f);
+    return '<span class="hw' + (w === id ? ' won' : w ? ' lost' : '') + '">' +
+      (right ? esc(teamName(id)) + crest(id, 'sm') : crest(id, 'sm') + esc(teamName(id))) + '</span>'; };
+  // 2-2 with no word of the shoot-out is not a result: how it was settled is part of it
+  const how = f => {
+    const pens = f.homePens != null && f.awayPens != null && f.homeGoals === f.awayGoals;
+    return pens ? 'penalties ' + f.homePens + '–' + f.awayPens
+      : f.aet ? 'extra time' : winnerOf(f) ? '' : 'drawn';
+  };
+  el.innerHTML = '<div class="tbl-wrap"><table class="hontbl">' +
+    '<tr><th>Date</th><th class="rr">Home</th><th class="num">Score</th><th>Away</th><th>How</th></tr>' +
+    done.map(f => { const s = shownScore(f);
+      return '<tr><td class="muted">' + esc(f.date ? fmtDate(f.date) : '—') +
+        (f.time ? ' <span class="small">' + esc(f.time) + '</span>' : '') + '</td>' +
+        '<td class="rr">' + side(f, f.homeId, true) + '</td>' +
+        '<td class="num hsc">' + s.h + '–' + s.a + '</td>' +
+        '<td>' + side(f, f.awayId) + '</td>' +
+        '<td class="hhow">' + how(f) + '</td></tr>';
     }).join('') + '</table></div>' +
-    '<div class="small muted" style="margin-top:9px">Record reads wins &ndash; draws &ndash; wins, in the order the sides are named. ' +
-      'Each pair meet ' + plural(per, 'time') + ' a night as the draw was set.</div>';
+    '<div class="small muted" style="margin-top:9px">' + plural(done.length, 'game') + ' played. ' +
+      'The side in bold took it; a game level at the whistle is settled by extra time or the shoot-out, ' +
+      'and that is said beside it.</div>';
 }
 function renderHonours() {
   const h2h = $('h2hCard'), hnAdd = $('hnAddCard');
@@ -16585,7 +16611,10 @@ function publicPageHtml() {
         '<em>' + whole(r.avg) + '</em><i style="height:' + pct(r.avg) + '%' +
           (r.stage === 'SEMI' ? ';background:#a9b3be' : r.stage === 'FINAL' ? ';background:#d9a520' : '') + '"></i></div>').join('') +
       '<b class="avl" style="bottom:' + pct(season) + '%"><span>' + whole(season) + '</span></b></div>' +
-      '<div class="ravg-x">' + rs.map(r => '<span>' + esc(r.stage === 'SEMI' ? 'SF' : r.stage === 'FINAL' ? 'F' : r.short) + '</span>').join('') + '</div></div>';
+      // one name in every few, once there are more rounds than there is room for
+      ((every => '<div class="ravg-x">' + rs.map((r, i) => '<span>' + (i % every ? '' :
+        esc(r.stage === 'SEMI' ? 'SF' : r.stage === 'FINAL' ? 'F' : r.short)) + '</span>').join('') + '</div>')
+        (Math.max(1, Math.ceil(rs.length / 14)))) + '</div>';
   }
   /* The share of the goals leads: who is scoring them is the first thing
      worth knowing. The round-by-round average is a season-shape chart, so
@@ -19156,7 +19185,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '24 Nov 09:21 · 09dc7da'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '24 Nov 09:58 · 92c739b'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
