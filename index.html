@@ -9337,15 +9337,24 @@ function printTable() {
   if (!st.length) return toast('No teams yet — nothing to print.', 'bad');
   const ko = !leagueOnly(), cut = DB.teams.length >= 4 && ko ? 4 : 0, cutS = ko && st.length >= 8 ? 8 : 0;
   const badge = tid => '<img src="' + esc(logoOf(tid) || PAPER_SHIELD) + '" alt="">';
+  /* Where a side has come from since the last round was played — the same
+     movement the table shows on screen, printed as an arrow beside the
+     place. A sheet read a week later is otherwise a league with no
+     direction in it: who is climbing is half of what a table says. */
+  const mv = tableMoves(st);
+  const arrow = id => !mv ? '' : mv[id] > 0 ? '<span class="mv up">▲' + mv[id] + '</span>'
+    : mv[id] < 0 ? '<span class="mv dn">▼' + (-mv[id]) + '</span>'
+    : '<span class="mv sm">–</span>';
   const rows = st.map(r => '<tr class="' + (r.pos <= cut ? 'gold' : r.pos <= cutS ? 'silver' : '') + '">' +
-    '<td class="p">' + r.pos + '</td>' +
+    '<td class="p">' + r.pos + arrow(r.id) + '</td>' +
     '<td class="tm">' + badge(r.id) + '<span class="nm">' + esc(r.name) + '</span></td>' +
     '<td class="n">' + r.P + '</td><td class="n">' + r.W + '</td><td class="n">' + r.D + '</td><td class="n">' + r.L + '</td>' +
     '<td class="n">' + r.GF + '</td><td class="n">' + r.GA + '</td>' +
     '<td class="n">' + (r.GD > 0 ? '+' : '') + r.GD + '</td>' +
     '<td class="n b">' + r.Pts + '</td></tr>').join('');
   const legend = (cut ? '<span><i class="g"></i>Gold semi-finals — 1st v 4th, 2nd v 3rd</span>' : '') +
-    (cutS ? '<span><i class="s"></i>Silver semi-finals — 5th v 8th, 6th v 7th</span>' : '');
+    (cutS ? '<span><i class="s"></i>Silver semi-finals — 5th v 8th, 6th v 7th</span>' : '') +
+    (mv ? '<span><b class="up">▲</b><b class="dn">▼</b>Places moved since the round before</span>' : '');
   const table = '<section class="rd"><h2>Season table<span>' +
       plural(st.reduce((a, r) => a + r.P, 0) / 2, 'match', 'matches') + ' played</span></h2>' +
     '<table><thead><tr><th class="p">#</th><th class="l">Team</th><th>P</th><th>W</th><th>D</th><th>L</th>' +
@@ -9359,8 +9368,7 @@ function printTable() {
   const scorers = scorerTable().filter(r => r.personId).slice(0, 10);
   const best = bootTop(scorers), places = bootPlaces(scorers);
   const boot = !bootShown() || !scorers.length ? '' :
-    '<section class="rd boot"><h2>Golden Boot<span>top ' + scorers.length +
-      (best ? ' · ' + plural(best, 'goal') + ' leads' : '') + '</span></h2>' +
+    '<section class="rd boot"><h2>Golden Boot<span>top ' + scorers.length + '</span></h2>' +
     '<table><thead><tr><th class="p">#</th><th class="l">Player</th><th class="l">Team</th>' +
       '<th>Games</th><th>Goals</th><th>Per game</th></tr></thead><tbody>' +
     scorers.map((r, i) => '<tr class="' + (bootHas(r, best) ? 'gold' : '') + '">' +
@@ -9402,7 +9410,11 @@ function printTable() {
     'tbody tr:first-child td{border-top:0}' +
     /* the position carries the cut, as a rule down its left edge: a band of
        colour behind the row would be ink across the whole page */
-    'td.p{width:34px;color:#8d867e;font-weight:700;font-variant-numeric:tabular-nums;border-left:3px solid transparent;padding-left:7px}' +
+    'td.p{width:60px;color:#8d867e;font-weight:700;font-variant-numeric:tabular-nums;border-left:3px solid transparent;padding-left:7px;white-space:nowrap}' +
+    '.boot td.p{width:34px}' +
+    /* the movement is a mark beside the place, not a column of its own */
+    '.mv{margin-left:5px;font-size:9.5px;font-weight:700;letter-spacing:-.2px}' +
+    '.mv.up{color:#2f7a46}.mv.dn{color:#b3402f}.mv.sm{color:#c3bcb2;font-weight:400}' +
     'tr.gold td.p{border-left-color:#d7a52a;color:#8a6500}' +
     'tr.silver td.p{border-left-color:#aab4c2;color:#4a5566}' +
     '.tm img{width:21px;height:21px;vertical-align:middle;object-fit:contain;margin-right:8px;' +
@@ -9416,6 +9428,7 @@ function printTable() {
     '.lg span{margin-right:14px;white-space:nowrap}' +
     '.lg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}' +
     '.lg i.g{background:#d7a52a}.lg i.s{background:#aab4c2}' +
+    '.lg b{font-size:9px;margin-right:3px}.lg b.up{color:#2f7a46}.lg b.dn{color:#b3402f;margin-right:5px}' +
     '.tb{margin-top:5px;color:#8d867e;font-size:10.5px}' +
     'footer{margin-top:10px;text-align:center;color:#8d867e;font-size:10.5px}' +
     'html{background:#fff}';
@@ -19021,7 +19034,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '23 Nov 13:17 · 4a807b2'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '23 Nov 13:21 · cbba948'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
