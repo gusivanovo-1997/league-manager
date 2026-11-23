@@ -2601,6 +2601,7 @@ tspan.gstar{fill:var(--gold)}
         <h3 style="margin:0">Season table</h3>
         <div class="spacer"></div>
         <span class="muted small">Tiebreak: points → goal difference → goals for → head-to-head → goals against</span>
+        <button class="btn sm" id="btnPrintTable" hidden>Print / PDF</button>
       </div>
       <div class="tbl-wrap"><table id="tableTbl"></table></div>
       <div class="tlegend" id="tableLegend"></div>
@@ -4399,7 +4400,7 @@ function printFinance() {
   if (!rs.length) return toast('No fixtures yet — there is nothing to report on.', 'bad');
   const $$ = n => '$' + money(n * fee);
   const rl = r => r.stage === 'regular' ? rdName(r.round) : stageLabel(r.stage);
-  const badge = tid => '<img src="' + esc(logoOf(tid) || SHIELD_SVG) + '" alt="">';
+  const badge = tid => '<img src="' + esc(logoOf(tid) || PAPER_SHIELD) + '" alt="">';
   /* A night's takings, team by team. A player ticked in is one appearance and
      one fee whether he is in the squad or a guest the team brought along, so
      both are counted and the guests are shown separately for the record. */
@@ -4525,6 +4526,7 @@ function printFinance() {
     '.m{color:#8d867e}.b{font-weight:700;color:#13100e}.o{color:#b2500f;font-weight:700}' +
     '.tot td{border-top:1.5px solid #c0510a;background:#faf6f1}' +
     '.tm{display:flex;align-items:center;gap:8px}.tm img{width:19px;height:19px;object-fit:contain;flex:0 0 auto}' +
+    '.tm img.onblack{background:#3f3932;border-radius:50%;padding:1px}' +
     '.rd{margin-bottom:10px;break-inside:avoid}' +
     '.rd h3{display:flex;align-items:baseline;gap:9px;margin:0 2px 5px;font-size:13px}' +
     '.rd h3 span{color:#6b645d;font-size:10.5px;font-weight:400}.rd h3 b{margin-left:auto;color:#b2500f;font-size:13px}' +
@@ -4564,7 +4566,7 @@ function printFinance() {
   fr.onload = () => {
     const w = fr.contentWindow, imgs = [...fr.contentDocument.images];
     Promise.all(imgs.map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; setTimeout(r, 2000); })))
-      .then(() => { w.focus(); w.print(); });
+      .then(() => { plateBadges(fr.contentDocument); w.focus(); w.print(); });
   };
   fr.srcdoc = doc;
   toast('Choose "Save as PDF" in the print window to keep it as a file.', 'ok');
@@ -9132,6 +9134,27 @@ $('btnClearFx').onclick = () => {
    header, the house colours kept on paper (and in a saved PDF), every team's
    badge and stars, and no status or buttons. The round filter on the
    Fixtures tab decides what goes on it. Choose "Save as PDF" to keep it. */
+function plateBadges(doc) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 24;
+  let cx; try { cx = cv.getContext('2d', { willReadFrequently: true }); } catch (e) { return; }
+  if (!cx) return;
+  [...doc.querySelectorAll('.tm img, .h img, .a img')].forEach(im => {
+    // the no-badge shield is drawn for this sheet already and stays as it is
+    if (!im.naturalWidth || im.getAttribute('src') === PAPER_SHIELD) return;
+    try {
+      cx.clearRect(0, 0, 24, 24); cx.drawImage(im, 0, 0, 24, 24);
+      const d = cx.getImageData(0, 0, 24, 24).data;
+      let lum = 0, a = 0, clear = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        const al = d[i + 3] / 255;
+        if (al < 0.08) { clear++; continue; }
+        lum += al * (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]); a += al;
+      }
+      // near-white ink, and a quarter of the square carrying nothing behind it
+      if (a && clear > 24 * 24 * 0.22 && lum / a > 208) im.classList.add('onblack');
+    } catch (e) { /* a crest from somewhere else taints the canvas: leave it be */ }
+  });
+}
 function printDraw() {
   const reg = DB.fixtures.filter(f => f.stage === 'regular');
   const fin = leagueOnly() ? [] : DB.fixtures.filter(f => f.stage !== 'regular' && (f.homeId || f.awayId));
@@ -9171,7 +9194,7 @@ function printDraw() {
     groups.splice(at, 0, { title: grouped ? 'Group stage' : 'Fixtures', fx: all, md: true });
   }
   if (!groups.length) return toast('Nothing to print yet — generate the draw first.', 'bad');
-  const badge = tid => '<img src="' + esc(logoOf(tid) || SHIELD_SVG) + '" alt="">';
+  const badge = tid => '<img src="' + esc(logoOf(tid) || PAPER_SHIELD) + '" alt="">';
   const stars = tid => { const t = team(tid), s = t && starBy[t.name]; return s ? ' <span class="st">' + CROWN_SVG + s.n + '</span>' : ''; };
   const side = tid => tid ? badge(tid) + '<span class="nm">' + esc(teamName(tid)) + stars(tid) + '</span>' : '<span class="nm tbd">to be decided</span>';
   const courts = DB.fixtures.some(f => f.court);
@@ -9273,6 +9296,7 @@ function printDraw() {
     '.k{width:118px;color:#8a6500;font-size:11px;font-weight:700}.silver .k{color:#4a5566}' +
     '.h{text-align:right}.a{text-align:left}.h,.a{width:40%}' +
     '.h img,.a img{width:20px;height:20px;vertical-align:middle;object-fit:contain}.h img{float:right;margin-left:8px}.a img{margin-right:8px}' +
+    '.h img.onblack,.a img.onblack{background:#3f3932;border-radius:50%;padding:1px}' +
     '.nm{font-weight:600;line-height:20px}.tbd{color:#8d867e;font-style:italic;font-weight:400}' +
     '.s{width:64px;white-space:nowrap;text-align:center;font-weight:800;color:#4a443e}' +
     '.st{color:#8a6500;font-size:11px;font-weight:800;margin-left:3px;white-space:nowrap}' +
@@ -9295,12 +9319,130 @@ function printDraw() {
   fr.onload = () => {
     const w = fr.contentWindow, imgs = [...fr.contentDocument.images];
     Promise.all(imgs.map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; setTimeout(r, 2000); })))
-      .then(() => { w.focus(); w.print(); });
+      .then(() => { plateBadges(fr.contentDocument); w.focus(); w.print(); });
   };
   fr.srcdoc = doc;
   toast('Choose "Save as PDF" in the print window to keep it as a file.', 'ok');
 }
 $('btnPrintFx').onclick = printDraw;
+
+/* THE TABLE, PRINTED. Where the season stands, and the top ten of the
+   Golden Boot under it — the same A4 sheet as the fixtures: ink on white,
+   hairlines instead of filled panels, colour only where it carries
+   meaning (the finals cut, the Boot). Managers and the owner only. */
+function printTable() {
+  if (!requireMgr('Printing the table')) return;
+  if (isSeries()) return toast('A rachão is won a night at a time — there is no table to print.', 'bad');
+  const st = standings();
+  if (!st.length) return toast('No teams yet — nothing to print.', 'bad');
+  const ko = !leagueOnly(), cut = DB.teams.length >= 4 && ko ? 4 : 0, cutS = ko && st.length >= 8 ? 8 : 0;
+  const badge = tid => '<img src="' + esc(logoOf(tid) || PAPER_SHIELD) + '" alt="">';
+  const rows = st.map(r => '<tr class="' + (r.pos <= cut ? 'gold' : r.pos <= cutS ? 'silver' : '') + '">' +
+    '<td class="p">' + r.pos + '</td>' +
+    '<td class="tm">' + badge(r.id) + '<span class="nm">' + esc(r.name) + '</span></td>' +
+    '<td class="n">' + r.P + '</td><td class="n">' + r.W + '</td><td class="n">' + r.D + '</td><td class="n">' + r.L + '</td>' +
+    '<td class="n">' + r.GF + '</td><td class="n">' + r.GA + '</td>' +
+    '<td class="n">' + (r.GD > 0 ? '+' : '') + r.GD + '</td>' +
+    '<td class="n b">' + r.Pts + '</td></tr>').join('');
+  const legend = (cut ? '<span><i class="g"></i>Gold semi-finals — 1st v 4th, 2nd v 3rd</span>' : '') +
+    (cutS ? '<span><i class="s"></i>Silver semi-finals — 5th v 8th, 6th v 7th</span>' : '');
+  const table = '<section class="rd"><h2>Season table<span>' +
+      plural(st.reduce((a, r) => a + r.P, 0) / 2, 'match', 'matches') + ' played</span></h2>' +
+    '<table><thead><tr><th class="p">#</th><th class="l">Team</th><th>P</th><th>W</th><th>D</th><th>L</th>' +
+      '<th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+    (legend ? '<div class="lg">' + legend + '</div>' : '') +
+    '<div class="tb">Tiebreak: points, then goal difference, goals for, head-to-head, goals against.</div></section>';
+
+  /* The ten who have scored the most, named players only — a goal logged
+     against nobody belongs to the team and has no place on this list.
+     Level on goals is level on the place, as it is everywhere else. */
+  const scorers = scorerTable().filter(r => r.personId).slice(0, 10);
+  const best = bootTop(scorers), places = bootPlaces(scorers);
+  const boot = !bootShown() || !scorers.length ? '' :
+    '<section class="rd boot"><h2>Golden Boot<span>top ' + scorers.length +
+      (best ? ' · ' + plural(best, 'goal') + ' leads' : '') + '</span></h2>' +
+    '<table><thead><tr><th class="p">#</th><th class="l">Player</th><th class="l">Team</th>' +
+      '<th>Games</th><th>Goals</th><th>Per game</th></tr></thead><tbody>' +
+    scorers.map((r, i) => '<tr class="' + (bootHas(r, best) ? 'gold' : '') + '">' +
+      '<td class="p">' + places[i] + '</td>' +
+      '<td class="nm2">' + esc(r.name) + '</td>' +
+      '<td class="tm">' + badge(r.teamId) + '<span class="nm">' + esc(teamName(r.teamId)) + '</span></td>' +
+      '<td class="n">' + r.games + '</td><td class="n b">' + r.goals + '</td>' +
+      '<td class="n">' + (r.games ? (r.goals / r.games).toFixed(1) : '—') + '</td></tr>').join('') +
+    '</tbody></table></section>';
+
+  const css = '@page{size:A4;margin:12mm}' +
+    '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+    /* ON PAPER, NOT ON SCREEN — the fixture sheet's rule, kept word for
+       word: a table that is dark edge to edge is most of a cartridge for
+       twelve rows of figures, and the client prints their copy too. */
+    'body{margin:0;background:#fff;color:#1a1613;font:13px/1.35 "Segoe UI",Helvetica,Arial,sans-serif}' +
+    '.wrap{padding:22px 24px}' +
+    'header{display:flex;align-items:center;gap:14px;padding:0 0 10px;margin-bottom:16px;' +
+      'border-bottom:2.5px solid #c0510a}' +
+    'header img{width:40px;height:40px}' +
+    'header .k{color:#6b645d;font:400 11px/1.4 Consolas,monospace;letter-spacing:3px;' +
+      'text-transform:uppercase;text-indent:3px}' +
+    'header .k span{color:#c0510a;font-weight:700}' +
+    'header h1{margin:2px 0 0;font-size:22px;color:#13100e}' +
+    'header .v{margin-left:auto;text-align:right;color:#6b645d;font-size:12px}' +
+    '.rd{border:1px solid #d8d2c9;border-radius:10px;padding:6px 14px 12px;margin-bottom:12px;background:#fff;break-inside:auto}' +
+    'tr{break-inside:avoid}h2{break-after:avoid}thead{display:table-header-group}' +
+    '.lg,.tb{break-before:avoid}footer{break-before:avoid}' +
+    'h2{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 4px;font-size:13px;' +
+      'letter-spacing:1.5px;text-transform:uppercase;color:#b2500f}' +
+    '.boot h2{color:#8a6500}' +
+    'h2 span{font-size:11.5px;letter-spacing:0;text-transform:none;color:#6b645d;font-weight:400}' +
+    'table{width:100%;border-collapse:collapse}' +
+    'th{padding:7px 4px 4px;border-bottom:1.5px solid #e0b48c;text-align:right;color:#b2500f;' +
+      'font:700 10.5px/1.1 Consolas,monospace;letter-spacing:1.6px;text-transform:uppercase}' +
+    '.boot th{color:#8a6500;border-bottom-color:#e2cf8e}' +
+    'th.l{text-align:left}th.p{width:34px;text-align:left}' +
+    'td{padding:5px 4px;border-top:1px solid #ece7e0;vertical-align:middle}' +
+    'tbody tr:first-child td{border-top:0}' +
+    /* the position carries the cut, as a rule down its left edge: a band of
+       colour behind the row would be ink across the whole page */
+    'td.p{width:34px;color:#8d867e;font-weight:700;font-variant-numeric:tabular-nums;border-left:3px solid transparent;padding-left:7px}' +
+    'tr.gold td.p{border-left-color:#d7a52a;color:#8a6500}' +
+    'tr.silver td.p{border-left-color:#aab4c2;color:#4a5566}' +
+    '.tm img{width:21px;height:21px;vertical-align:middle;object-fit:contain;margin-right:8px;' +
+      'background:#f7f4f0;border:1px solid #e9e3da;border-radius:50%;padding:1px}' +
+    '.tm img.onblack{background:#3f3932;border-color:#2b2723}' +
+    '.tm .nm{font-weight:600;line-height:20px}' +
+    '.nm2{font-weight:600}' +
+    'td.n{text-align:right;font-variant-numeric:tabular-nums;color:#4a443e}' +
+    'td.n.b{font-weight:800;color:#13100e}' +
+    '.lg{margin-top:9px;color:#6b645d;font-size:10.5px}' +
+    '.lg span{margin-right:14px;white-space:nowrap}' +
+    '.lg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}' +
+    '.lg i.g{background:#d7a52a}.lg i.s{background:#aab4c2}' +
+    '.tb{margin-top:5px;color:#8d867e;font-size:10.5px}' +
+    'footer{margin-top:10px;text-align:center;color:#8d867e;font-size:10.5px}' +
+    'html{background:#fff}';
+  const ball = ballPng();
+  const title = DB.season.name + ' — table';
+  const doc = '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(title) + '</title><style>' + css +
+    '</style></head><body><div class="wrap">' +
+    '<header>' + (ball ? '<img src="' + ball + '" alt="">' : '') +
+      '<div><div class="k"><span>League</span> Manager</div><h1>' + esc(title) + '</h1></div>' +
+    '<div class="v">' + esc(DB.season.venue || '') + (DB.season.venue ? '<br>' : '') +
+      'As at ' + esc(fmtDate(todayISO())) + '</div></header>' +
+    table + boot + '<footer>Printed ' + esc(fmtDate(todayISO())) + '</footer></div></body></html>';
+  let fr = $('printFrame');
+  if (!fr) {
+    fr = document.createElement('iframe'); fr.id = 'printFrame'; fr.setAttribute('aria-hidden', 'true');
+    fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+    document.body.appendChild(fr);
+  }
+  fr.onload = () => {
+    const w = fr.contentWindow, imgs = [...fr.contentDocument.images];
+    Promise.all(imgs.map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; setTimeout(r, 2000); })))
+      .then(() => { plateBadges(fr.contentDocument); w.focus(); w.print(); });
+  };
+  fr.srcdoc = doc;
+  toast('Choose "Save as PDF" in the print window to keep it as a file.', 'ok');
+}
+$('btnPrintTable').onclick = printTable;
 
 /* fewer than 12 rounds (e.g. 8 teams meeting once = 7 rounds) is a league-only season by default */
 $('fxRounds').addEventListener('input', () => {
@@ -12023,6 +12165,9 @@ function renderTable() {
      every week up into one long season is not its record and would be read
      as one. The nights and the titles are the record. */
   const tbl = $('cardSeasonTable'), frm = $('cardForm');
+  // the sheet is the manager's to send out; a referee reads the table, not prints it
+  const pbtn = $('btnPrintTable');
+  if (pbtn) pbtn.hidden = !isMgr();
   if (tbl) tbl.style.display = isSeries() ? 'none' : '';
   if (frm) frm.style.display = isSeries() ? 'none' : '';
   if (isSeries()) {
@@ -15064,6 +15209,7 @@ const THANKS = {
    one form every mail client draws. */
 const emailCrests = {};
 let emailShield = '';                          // the grey shield, for a team with no badge yet
+const PAPER_SHIELD = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 44'%3E%3Cpath d='M20 2 36 7v13c0 11-7 18-16 22C11 38 4 31 4 20V7z' fill='%23faf8f5' stroke='%23c9c2b7' stroke-width='2'/%3E%3Cpath d='M20 8.5 30.5 12v8c0 7.6-4.5 12.6-10.5 15.5C14 32.6 9.5 27.6 9.5 20v-8z' fill='none' stroke='%23ded7cc' stroke-width='1.3'/%3E%3Ccircle cx='20' cy='21' r='5' fill='none' stroke='%23cfc7bb' stroke-width='1.5'/%3E%3C/svg%3E";
 const SHIELD_SVG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 44'%3E%3Cpath d='M20 2 36 7v13c0 11-7 18-16 22C11 38 4 31 4 20V7z' fill='%23363a44' stroke='%2359606d' stroke-width='2'/%3E%3Cpath d='M20 8.5 30.5 12v8c0 7.6-4.5 12.6-10.5 15.5C14 32.6 9.5 27.6 9.5 20v-8z' fill='none' stroke='%234b515d' stroke-width='1.3'/%3E%3Ccircle cx='20' cy='21' r='5' fill='none' stroke='%23626977' stroke-width='1.5'/%3E%3C/svg%3E";
 function prepEmailCrests() {
   let changed = false;
@@ -18875,7 +19021,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '23 Nov 08:12 · d5d3dc9'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '23 Nov 13:17 · 4a807b2'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
