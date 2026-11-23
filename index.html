@@ -14056,79 +14056,78 @@ function buildForm(cfg) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${xmlEsc(cfg.title)}</title>
 <style>
-:root{--bg:#0b0b0d;--panel:#151517;--card:#101012;--line:#26262b;--line2:#33333a;--text:#f4f2f0;
-  --dim:#8a8a93;--accent:#ff8a3d;--ok:#41d07f;--warn:#ffc247;--bad:#ff5f5f;--chip:#1c1c20;--chipline:#3a3a42;
-  --grad-btn:linear-gradient(135deg,#f99c5a 0%,#ec7731 100%);   /* black text rides on this */
-  --ring:0 0 0 3px rgba(255,138,61,.28);
-  --hair:inset 0 1px 0 rgba(255,255,255,.06);
-  --e1:0 1px 2px rgba(0,0,0,.35); --e2:0 10px 26px -10px rgba(0,0,0,.65);
-  --ease:cubic-bezier(.22,1,.36,1); --bounce:cubic-bezier(.34,1.56,.64,1)}
+/* ── THE SAME HAND AS THE PRINTED SHEETS ──────────────────────────────────
+   The fixture sheet and the table sheet are ink on white: a cream hairline
+   round every panel, the heading in orange small capitals over a rule, and
+   colour kept for the few things that carry meaning. A player who has been
+   handed one of those sheets and then opens this form should be in no doubt
+   that it came from the same desk, so the form is drawn the same way — and
+   it prints as what it already looks like. */
+:root{--paper:#fff;--ink:#1a1613;--ink2:#4a443e;--dim:#6b645d;--faint:#8d867e;
+  --line:#d8d2c9;--line2:#ece7e0;--rule:#e0b48c;--accent:#c0510a;--accent2:#b2500f;
+  --wash:#faf8f5;--wash2:#f7f4f0;--ok:#2f7a46;--okbg:#f1f7f2;--okline:#bcd9c6;
+  --warn:#8a6500;--warnbg:#fdf8ec;--warnline:#e2cf8e;--bad:#b3402f;
+  --ring:0 0 0 3px rgba(192,81,10,.16);
+  --e1:0 1px 2px rgba(26,22,19,.06);--e2:0 8px 22px -12px rgba(26,22,19,.3);
+  --ease:cubic-bezier(.22,1,.36,1);--bounce:cubic-bezier(.34,1.56,.64,1)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.55}
-/* the same warm glow the tool sits on, so the form feels like the same room */
-body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
-  background:radial-gradient(900px 620px at 50% -12%,#2a1408,transparent 72%)}
-.wrap{max-width:760px;margin:0 auto;padding:22px 16px 60px}
-h1{font-size:23px;margin:0;font-weight:700;letter-spacing:-.4px;color:var(--text);line-height:1.2}
+html{background:var(--paper)}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:'Segoe UI',Helvetica,Arial,system-ui,sans-serif;font-size:14px;line-height:1.55}
+.wrap{max-width:760px;margin:0 auto;padding:22px 18px 60px}
+h1{font-size:23px;margin:0;font-weight:700;letter-spacing:-.3px;color:#13100e;line-height:1.2}
 
-/* ---------- the signature ---------- */
-/* one animation on the wrapper: the word inherits the colour and the ring
-   reads it through currentColor, so the two cannot drift out of step */
-.brand{display:flex;align-items:center;gap:13px;margin-bottom:10px;
-  animation:hue 9s ease-in-out infinite alternate}
-.brand .wordmark{color:inherit}
-.brand-text{display:flex;flex-direction:column;gap:3px;min-width:0}
-.ballring{flex:0 0 auto;width:54px;height:54px;box-sizing:border-box;padding:3px;
-  border:2px solid currentColor;border-radius:50%;display:block;box-shadow:0 0 18px -7px currentColor}
-.ballring img{width:100%;height:100%;border-radius:50%;display:block;animation:ballSpin 26s linear infinite}
-.wordmark{font:700 11px/1.5 ui-monospace,'Cascadia Mono',Consolas,monospace;letter-spacing:2.5px;
-  text-transform:uppercase;text-indent:2.5px}
+/* ---------- the masthead, as the sheets carry it ---------- */
+.brand{display:flex;align-items:center;gap:14px;padding-bottom:10px;margin-bottom:12px;
+  border-bottom:2.5px solid var(--accent)}
+.brand-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ballring{flex:0 0 auto;width:46px;height:46px;box-sizing:border-box;padding:2px;
+  border:1px solid var(--line);border-radius:50%;display:block;background:var(--wash2)}
+.ballring img{width:100%;height:100%;border-radius:50%;display:block}
+.wordmark{font:400 11px/1.4 Consolas,ui-monospace,monospace;letter-spacing:3px;
+  text-transform:uppercase;text-indent:3px;color:var(--accent);font-weight:700}
 .wordmark span{color:var(--dim);font-weight:400}
-@keyframes ballSpin{to{transform:rotate(360deg)}}
-@keyframes hue{from{color:var(--accent)}to{color:#ffc247}}
-@keyframes riseIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){.ballring img,.brand,.card{animation:none}}
+@keyframes riseIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.card{animation:none}}
 
-.card{background:linear-gradient(180deg,var(--panel),var(--card));border:1px solid var(--line);
-  border-radius:14px;padding:17px;margin:14px 0;box-shadow:var(--e1),var(--hair);
-  animation:riseIn .5s var(--ease) both}
-/* the orange bar the tool puts on every card heading */
-.card h2{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--dim);
-  margin:0 0 12px;font-weight:700;border-left:3px solid var(--accent);padding-left:9px}
-/* the competition leads the form, lit from above the way a team's title
-   block is — the one card that says where this is all going */
-.card.comp{border-color:rgba(255,138,61,.4);
-  background:radial-gradient(130% 95% at 50% -45%,rgba(255,138,61,.17),transparent 64%),
-    linear-gradient(180deg,var(--panel),var(--card));
-  box-shadow:var(--e1),var(--hair),0 0 26px -16px rgba(255,138,61,.9)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;
+  padding:14px 16px 16px;margin:14px 0;box-shadow:var(--e1);animation:riseIn .45s var(--ease) both}
+/* the heading of a panel reads like the column head of a printed table */
+.card h2{font:700 10.5px/1.1 Consolas,ui-monospace,monospace;letter-spacing:1.6px;
+  text-transform:uppercase;color:var(--accent2);margin:0 0 12px;padding:0 0 7px;
+  border-bottom:1.5px solid var(--rule)}
+/* the competition leads the form — the one panel that says where this is
+   all going, marked the way the finals are marked on the fixture sheet */
+.card.comp{border-color:var(--rule);border-left:3px solid var(--accent)}
 .compnow{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 11px;margin-top:11px}
-.compnow b{font-size:20px;font-weight:700;letter-spacing:-.3px;line-height:1.2}
+.compnow b{font-size:20px;font-weight:700;letter-spacing:-.3px;line-height:1.2;color:#13100e}
 .compnow span{color:var(--dim);font-size:12.5px}
 #compPick{margin-bottom:2px}
-.legal{background:var(--card);border:1px solid var(--line2);border-radius:11px;padding:13px;max-height:230px;
-  overflow:auto;white-space:pre-wrap;font-size:12.5px;color:#cfc9c3}
+.legal{background:var(--wash);border:1px solid var(--line);border-radius:8px;padding:13px;max-height:230px;
+  overflow:auto;white-space:pre-wrap;font-size:12.5px;color:var(--ink2);line-height:1.6}
 .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr))}
-label.f{display:block;font-size:10.5px;letter-spacing:.5px;color:var(--dim);text-transform:uppercase;margin-bottom:5px}
-input,select,textarea{width:100%;background:var(--card);border:1px solid var(--line2);color:var(--text);
+label.f{display:block;font:700 10px/1.2 Consolas,ui-monospace,monospace;letter-spacing:1.3px;
+  color:var(--dim);text-transform:uppercase;margin-bottom:6px}
+input,select,textarea{width:100%;background:var(--paper);border:1px solid var(--line);color:var(--ink);
   border-radius:8px;padding:10px;font-size:14px;font-family:inherit;
   transition:border-color .15s,box-shadow .15s}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:var(--ring)}
-input.err,select.err{border-color:var(--bad)}
-.chk{display:flex;gap:10px;align-items:flex-start;margin-top:10px;font-size:13px}
+input.err,select.err{border-color:var(--bad);background:#fdf5f3}
+.chk{display:flex;gap:10px;align-items:flex-start;margin-top:12px;font-size:13.5px;color:var(--ink2)}
 .chk input{width:19px;height:19px;flex:0 0 auto;margin-top:1px;accent-color:var(--accent)}
-.btn{background:var(--chip);border:1px solid var(--chipline);color:var(--text);border-radius:9px;
+.btn{background:var(--paper);border:1px solid var(--line);color:var(--ink);border-radius:8px;
   padding:10px 16px;font-size:13.5px;cursor:pointer;font-family:inherit;
-  display:inline-flex;align-items:center;gap:7px;box-shadow:var(--e1),var(--hair);
+  display:inline-flex;align-items:center;gap:7px;box-shadow:var(--e1);text-decoration:none;
   transition:background .16s,border-color .16s,transform .12s var(--bounce),box-shadow .16s,filter .16s}
-.btn:hover{background:#26262b;border-color:#4a4a54;transform:translateY(-1px);box-shadow:var(--e2),var(--hair)}
+.btn:hover{background:var(--wash2);border-color:#bfb7ab;transform:translateY(-1px);box-shadow:var(--e2)}
 .btn:active{transform:translateY(0) scale(.985)}
-.btn.accent{background:var(--grad-btn);border-color:transparent;color:#1a1005;font-weight:600}
-.btn.accent:hover{filter:brightness(1.07)}
-.btn.ok{background:rgba(65,208,127,.16);border-color:rgba(65,208,127,.5);color:#8fe9b4}
-.btn.big{padding:14px 24px;font-size:15px;font-weight:600;border-radius:11px}
-#sigWrap{position:relative;background:#fff;border:1px solid var(--line2);border-radius:9px;overflow:hidden}
+.btn.accent{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.accent:hover{background:#a84608;border-color:#a84608}
+.btn.ok{background:var(--okbg);border-color:var(--okline);color:var(--ok);font-weight:600}
+.btn.big{padding:14px 24px;font-size:15px;font-weight:600;border-radius:9px}
+#sigWrap{position:relative;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 #sigPad{display:block;width:100%;height:170px;touch-action:none;cursor:crosshair}
-#sigHint{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;color:#6f6862;
+#sigHint{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;color:#a9a098;
   font-size:13px;pointer-events:none}
 .sigline{position:absolute;left:22px;right:22px;bottom:34px;border-bottom:1px solid #d6cfc5;pointer-events:none}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -14140,40 +14139,34 @@ input.err,select.err{border-color:var(--bad)}
 .fhint{color:var(--bad);font-size:12px;line-height:1.45;margin-top:5px;display:none}
 .fhint.on{display:block}
 #done{display:none}
-code{display:block;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:11px;
-  font-size:11px;word-break:break-all;max-height:170px;overflow:auto;font-family:ui-monospace,monospace}
+code{display:block;background:var(--wash);border:1px solid var(--line);border-radius:8px;padding:11px;
+  font-size:11px;word-break:break-all;max-height:170px;overflow:auto;
+  font-family:Consolas,ui-monospace,monospace;color:var(--ink2)}
 .tick{color:var(--ok);font-size:40px;text-align:center;margin:6px 0;line-height:1}
-.pill{display:inline-block;padding:2px 9px;border-radius:11px;font-size:11px;border:1px solid var(--chipline);background:var(--chip)}
-.pill.acc{color:var(--accent);border-color:rgba(255,138,61,.45)}
-.pill.ok{color:var(--ok);border-color:rgba(65,208,127,.45)}
-.note{border-radius:10px;padding:13px 15px;font-size:13px;line-height:1.62}
-.note.ok{background:rgba(65,208,127,.12);border:1px solid rgba(65,208,127,.45)}
-.note.act{background:rgba(255,138,61,.12);border:1px solid rgba(255,138,61,.45)}
-.note.warn{background:rgba(255,194,71,.12);border:1px solid rgba(255,194,71,.45)}
+.pill{display:inline-block;padding:2px 9px;border-radius:11px;font-size:11px;
+  border:1px solid var(--line);background:var(--wash);color:var(--ink2)}
+.pill.acc{color:var(--accent2);border-color:var(--rule);background:#fdf4ec}
+.pill.ok{color:var(--ok);border-color:var(--okline);background:var(--okbg)}
+.note{border-radius:9px;padding:13px 15px;font-size:13px;line-height:1.62}
+.note.ok{background:var(--okbg);border:1px solid var(--okline);color:#1f5c33}
+.note.act{background:#fdf4ec;border:1px solid var(--rule);color:#7a3a07}
+.note.warn{background:var(--warnbg);border:1px solid var(--warnline);color:#6f5200}
 #receipt{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
-#receipt td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+#receipt td{padding:7px 8px;border-bottom:1px solid var(--line2);vertical-align:top;overflow-wrap:anywhere}
 #receipt tr:last-child td{border-bottom:0}
 #receipt td:first-child{color:var(--dim);width:40%}
-#sigProof{background:#fff;border:1px solid var(--line2);border-radius:8px;display:block;width:100%;height:96px}
-@media (max-width:520px){.wrap{padding:14px 10px 50px}h1{font-size:18px}#receipt td:first-child{width:38%}
-  .ballring{width:46px;height:46px}}
+#sigProof{background:#fff;border:1px solid var(--line);border-radius:8px;display:block;width:100%;height:96px}
+@media (max-width:520px){.wrap{padding:14px 12px 50px}h1{font-size:18px}#receipt td:first-child{width:38%}
+  .ballring{width:40px;height:40px}}
 @media print{
-  body{background:#fff}
-  body::before{display:none}
-  .wrap{padding:0}
-  .card{background:#fff !important;border:1px solid #bbb;break-inside:avoid;box-shadow:none;animation:none}
-  *{color:#000 !important}
-  /* the mark prints, but not in whatever colour the cycle happened to be on */
-  .brand{animation:none}
-  .ballring{border-color:#000 !important;box-shadow:none}
-  .ballring img{animation:none}
-  .card h2{border-left-color:#000 !important}
+  @page{size:A4;margin:12mm}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .wrap{padding:0;max-width:none}
+  .card{break-inside:avoid;box-shadow:none;animation:none}
   .btn,#doneBtns,#offlineBlock{display:none !important}
   /* the delivery-state note must survive printing: without it the page reads
      as proof of registration even when nothing has been sent yet */
-  .note{border:1px solid #999 !important;background:#fff !important}
-  #receipt td{border-bottom:1px solid #ddd}
-  .tick{color:#0a0 !important}
+  .note{break-inside:avoid}
 }
 </style>
 </head>
@@ -19079,7 +19072,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '23 Nov 13:58 · 287564c'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '24 Nov 08:13 · 40c50bc'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
