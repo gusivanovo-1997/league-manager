@@ -4560,9 +4560,10 @@ function printFinance() {
   let fr = $('printFrame');
   if (!fr) {
     fr = document.createElement('iframe'); fr.id = 'printFrame'; fr.setAttribute('aria-hidden', 'true');
-    fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
     document.body.appendChild(fr);
   }
+  // the table sheet may have left it the size of a page: this one needs none
+  fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
   fr.onload = () => {
     const w = fr.contentWindow, imgs = [...fr.contentDocument.images];
     Promise.all(imgs.map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; setTimeout(r, 2000); })))
@@ -9134,6 +9135,25 @@ $('btnClearFx').onclick = () => {
    header, the house colours kept on paper (and in a saved PDF), every team's
    badge and stars, and no status or buttons. The round filter on the
    Fixtures tab decides what goes on it. Choose "Save as PDF" to keep it. */
+/* THE LAST WORD ON HOW BIG THE SHEET IS. The scale is guessed from the
+   number of rows before the sheet is drawn; once it is drawn it can be
+   measured instead, so it is — against the height of an A4 page — and
+   eased down a step at a time until it fits, or up while there is room
+   going spare. A sheet too long for one page even at its smallest stops
+   at the floor and breaks between rows, with its column heads repeated. */
+function fitPage(doc, capPx) {
+  const el = doc.documentElement, box = doc.querySelector('.wrap');
+  if (!box) return;
+  const cap = capPx || 1020;                  // A4 portrait at 12mm margins, in CSS pixels
+  let s = parseFloat(getComputedStyle(el).getPropertyValue('--s')) || 1;
+  const set = v => { el.style.setProperty('--s', v.toFixed(3)); return box.getBoundingClientRect().height; };
+  let h = box.getBoundingClientRect().height;
+  for (let i = 0; i < 16 && h > cap && s > 0.8; i++) { s *= 0.97; h = set(s); }
+  for (let i = 0; i < 16 && h < cap * 0.98 && s < 1.9; i++) {
+    const was = s; s *= 1.03; h = set(s);
+    if (h > cap) { set(was); break; }
+  }
+}
 function plateBadges(doc) {
   const cv = document.createElement('canvas'); cv.width = cv.height = 24;
   let cx; try { cx = cv.getContext('2d', { willReadFrequently: true }); } catch (e) { return; }
@@ -9313,9 +9333,10 @@ function printDraw() {
   let fr = $('printFrame');
   if (!fr) {
     fr = document.createElement('iframe'); fr.id = 'printFrame'; fr.setAttribute('aria-hidden', 'true');
-    fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
     document.body.appendChild(fr);
   }
+  // the table sheet may have left it the size of a page: this one needs none
+  fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
   fr.onload = () => {
     const w = fr.contentWindow, imgs = [...fr.contentDocument.images];
     Promise.all(imgs.map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; setTimeout(r, 2000); })))
@@ -9379,58 +9400,79 @@ function printTable() {
       '<td class="n">' + (r.games ? (r.goals / r.games).toFixed(1) : '—') + '</td></tr>').join('') +
     '</tbody></table></section>';
 
+  /* AS BIG AS THE PAGE ALLOWS. This sheet is read off a desk rather than a
+     screen, so it wants type that can be taken in at arm's length — and it
+     is worth nothing if the last two sides fall onto a second page. So the
+     sheet is measured before it is drawn: the rows it has to carry are
+     counted, set against the height of an A4 page, and everything on it —
+     type, rules, badges, the air between the rows — is scaled by the one
+     number that still keeps them all on the one page. A short league
+     prints large; a long one gives ground only as far as it must.
+     A4 portrait at a 12mm margin is about 1030 CSS pixels tall; the budget
+     below is deliberately short of it, so a wrapped name has somewhere to
+     go. Anything that will not fit even so breaks between rows, with the
+     column heads repeated — never through a row. */
+  const nRows = st.length + (boot ? scorers.length : 0);
+  const estH = 76 + (boot ? 152 : 76) + nRows * 31 + (legend ? 20 : 0) + 16 + 26;
+  const S = Math.max(0.84, Math.min(1.62, 950 / estH)).toFixed(3);
+  const u = n => 'calc(' + n + 'px*var(--s))';
   const css = '@page{size:A4;margin:12mm}' +
+    ':root{--s:' + S + '}' +
     '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
     /* ON PAPER, NOT ON SCREEN — the fixture sheet's rule, kept word for
        word: a table that is dark edge to edge is most of a cartridge for
        twelve rows of figures, and the client prints their copy too. */
-    'body{margin:0;background:#fff;color:#1a1613;font:13px/1.35 "Segoe UI",Helvetica,Arial,sans-serif}' +
-    '.wrap{padding:22px 24px}' +
-    'header{display:flex;align-items:center;gap:14px;padding:0 0 10px;margin-bottom:16px;' +
+    'body{margin:0;background:#fff;color:#1a1613;font-family:"Segoe UI",Helvetica,Arial,sans-serif;' +
+      'font-size:' + u(13) + ';line-height:1.35}' +
+    '.wrap{padding:' + u(22) + ' ' + u(24) + '}' +
+    'header{display:flex;align-items:center;gap:' + u(14) + ';padding:0 0 ' + u(10) + ';margin-bottom:' + u(16) + ';' +
       'border-bottom:2.5px solid #c0510a}' +
-    'header img{width:40px;height:40px}' +
-    'header .k{color:#6b645d;font:400 11px/1.4 Consolas,monospace;letter-spacing:3px;' +
-      'text-transform:uppercase;text-indent:3px}' +
+    'header img{width:' + u(42) + ';height:' + u(42) + '}' +
+    'header .k{color:#6b645d;font-family:Consolas,monospace;font-size:' + u(11) + ';line-height:1.4;' +
+      'letter-spacing:' + u(3) + ';text-transform:uppercase;text-indent:' + u(3) + '}' +
     'header .k span{color:#c0510a;font-weight:700}' +
-    'header h1{margin:2px 0 0;font-size:22px;color:#13100e}' +
-    'header .v{margin-left:auto;text-align:right;color:#6b645d;font-size:12px}' +
-    '.rd{border:1px solid #d8d2c9;border-radius:10px;padding:6px 14px 12px;margin-bottom:12px;background:#fff;break-inside:auto}' +
+    'header h1{margin:' + u(2) + ' 0 0;font-size:' + u(22) + ';color:#13100e}' +
+    'header .v{margin-left:auto;text-align:right;color:#6b645d;font-size:' + u(12) + '}' +
+    '.rd{border:1px solid #d8d2c9;border-radius:' + u(10) + ';padding:' + u(6) + ' ' + u(14) + ' ' + u(12) + ';' +
+      'margin-bottom:' + u(12) + ';background:#fff;break-inside:auto}' +
     'tr{break-inside:avoid}h2{break-after:avoid}thead{display:table-header-group}' +
     '.lg,.tb{break-before:avoid}footer{break-before:avoid}' +
-    'h2{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 4px;font-size:13px;' +
-      'letter-spacing:1.5px;text-transform:uppercase;color:#b2500f}' +
+    'h2{display:flex;justify-content:space-between;align-items:baseline;margin:' + u(6) + ' 0 ' + u(4) + ';' +
+      'font-size:' + u(13) + ';letter-spacing:' + u(1.5) + ';text-transform:uppercase;color:#b2500f}' +
     '.boot h2{color:#8a6500}' +
-    'h2 span{font-size:11.5px;letter-spacing:0;text-transform:none;color:#6b645d;font-weight:400}' +
+    'h2 span{font-size:' + u(11.5) + ';letter-spacing:0;text-transform:none;color:#6b645d;font-weight:400}' +
     'table{width:100%;border-collapse:collapse}' +
-    'th{padding:7px 4px 4px;border-bottom:1.5px solid #e0b48c;text-align:right;color:#b2500f;' +
-      'font:700 10.5px/1.1 Consolas,monospace;letter-spacing:1.6px;text-transform:uppercase}' +
+    'th{padding:' + u(7) + ' ' + u(4) + ' ' + u(4) + ';border-bottom:1.5px solid #e0b48c;text-align:right;color:#b2500f;' +
+      'font-weight:700;font-family:Consolas,monospace;font-size:' + u(10.5) + ';line-height:1.1;' +
+      'letter-spacing:' + u(1.6) + ';text-transform:uppercase}' +
     '.boot th{color:#8a6500;border-bottom-color:#e2cf8e}' +
-    'th.l{text-align:left}th.p{width:34px;text-align:left}' +
-    'td{padding:5px 4px;border-top:1px solid #ece7e0;vertical-align:middle}' +
+    'th.l{text-align:left}th.p{width:' + u(34) + ';text-align:left}' +
+    'td{padding:' + u(5) + ' ' + u(4) + ';border-top:1px solid #ece7e0;vertical-align:middle}' +
     'tbody tr:first-child td{border-top:0}' +
     /* the position carries the cut, as a rule down its left edge: a band of
        colour behind the row would be ink across the whole page */
-    'td.p{width:60px;color:#8d867e;font-weight:700;font-variant-numeric:tabular-nums;border-left:3px solid transparent;padding-left:7px;white-space:nowrap}' +
-    '.boot td.p{width:34px}' +
+    'td.p{width:' + u(60) + ';color:#8d867e;font-weight:700;font-variant-numeric:tabular-nums;' +
+      'border-left:3px solid transparent;padding-left:' + u(7) + ';white-space:nowrap}' +
+    '.boot td.p{width:' + u(34) + '}' +
     /* the movement is a mark beside the place, not a column of its own */
-    '.mv{margin-left:5px;font-size:9.5px;font-weight:700;letter-spacing:-.2px}' +
+    '.mv{margin-left:' + u(5) + ';font-size:' + u(9.5) + ';font-weight:700;letter-spacing:-.2px}' +
     '.mv.up{color:#2f7a46}.mv.dn{color:#b3402f}.mv.sm{color:#c3bcb2;font-weight:400}' +
     'tr.gold td.p{border-left-color:#d7a52a;color:#8a6500}' +
     'tr.silver td.p{border-left-color:#aab4c2;color:#4a5566}' +
-    '.tm img{width:21px;height:21px;vertical-align:middle;object-fit:contain;margin-right:8px;' +
+    '.tm img{width:' + u(21) + ';height:' + u(21) + ';vertical-align:middle;object-fit:contain;margin-right:' + u(8) + ';' +
       'background:#f7f4f0;border:1px solid #e9e3da;border-radius:50%;padding:1px}' +
     '.tm img.onblack{background:#3f3932;border-color:#2b2723}' +
-    '.tm .nm{font-weight:600;line-height:20px}' +
+    '.tm .nm{font-weight:600;line-height:' + u(21) + '}' +
     '.nm2{font-weight:600}' +
     'td.n{text-align:right;font-variant-numeric:tabular-nums;color:#4a443e}' +
     'td.n.b{font-weight:800;color:#13100e}' +
-    '.lg{margin-top:9px;color:#6b645d;font-size:10.5px}' +
-    '.lg span{margin-right:14px;white-space:nowrap}' +
-    '.lg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}' +
+    '.lg{margin-top:' + u(9) + ';color:#6b645d;font-size:' + u(10.5) + '}' +
+    '.lg span{margin-right:' + u(14) + ';white-space:nowrap}' +
+    '.lg i{display:inline-block;width:' + u(9) + ';height:' + u(9) + ';border-radius:2px;margin-right:' + u(5) + ';vertical-align:-1px}' +
     '.lg i.g{background:#d7a52a}.lg i.s{background:#aab4c2}' +
-    '.lg b{font-size:9px;margin-right:3px}.lg b.up{color:#2f7a46}.lg b.dn{color:#b3402f;margin-right:5px}' +
-    '.tb{margin-top:5px;color:#8d867e;font-size:10.5px}' +
-    'footer{margin-top:10px;text-align:center;color:#8d867e;font-size:10.5px}' +
+    '.lg b{font-size:' + u(9) + ';margin-right:' + u(3) + '}.lg b.up{color:#2f7a46}.lg b.dn{color:#b3402f;margin-right:' + u(5) + '}' +
+    '.tb{margin-top:' + u(5) + ';color:#8d867e;font-size:' + u(10.5) + '}' +
+    'footer{margin-top:' + u(10) + ';text-align:center;color:#8d867e;font-size:' + u(10.5) + '}' +
     'html{background:#fff}';
   const ball = ballPng();
   const title = DB.season.name + ' — table';
@@ -9444,13 +9486,16 @@ function printTable() {
   let fr = $('printFrame');
   if (!fr) {
     fr = document.createElement('iframe'); fr.id = 'printFrame'; fr.setAttribute('aria-hidden', 'true');
-    fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
     document.body.appendChild(fr);
   }
+  /* A sheet cannot be measured in a window with no width. This one is laid
+     out at the size of the page it is going to — 186mm by 273mm, the paper
+     inside an A4 margin — and kept off the side of the screen while it is. */
+  fr.style.cssText = 'position:fixed;left:-10000px;top:0;width:703px;height:1040px;border:0';
   fr.onload = () => {
     const w = fr.contentWindow, imgs = [...fr.contentDocument.images];
     Promise.all(imgs.map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; setTimeout(r, 2000); })))
-      .then(() => { plateBadges(fr.contentDocument); w.focus(); w.print(); });
+      .then(() => { plateBadges(fr.contentDocument); fitPage(fr.contentDocument); w.focus(); w.print(); });
   };
   fr.srcdoc = doc;
   toast('Choose "Save as PDF" in the print window to keep it as a file.', 'ok');
@@ -19034,7 +19079,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '23 Nov 13:21 · cbba948'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '23 Nov 13:58 · 287564c'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
