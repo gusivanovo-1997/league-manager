@@ -8706,11 +8706,21 @@ function drawRachao(keepHistory) {
   const limit = (() => { const d = new Date(startDate + 'T00:00:00');
     d.setFullYear(d.getFullYear() + 1); return isoOf(d); })();
   const fixtures = [];
+  const met = {};                                   // how often a pairing has been drawn so far
   let date = startDate, night = 0;
   while (date < limit && night < RACHAO_WEEKS) {
     night++;
     const queue = [];
-    season.forEach((pairs, r) => pairs.forEach(p => queue.push({ round: r + 1, homeId: p[0], awayId: p[1] })));
+    season.forEach((pairs, r) => pairs.forEach(p => {
+      /* The ends are not taken from the draw but counted: the side that came
+         out of the hat first is home the first time the two meet, away the
+         second, home the third, all the way down the year. */
+      const a0 = ids.indexOf(p[0]) <= ids.indexOf(p[1]) ? p[0] : p[1];
+      const b0 = a0 === p[0] ? p[1] : p[0];
+      const c = met[a0 + '|' + b0] = (met[a0 + '|' + b0] || 0) + 1;
+      queue.push(c % 2 ? { round: r + 1, homeId: a0, awayId: b0 }
+                       : { round: r + 1, homeId: b0, awayId: a0 });
+    }));
     const d0 = date;
     packCourts(queue, courts).forEach((took, si) => took.forEach((q, ci) => fixtures.push({
       id: uid(), stage: 'regular', round: night, homeId: q.homeId, awayId: q.awayId, date: d0,
@@ -16349,6 +16359,62 @@ function publicPageHtml() {
             : empty('No nights drawn yet.')) +
           '<div class="note">Every night is its own competition: whoever wins the most games on it takes the night, and that is one title. Nothing is carried over.</div>');
   };
+  /* The last three games played, newest first — the front page of a rachao,
+     where there is no table for it to carry. */
+  const pubLast3 = () => {
+    const done = DB.fixtures.filter(f => f.status === 'final' && !isOff(f) && f.homeId && f.awayId)
+      .sort((a, b) => String((b.date || '') + (b.time || '')).localeCompare(String((a.date || '') + (a.time || ''))));
+    if (!done.length) return '';
+    return h2('Last results') + grid(done.slice(0, 3), true, true);
+  };
+  /* WHO HAS WON THE MOST NIGHTS. A rachao keeps no table — this count is
+     its standing, and it is the whole of it. */
+  const pubWins = () => {
+    const T = seriesTally();
+    const ord = DB.teams.slice().sort((a, b) => (T.by[b.id] || 0) - (T.by[a.id] || 0) ||
+      (T.games[b.id] || 0) - (T.games[a.id] || 0) || a.name.localeCompare(b.name));
+    if (!ord.length) return '';
+    return '<style>' + PUB_NIGHT_CSS + '</style>' + h2('Nights won') +
+      '<div class="ttls">' + ord.map(x => '<div class="ttl' +
+        ((T.by[x.id] || 0) === T.best && T.best ? ' lead' : '') + '">' + dot(x.id) +
+        '<span class="tnm">' + esc(x.name) + '<i>' + plural(T.games[x.id] || 0, 'game') + ' won</i></span>' +
+        '<b>' + (T.by[x.id] || 0) + '</b></div>').join('') + '</div>' +
+      '<div class="note">Every night is its own competition: whoever wins the most games on it takes the night, and that is one title. ' +
+        (T.done ? plural(T.done, 'night') + ' played so far.' : 'No night has been played yet.') + '</div>';
+  };
+  /* EVERY GAME THAT HAS BEEN PLAYED, in the order they were played, newest
+     first — the score, the side that took it in bold, and how it was taken
+     when it was not taken in normal time. Nothing that has not finished
+     appears here: this is the record, not the fixture list. */
+  const pubAllResults = () => {
+    const done = DB.fixtures.filter(f => f.status === 'final' && !isOff(f) && f.homeId && f.awayId)
+      .sort((a, b) => String((b.date || '') + (b.time || '')).localeCompare(String((a.date || '') + (a.time || ''))));
+    const side = (f, id, right) => { const w = winnerOf(f);
+      return '<span class="rw' + (w === id ? ' won' : w ? ' lost' : '') + '">' +
+        (right ? esc(teamName(id)) + dot(id) : dot(id) + esc(teamName(id))) + '</span>'; };
+    const how = f => {
+      const pens = f.homePens != null && f.awayPens != null && f.homeGoals === f.awayGoals;
+      return pens ? 'penalties ' + f.homePens + '&ndash;' + f.awayPens
+        : f.aet ? 'extra time'
+        : winnerOf(f) ? '' : 'drawn';
+    };
+    return h2('Honours') + (!done.length ? empty('No game has been played yet.')
+      : '<style>.rw{display:inline-flex;align-items:center;min-width:0}.rw.won{font-weight:800;color:var(--ink)}' +
+        '.rw.lost{color:var(--dim)}td.rr{text-align:right}.hsc{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}' +
+        '.hhow{font-size:12px;color:#f0b44c;white-space:nowrap}</style>' +
+        '<div class="tw"><table><tr><th>Date</th><th class="rr">Home</th><th class="n">Score</th><th>Away</th><th>How</th></tr>' +
+        // the recorded result, not the running score: this is the record
+        done.map(f => { const s = shownScore(f);
+          return '<tr><td class="dim">' + esc(f.date ? fmtDate(f.date) : '—') +
+            (f.time ? ' <span class="sub">' + esc(f.time) + '</span>' : '') + '</td>' +
+            '<td class="rr">' + side(f, f.homeId, true) + '</td>' +
+            '<td class="n hsc">' + s.h + '&ndash;' + s.a + '</td>' +
+            '<td>' + side(f, f.awayId) + '</td>' +
+            '<td class="hhow">' + how(f) + '</td></tr>'; }).join('') +
+        '</table></div>' +
+        '<div class="note">' + plural(done.length, 'game') + ' played. The side in bold took it; a game level at the whistle is ' +
+          'settled by extra time or the shoot-out, and that is said beside it.</div>');
+  };
   const goalShare = () => {
     const rows = st.map(r => Object.assign({}, r, playedAll(r.id))).filter(r => r.GF > 0);
     if (!rows.reduce((t, r) => t + r.GF, 0)) return '';
@@ -16421,9 +16487,12 @@ function publicPageHtml() {
        they were, where across the page they lay out two, three or four to a
        row depending on the screen. */
     (isWorld() ? h2('Groups') + pubGroups(st) : '') +
-    /* The nights take the width of the page: squeezed into half of it beside
-       the Golden Boot, a night's wins wrap onto a second line. */
-    (isSeries() ? pubNights() : '') +
+    /* THE LAST THREE, AND NOTHING ELSE. The roll of nights used to sit here
+       — a row of badges and a chip saying who took each one — and it said
+       at a glance less than three results do. The three most recent games
+       are read the way every other match on the page is read, with the
+       side that won them in bold. */
+    (isSeries() ? pubLast3() : '') +
     '<div class="two">' + (isWorld() ? ''
       : isCup() || isSeries() ? ''
       : '<div>' + h2('Table') + (st.length ? '<div class="tw"><table><tr><th class="n">#</th><th>Team</th>' +
@@ -16508,12 +16577,14 @@ function publicPageHtml() {
   if (rs.length) {
     const games = rs.reduce((t, r) => t + r.fx.length, 0), goals = rs.reduce((t, r) => t + r.goals, 0), season = goals / games;
     const max = Math.max(...rs.map(r => r.avg)) * 1.1 || 1, pct = v => (v / max * 100).toFixed(1);
+    const whole = v => String(Math.round(v));
     avg = h2('Average goals per round of all teams') + '<div class="tw pad"><div class="rtot"><b>' + goals + '</b> goals in ' + plural(games, 'game') +
-      ' <span>· ' + season.toFixed(1) + ' a game</span></div><div class="ravg">' +
-      rs.map(r => '<div title="' + esc(r.label + ' — ' + plural(r.goals, 'goal') + ' in ' + plural(r.fx.length, 'game')) + '">' +
-        '<em>' + r.avg.toFixed(1) + '</em><i style="height:' + pct(r.avg) + '%' +
+      ' <span>· ' + whole(season) + ' a game</span></div><div class="ravg">' +
+      rs.map(r => '<div title="' + esc(r.label + ' — ' + plural(r.goals, 'goal') + ' in ' + plural(r.fx.length, 'game') +
+          ' — ' + r.avg.toFixed(1) + ' a game') + '">' +
+        '<em>' + whole(r.avg) + '</em><i style="height:' + pct(r.avg) + '%' +
           (r.stage === 'SEMI' ? ';background:#a9b3be' : r.stage === 'FINAL' ? ';background:#d9a520' : '') + '"></i></div>').join('') +
-      '<b class="avl" style="bottom:' + pct(season) + '%"><span>' + season.toFixed(1) + '</span></b></div>' +
+      '<b class="avl" style="bottom:' + pct(season) + '%"><span>' + whole(season) + '</span></b></div>' +
       '<div class="ravg-x">' + rs.map(r => '<span>' + esc(r.stage === 'SEMI' ? 'SF' : r.stage === 'FINAL' ? 'F' : r.short) + '</span>').join('') + '</div></div>';
   }
   /* The share of the goals leads: who is scoring them is the first thing
@@ -16522,7 +16593,7 @@ function publicPageHtml() {
   /* The race first — where the season has got to — then the teams, then
      who is scoring, then the share of the goals, and the season's shape
      last. */
-  const stats = pubRaceBlock(h2) +
+  const stats = (isSeries() ? pubWins() : '') + pubRaceBlock(h2) +
     h2('Teams') + (st.length ? '<div class="tw"><table><tr><th>Team</th><th class="n">P</th><th class="n">GF</th><th class="n">GA</th>' +
       '<th class="n">Per game</th><th class="n hs">Clean sheets</th></tr>' +
       st.map(r0 => {
@@ -16563,7 +16634,7 @@ function publicPageHtml() {
         '<div class="note">Record reads wins &ndash; draws &ndash; wins, in the order the sides are named. Each pair meet ' +
           plural(perNightMeets(), 'time') + ' a night as the draw was set.</div>');
   };
-  const honours = isSeries() ? pubMeets() : hl.length ? h2('Titles') + '<div class="tw"><table><tr><th>Team</th><th class="n">Titles</th><th>Won</th></tr>' +
+  const honours = isSeries() ? pubAllResults() : hl.length ? h2('Titles') + '<div class="tw"><table><tr><th>Team</th><th class="n">Titles</th><th>Won</th></tr>' +
       most.map(g => { const t = champOf(g[0]);
         return '<tr' + (t ? ' style="--tc:' + tc(t.id) + '"' : '') + '><td class="tm">' + (t ? dot(t.id) : '') + '<b class="gt">' + esc(t ? t.name : g[0].champion) + '</b></td>' +
           '<td class="n"><b class="gt">' + g.length + '</b></td><td class="sub">' + g.map(x => x.year).join(', ') + (g.indexOf(h0) >= 0 ? ' ' + nowCh : '') + '</td></tr>'; }).join('') +
@@ -16626,8 +16697,11 @@ function publicPageHtml() {
     return h2('Teams') + '<div class="tmpick">' + pick + '</div>' + blocks +
       '<div class="empty" data-tmnone>Pick your badge above to see your own fixtures \u2014 kick-off, court and opponent.</div>';
   })();
-  const tabs = [['dash', 'Dashboard'], ['table', isSeries() ? 'Nights' : 'Table'], ['matches', 'Fixtures & Results'],
-      ['teams', 'Teams'], ['stats', 'Stats'], ['honours', isSeries() ? 'Head to head' : 'Honours']]
+  const tabs = (isSeries()
+      ? [['dash', 'Dashboard'], ['stats', 'Stats'], ['matches', 'Fixtures & Results'],
+         ['teams', 'Teams'], ['honours', 'Honours']]
+      : [['dash', 'Dashboard'], ['table', 'Table'], ['matches', 'Fixtures & Results'],
+         ['teams', 'Teams'], ['stats', 'Stats'], ['honours', 'Honours']])
     .filter(([k]) => !(isCup() && k === 'table'));
   const ball = ballBare();
   const app = '<style>' + PUB_HERE_CSS + crestRules('.cr', 'data-c') + '</style>' + '<header><div class="wrap brand">' +
@@ -19082,7 +19156,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '24 Nov 08:30 · 5dc6e18'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '24 Nov 09:21 · 09dc7da'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
