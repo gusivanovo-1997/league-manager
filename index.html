@@ -18686,6 +18686,8 @@ async function takeShared() {
   const r = await syncPost({ action: 'pull', rev: 0 });
   if (!r || !r.ok) return toast('Could not reach the web app — nothing here was changed.', 'bad');
   if (r.empty || !r.doc) return toast('There is nothing in the shared copy yet — nothing here was changed.', 'bad');
+  // the last thing before this machine's own records go: one step back
+  if (!brace('taking the shared copy of ' + nm)) return;
   clearInterval(SY.pull);
   resetLeague({ name: DB.name, form: Object.assign({}, DB.form), publish: DB.publish });
   try { localStorage.removeItem(syncSlot()); } catch (e) {}
@@ -19428,7 +19430,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '26 Nov 08:35 · afe2272'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '26 Nov 09:04 · 5f6e529'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
