@@ -3118,6 +3118,12 @@ tspan.gstar{fill:var(--gold)}
           league — the other competitions are left alone.</span>
           <button class="btn" id="btnRestore2">Restore from .json</button>
           <input type="file" id="restoreInput" accept=".json" hidden></div>
+        <div class="dact"><b>Back up every competition</b><span>One file holding all of them, not just the
+          one you have open. Losing this browser loses the lot, so this is the file to keep.</span>
+          <button class="btn accent" id="btnBackupAll">Back up everything</button></div>
+        <div class="dact" id="dactSafety"><b>Step back</b><span id="safetyWhat">Nothing to step back to
+          yet.</span>
+          <button class="btn" id="btnSafety" disabled>Put the safety copy back</button></div>
         <div class="dact"><b>Export Excel workbook</b><span>Players, table, results, scorers, discipline,
           attendance and the money, as sheets. For sending on, not for restoring.</span>
           <button class="btn" id="btnExcel2">Export Excel workbook</button></div>
@@ -3126,13 +3132,15 @@ tspan.gstar{fill:var(--gold)}
     <div class="card danger" id="cardReset">
       <h3>Starting again</h3>
       <div class="small muted" style="margin-bottom:11px;line-height:1.75">
-        Both of these <b>erase the competition you have open</b> — its teams, its draw, every result and
-        all of its players. Your other competitions, the people who sign in and the roll of honour of the
-        other leagues are untouched. There is no undo: take a backup first.
+        <b>Erasing</b> wipes the competition you have open — its teams, its draw, every result and all of
+        its players. Your other competitions, the people who sign in and the rolls of honour of the other
+        leagues are untouched. A safety copy is kept so there is one step back, but a .json backup is the
+        thing to rely on. <b>The demo is safe</b>: it arrives as a competition of its own and touches
+        nothing you already have.
       </div>
       <div class="dgrid">
         <div class="dact"><b>Load the demo season</b><span>Eight teams, squads and a full draw to try the
-          workflow on. It replaces this competition with the demo.</span>
+          workflow on. It arrives as a competition of its own — nothing you have is touched.</span>
           <button class="btn" id="btnDemo">Load an 8-team demo season</button></div>
         <div class="dact bad"><b>Erase this competition</b><span>Wipes the lot and leaves an empty season.
           Your sign-up settings and live-page link are kept.</span>
@@ -3407,6 +3415,71 @@ function load() {
     if (DB.bulletin.intro === '' && !(old.bulletin && 'forRound' in old.bulletin)) DB.bulletin.intro = null;
     return true;
   } catch (e) { console.warn(e); return false; }
+}
+/* ══════════════ THE SAFETY COPY ══════════════
+   Erasing, restoring and deleting a league used to be final the moment the
+   confirm box was answered: one wrong click and a season was gone, with
+   nothing in the app that could bring it back. Before any of them runs, the
+   whole of what is stored — every competition, not only the one on screen —
+   is written to a second key. It outlives the change that follows it, so
+   there is always exactly one step back.
+
+   It is a net, not a backup. It holds one moment, the last one, and it
+   lives in the same browser as the thing it is protecting: clear the
+   browser and both go together. A .json file is still the thing to keep. */
+const SAFE_KEY = KEY + '.safety';
+function safetyCopy(what) {
+  if (!storageOk) return false;
+  let raw = null;
+  try { raw = localStorage.getItem(KEY); } catch (e) {}
+  if (!raw) { try { raw = JSON.stringify(ROOT); } catch (e) { return false; } }
+  try {
+    localStorage.setItem(SAFE_KEY, JSON.stringify({ at: new Date().toISOString(),
+      what: what || 'a change that could not be undone',
+      names: (ROOT.leagues || []).map(l => leagueName(l)), root: raw }));
+    return true;
+  } catch (e) {
+    // no room for it: leave nothing behind rather than half a copy, which
+    // would read as a way back when it is not one
+    try { localStorage.removeItem(SAFE_KEY); } catch (e2) {}
+    return false;
+  }
+}
+function safetyHeld() {
+  try { const s = JSON.parse(localStorage.getItem(SAFE_KEY) || 'null'); return s && s.root ? s : null; }
+  catch (e) { return null; }
+}
+function safetyWhen(s) {
+  const d = new Date(s.at), m = Math.round((Date.now() - d.getTime()) / 60000), h = Math.round(m / 60);
+  return m < 1 ? 'a moment ago'
+    : m < 60 ? m + (m === 1 ? ' minute ago' : ' minutes ago')
+    : m < 1440 ? h + (h === 1 ? ' hour ago' : ' hours ago')
+    : fmtDate(isoOf(d)) + ' at ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+/* take the step back BEFORE doing the damage — and if there is no room for
+   one, say so plainly rather than going ahead as though there were */
+function brace(what) {
+  if (safetyCopy(what)) return true;
+  return confirm('There is no room in this browser to keep a safety copy, so this cannot be undone. Carry on anyway?');
+}
+function safetyBack() {
+  if (!requireOwner('Stepping back')) return;
+  const s = safetyHeld();
+  if (!s) return toast('There is no safety copy to put back.', 'bad');
+  if (!confirm('Put everything back as it was ' + safetyWhen(s) + ', just before ' + s.what + '?\n\n' +
+    'Every competition in this browser is replaced by that copy, and the copy is then spent.')) return;
+  let d;
+  try { d = JSON.parse(s.root); ROOT = rootFrom(d); } catch (e) { return toast('The safety copy could not be read.', 'bad'); }
+  bindDB();
+  role = roleIn(activeLeague()) || role;
+  dropStaleLive();
+  document.querySelectorAll('[data-db]').forEach(x => delete x.dataset.db);
+  // this is meant to replace whatever is stored: never a clash with the other window
+  try { lastRaw = storageOk ? localStorage.getItem(KEY) : null; } catch (e) { lastRaw = null; }
+  if (save() === false) return;
+  try { localStorage.removeItem(SAFE_KEY); } catch (e) {}
+  paintLeagueBar(); buildNav(); render(); liveTicker();
+  toast('Put back as it was before ' + s.what + '.', 'ok');
 }
 
 /* ── two windows, one league ────────────────────────────────────────────
@@ -13557,6 +13630,14 @@ function renderSettings() {
       (syncOn() ? ' · shared copy ' + (SY.rev || 0) : ' · not shared') + '</span>' +
     (orphanSquad() ? ' <b style="color:var(--bad)">' + plural(orphanSquad(), 'squad place') +
       ' with no player behind it — the rest of that copy has not arrived; it is being asked for again.</b>' : '');
+  const sc = safetyHeld();
+  if ($('safetyWhat')) {
+    $('safetyWhat').innerHTML = sc
+      ? 'Everything as it stood ' + esc(safetyWhen(sc)) + ', just before <b>' + esc(sc.what) + '</b>' +
+        (sc.names && sc.names.length ? ' — ' + esc(sc.names.join(', ')) : '') + '.'
+      : 'Nothing to step back to yet. One is kept automatically before anything that erases, and it is the last one only.';
+    $('btnSafety').disabled = !sc || !isOwner();
+  }
   fill('stRegEmail', DB.form.email || '');
   fill('stRegEndpoint', DB.form.endpoint || '');
   paintDelivery();
@@ -13653,7 +13734,8 @@ $('btnSaveSettings').onclick = () => {
 $('btnWipe').onclick = () => {
   if (!requireOwner('Erasing the competition')) return;
   if (!confirm('Erase every team, fixture and record in ' + leagueName(activeLeague()) + '?')) return;
-  if (!ask('This cannot be undone. Have you taken a .json backup?')) return;
+  if (!ask('Have you taken a .json backup? A safety copy is kept either way, but it is the last one only.')) return;
+  if (!brace('erasing ' + leagueName(activeLeague()))) return;
   // where registrations are delivered and the T&C/waiver text belong to this machine, not the season
   resetLeague({ name: DB.name, form: Object.assign({}, DB.form), publish: DB.publish });
   dropStaleLive(); save(); render(); liveTicker(); toast('Erased — your sign-up and live page settings were kept.');
@@ -13676,7 +13758,18 @@ function backup() {
   download('league-' + DB.season.name.replace(/\W+/g, '-') + '-' + todayISO() + '.json',
     JSON.stringify(out, null, 1), 'application/json');
 }
+/* One file with every competition in it. The backup above is the one a
+   restore usually wants — it drops into the league you have open — but this
+   is the one to keep, because losing the browser loses all of them at once
+   and a per-league file only ever brings one of them back. */
+function backupAll() {
+  if (!requireMgr('Backing up')) return;
+  const out = { version: 2, access: ROOT.access, staff: ROOT.staff, leagues: ROOT.leagues, active: ROOT.active };
+  download('outfielder-all-competitions-' + todayISO() + '.json', JSON.stringify(out, null, 1), 'application/json');
+}
 $('btnBackup2').onclick = backup;
+$('btnBackupAll').onclick = backupAll;
+$('btnSafety').onclick = safetyBack;
 const restore = () => { if (requireMgr('Restoring a backup')) $('restoreInput').click(); };
 $('btnRestore2').onclick = restore;
 $('restoreInput').onchange = e => {
@@ -13692,6 +13785,7 @@ $('restoreInput').onchange = e => {
       if (!confirm(whole
         ? 'Replace every league in this browser with the backup?'
         : 'Replace ' + leagueName(activeLeague()) + ' with the backup? Your other leagues are left alone.')) return;
+      if (!brace('restoring a backup')) return;
       const prevAccess = DB.access, prevPublish = DB.publish, prevArchive = DB.archive || [];
       if (whole) { ROOT = rootFrom(d); bindDB(); }
       else {
@@ -18967,12 +19061,27 @@ $('blRefresh').onclick = () => { grabBulletin(); save(); renderBulletin(); toast
 ['blSubject', 'blSender', 'blIntro'].forEach(k => $(k).onchange = () => { grabBulletin(); save(); renderBulletin(); });
 
 /* ══════════════ DEMO DATA ══════════════ */
+/* The demo used to be built on top of whatever competition was open: it
+   called resetLeague(), and the season that was there stopped existing on
+   the strength of one confirm box. That cost a World Cup. It arrives as a
+   competition of its own now, so there is no click here that can reach
+   anything real — the only thing it ever replaces is an older demo. */
 $('btnDemo').onclick = () => {
   if (!requireOwner('Loading the demo season')) return;
-  if (!ask('Load the demo season? This erases the current league.')) return;
-  resetLeague({ name: DB.name, form: Object.assign({}, DB.form), publish: DB.publish });
+  const old = (ROOT.leagues || []).filter(l => l && l.demo);
+  if (old.length && !ask('Build the demo competition again? Only the demo is replaced — the competitions you run are not touched.')) return;
+  ROOT.leagues = (ROOT.leagues || []).filter(l => old.indexOf(l) < 0);
+  old.forEach(l => (ROOT.staff || []).forEach(s => { if (s.roles) delete s.roles[l.id]; }));
+  const demoForm = Object.assign({}, DB.form);
+  const L = blankLeague();
+  L.demo = true;                                   // never published, never emailed, never synced
+  L.name = 'Demo season';
+  L.form = demoForm;                               // the sign-up form is worth showing off; the live-page key is not
+  ROOT.leagues.push(L);
+  ROOT.active = L.id;
+  bindDB();
+  role = roleIn(L);
   dropStaleLive();
-  DB.demo = true;                                  // never sent to the live page
   DB.season.name = 'Demo Season ' + new Date().getFullYear();
   const names = ['Thunder FC', 'Coastal United', 'Ironside', 'River City', 'Northside Nomads',
     'Blue Ridge', 'Sandgate Saints', 'Metro Wolves'];
@@ -19000,10 +19109,12 @@ $('btnDemo').onclick = () => {
   DB.honours.push({ id: uid(), year: 2024, season: 'Summer League 2024', champion: 'Thunder FC',
     runnerUp: 'Coastal United', topScorer: 'J. Smith (21)', notes: 'won 3–2 after extra time' });
   save();
+  document.querySelectorAll('[data-db]').forEach(x => delete x.dataset.db);
+  paintLeagueBar(); buildNav();
   $('fxStart').value = defaultStart();
   generateFixtures();
-  go('dash');
-  toast('Demo season loaded — 8 teams, 56 matches.', 'ok');
+  go('dash'); liveTicker();
+  toast('Demo season loaded as its own competition — 8 teams, 56 matches. Your own are untouched.', 'ok');
 };
 
 /* ══════════════ POLISH ══════════════
@@ -19209,7 +19320,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '25 Nov 13:08 · a97d59d'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '26 Nov 08:10 · 37eaa1a'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
@@ -19596,7 +19707,8 @@ function paintAccess() {
     const l = leagueById(b.dataset.lgdel); if (!l) return;
     if (ROOT.leagues.length < 2) return toast('There has to be one league.', 'bad');
     if (!confirm('Delete ' + leagueName(l) + ' and everything in it?')) return;
-    if (!ask('This cannot be undone. Have you taken a .json backup?')) return;
+    if (!ask('Have you taken a .json backup? A safety copy is kept either way, but it is the last one only.')) return;
+    if (!brace('deleting ' + leagueName(l))) return;
     ROOT.leagues = ROOT.leagues.filter(x => x !== l);
     (ROOT.staff || []).forEach(s => { if (s.roles) delete s.roles[l.id]; });
     bindDB();
