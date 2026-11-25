@@ -6341,6 +6341,47 @@ const rkOrder = k => k === 'FINAL' ? 1e6 : k === 'SEMI' ? 1e6 - 1 : (+String(k).
    can never be rescheduled. */
 const OFF = 'off';
 const isOff = f => !!f && f.status === OFF;
+/* ══════════════ ONE MATCH A TEAM A ROUND ══════════════
+   A round is a night. A side that turns up in two of its matches is a draw
+   that cannot be played, and until now nothing in the app said so: the
+   generators never produce one, but a fixture edited by hand could, and
+   anything that rewrites the schedule could leave one behind. So it is
+   checked where it can be seen — on the Fixtures tab, every time it is
+   drawn — rather than trusted never to happen.
+
+   A called-off match is not counted: it is not being played, so it cannot
+   clash with the one that replaced it. */
+function clashesIn(fixtures) {
+  // a rachao is the exception and the reason this is a rule about rounds
+  // rather than about nights: everybody plays everybody there, several
+  // times in one evening, and that is the whole competition
+  if (typeof isSeries === 'function' && isSeries()) return [];
+  const by = {};
+  (fixtures || DB.fixtures || []).forEach(f => {
+    if (!f || isOff(f)) return;
+    const k = roundKey(f), m = by[k] = by[k] || {};
+    [f.homeId, f.awayId].forEach(id => { if (id) (m[id] = m[id] || []).push(f); });
+  });
+  const out = [];
+  Object.keys(by).forEach(k => Object.keys(by[k]).forEach(id => {
+    if (by[k][id].length > 1) out.push({ round: k, teamId: id, fx: by[k][id] });
+  }));
+  return out;
+}
+const roundLabel = k => k === 'SEMI' ? 'the semi-finals' : k === 'FINAL' ? 'the finals'
+  : (typeof rdName === 'function' ? rdName(+String(k).slice(1)) : String(k));
+/* Would putting these two sides in this round put one of them in two
+   matches at once? Returns the match they are already in, or nothing. */
+function clashFor(fx, homeId, awayId, round) {
+  if (typeof isSeries === 'function' && isSeries()) return null;     // see clashesIn
+  const key = !fx || fx.stage === 'regular' ? 'R' + round : roundKey(fx);
+  const hit = id => id && (DB.fixtures || []).find(x =>
+    x && (!fx || x.id !== fx.id) && !isOff(x) && roundKey(x) === key && (x.homeId === id || x.awayId === id));
+  const a = hit(homeId);
+  if (a) return { other: a, teamId: homeId };
+  const b = hit(awayId);
+  return b ? { other: b, teamId: awayId } : null;
+}
 const isWO = f => !!f && f.status === 'final' && !!f.wo;
 // moved after being called off: worth saying everywhere the new date is shown
 const isMoved = f => !!f && !!f.offWas && f.status !== 'final' && !isOff(f);
@@ -9713,6 +9754,19 @@ function paintDrawBar() {
   }
 }
 $('fxDrawGo').onclick = () => go('draw');
+/* The banner over the draw when it cannot be played as it stands. It names
+   the side, the round and both matches, because "there is a clash" on its
+   own sends somebody hunting through a season for it. */
+function clashNote() {
+  const cl = clashesIn();
+  if (!cl.length) return '';
+  const line = c => '<b>' + esc(teamName(c.teamId)) + '</b> is down twice in ' + esc(roundLabel(c.round)) +
+    ' — ' + c.fx.map(f => esc(teamName(f.homeId) + ' v ' + teamName(f.awayId))).join(' and ');
+  return '<div style="margin-top:10px;background:rgba(255,107,107,.12);border:1px solid var(--bad);' +
+    'border-radius:10px;padding:9px 12px;line-height:1.65">' +
+    '<b style="color:var(--bad)">This draw cannot be played as it stands.</b> ' +
+    cl.map(line).join('. ') + '. Open either match and change it.</div>';
+}
 function renderFixtures() {
   paintDrawBar();
   $('fxGenCard').style.display = isMgr() ? '' : 'none';
@@ -9739,14 +9793,16 @@ function renderFixtures() {
   $('fxStart').min = todayISO();
   const wd = +$('fxDay').value;
   $('fxStartHint').textContent = 'Any day from today — it moves to the ' + DAYS[wd] + ' on or after it.';
-  $('fxNote').innerHTML = drawSummary();
+  $('fxNote').innerHTML = drawSummary() + clashNote();
 
   const pick = sel.value;
   const show = pick === 'SEMI' || pick === 'FINAL' ? [] : pick ? reg.filter(f => f.round === +pick) : reg;
   const extra = pick === 'SEMI' ? [['Semi-finals', semis]] : pick === 'FINAL' ? [['Finals', finals]]
     : pick ? [] : [['Semi-finals', semis], ['Finals', finals]].filter(x => x[1].length);
   if (!show.length && !extra.length) { $('fxList').innerHTML = '<div class="empty">No fixtures. Set the options above and generate the draw.</div>'; return; }
-  let html = '', last = null, sec = 0;
+  // over the draw itself, not only over the generator on the Draw tab: this
+  // is the list the clash is actually in and the one it gets fixed from
+  let html = clashNote(), last = null, sec = 0;
   // a round's night is the date most of its matches are on; a moved match shows its own
   const nightOf = {};
   show.forEach(f => { const c = nightOf[f.round] = nightOf[f.round] || {}; c[f.date || ''] = (c[f.date || ''] || 0) + 1; });
@@ -10104,6 +10160,15 @@ function editFixture(id) {
        if (nh === na) { toast('A team cannot play itself — pick two different teams.', 'bad'); return false; }
        const fx = fxNow(f);
        if (!fx) { toast('That match was removed in another window.', 'bad'); return; }
+       // a team is in one match a round: say which one is in the way, so the
+       // clash can be fixed where it actually is rather than guessed at
+       const cl = clashFor(fx, nh, na, +$('fR').value || fx.round);
+       if (cl) {
+         toast(teamName(cl.teamId) + ' is already playing in ' + roundLabel(roundKey(cl.other)) +
+           ' — ' + teamName(cl.other.homeId) + ' v ' + teamName(cl.other.awayId) +
+           '. A team cannot be in two matches on the same night.', 'bad');
+         return false;
+       }
        const used = fx.status !== 'scheduled' || (fx.events || []).length || attendedIn(fx).length;
        if (used && (nh !== fx.homeId || na !== fx.awayId)) {
          if (nh === fx.awayId && na === fx.homeId) {
@@ -19320,7 +19385,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '26 Nov 08:10 · 37eaa1a'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '26 Nov 08:27 · 39b49a0'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
