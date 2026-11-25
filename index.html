@@ -6368,6 +6368,11 @@ function clashesIn(fixtures) {
   }));
   return out;
 }
+/* Would this one fixture put one of its own sides into two matches of the
+   same round? Asked of a record rather than of the draw, because the sync
+   has to weigh two versions of the same record against each other. */
+const clashesWith = rec => !!(rec && rec.id && typeof clashFor === 'function' &&
+  clashFor({ id: rec.id, stage: rec.stage || 'regular' }, rec.homeId, rec.awayId, rec.round));
 const roundLabel = k => k === 'SEMI' ? 'the semi-finals' : k === 'FINAL' ? 'the finals'
   : (typeof rdName === 'function' ? rdName(+String(k).slice(1)) : String(k));
 /* Would putting these two sides in this round put one of them in two
@@ -13693,6 +13698,10 @@ function renderSettings() {
     '<br><span class="mono small">' + (DB.teams || []).length + ' teams · ' + (DB.people || []).length +
       ' players · ' + (DB.fixtures || []).length + ' matches' +
       (syncOn() ? ' · shared copy ' + (SY.rev || 0) : ' · not shared') + '</span>' +
+    (SY.skew > 120000 ? '<br><b style="color:var(--bad)">A device sharing this league has a clock about ' +
+      plural(Math.round(SY.skew / 60000), 'minute') + ' ahead of this one.</b> Whichever of them is wrong, ' +
+      'the one that is fast overrules the others on every record it touches — set all of them to get the ' +
+      'time automatically.' : '') +
     (orphanSquad() ? ' <b style="color:var(--bad)">' + plural(orphanSquad(), 'squad place') +
       ' with no player behind it — the rest of that copy has not arrived; it is being asked for again.</b>' : '');
   const sc = safetyHeld();
@@ -17845,6 +17854,33 @@ function docApply(p, keep) {
       const meant = +coming.reopenAt > 0 && (!(+have.finAt > 0) || +coming.reopenAt > +have.finAt);
       if (!meant) return true;
     }
+    /* A schedule that cannot be played is not a matter of opinion, so it is
+       not left to the clocks to settle.
+
+       Every other argument here is decided by edAt, and edAt is whatever
+       Date.now() said on the device that made the edit. Three devices keep
+       three readings of the time. One running ten minutes fast wins every
+       argument it is ever in — so a fixture corrected on the laptop comes
+       back wrong on the next pull, and comes back wrong again however many
+       times it is corrected, because the stale copy is permanently "later".
+
+       Where one copy of a fixture puts a side in two matches of the same
+       round and the other does not, the copy that can be played wins,
+       whatever the stamps say. Both ends reach the same answer from the
+       same rule, so the three of them settle instead of trading the bad
+       copy back and forth for a week. */
+    if (n === 'fixtures' && have && coming) {
+      const badNow = clashesWith(have), badThen = clashesWith(coming);
+      if (badNow && !badThen) return false;                  // theirs mends it: take it
+      if (badThen && !badNow) {
+        /* Ours is the one that can be played. Forget that the shared copy
+           was ever thought to hold this record, so the next tick sends ours
+           up: otherwise every device sits on a good copy of its own and the
+           shared one stays wrong for ever. */
+        if (SY.shadow && SY.shadow.fixtures) delete SY.shadow.fixtures[id];
+        return true;
+      }
+    }
     const bag = keep && (keep.set || {})[n];
     const ours = bag ? bag[id] : undefined;
     if (ours === undefined) return false;
@@ -17866,6 +17902,13 @@ function docApply(p, keep) {
     if (!Array.isArray(DB[n])) DB[n] = [];
     const s = (p.set || {})[n];
     if (s) Object.keys(s).forEach(id => {
+      /* A record stamped in the future was written by a device whose clock
+         is ahead of this one. That stamp is what decides who wins every
+         argument about this record, so a wrong clock is not a cosmetic
+         problem — it is one tablet quietly overruling the others on scores
+         and names as well as on the draw. Worth saying out loud. */
+      const ahead = +((s[id] || {}).edAt || 0) - Date.now();
+      if (ahead > (SY.skew || 0)) SY.skew = ahead;
       if (held(n, id, s[id])) return;
       const i = DB[n].findIndex(x => x && x.id === id);
       if (i < 0) DB[n].push(s[id]); else DB[n][i] = s[id];
@@ -19385,7 +19428,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '26 Nov 08:27 · 39b49a0'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '26 Nov 08:35 · afe2272'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
