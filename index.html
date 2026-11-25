@@ -4,6 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Outfielder League</title>
+<!-- WHAT THE PHONE CALLS IT. Saved to a home screen with nothing to go on,
+     a browser falls back to the page title and writes the whole of it under
+     the icon, where there is room for about twelve letters. These say the
+     name once, short: OUTFIELDER. The manifest rides in the page as a data
+     URI rather than a file beside it, because the app is one file and has to
+     keep working opened straight off a disk with no server under it.
+     A shortcut somebody already made keeps the name it was given — the OS
+     copied it at the time, and nothing here can reach back and rename it.
+     It has to be deleted and added again. -->
+<meta name="apple-mobile-web-app-title" content="Outfielder">
+<meta name="application-name" content="Outfielder">
+<meta name="theme-color" content="#0a0e1a">
+<link rel="manifest" href='data:application/manifest+json,{"name":"Outfielder League","short_name":"Outfielder","display":"standalone","start_url":".","scope":".","background_color":"%230a0e1a","theme_color":"%230a0e1a"}'>
 <style>
 :root{
   --bg:#0a0e1a; --panel:#101527; --card:#0c1120; --line:#1d2440; --line2:#232a42;
@@ -19196,7 +19209,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '24 Nov 23:30 · 9e0b781'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '25 Nov 13:08 · a97d59d'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
