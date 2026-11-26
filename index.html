@@ -2366,9 +2366,16 @@ tspan.gstar{fill:var(--gold)}
 }
 @media (display-mode:standalone),(display-mode:fullscreen),(display-mode:minimal-ui){
   @media (max-width:860px){
-    #rail{padding-top:calc(18px + env(safe-area-inset-top,0px));padding-bottom:10px}
+    /* max(), because the inset on its own is not to be trusted. A good few
+       Android phones report no safe area at all — zero — even asked through
+       viewport-fit=cover, and the arithmetic then leaves the mark sitting at
+       eighteen pixels underneath a status bar that wants forty-odd. So the
+       floor is what a status bar actually costs, and the inset is used only
+       where it is larger: a notch says so and gets its room, a phone that
+       says nothing still gets clear of the clock. */
+    #rail{padding-top:max(46px, calc(18px + env(safe-area-inset-top,0px)));padding-bottom:10px}
     #rail header{padding-top:2px}
-    #roleChip{top:calc(17px + env(safe-area-inset-top,0px))}   /* level with the mark */
+    #roleChip{top:max(48px, calc(20px + env(safe-area-inset-top,0px)))}   /* level with the mark */
   }
 }
 </style>
@@ -19778,7 +19785,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '27 Nov 09:16 · f336513'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '27 Nov 09:22 · 93ced7c'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
