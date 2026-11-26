@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- viewport-fit=cover: the background runs to the edges of the screen, and
+     the safe-area insets at the foot of the stylesheet keep the content out
+     from under the notch and the status bar. -->
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Outfielder League</title>
 <!-- WHAT THE PHONE CALLS IT. Saved to a home screen with nothing to go on,
      a browser falls back to the page title and writes the whole of it under
@@ -2331,6 +2334,43 @@ tspan.gstar{fill:var(--gold)}
 .hncard .pill.curch{box-shadow:none}
 /* the goals dials: the badge is the label */
 .g-l .crest{width:calc(30px * var(--fs));height:calc(30px * var(--fs));margin:0}
+
+/* ══════════════ ROOM FOR THE PHONE'S OWN FURNITURE ══════════════
+   In a browser tab the address bar stands between the page and the top of
+   the screen. Installed to a home screen nothing does, and the strip along
+   the top of a phone — the mark, the name, and who is signed in — came up
+   hard against the clock, the battery and the notch, with the mark losing
+   its top to them.
+
+   Two separate things are wanted. viewport-fit=cover lets the background
+   run right to the edges of the screen, and env(safe-area-inset-*) then
+   says how much of each edge the phone has reserved for itself, so the
+   content sits below the furniture rather than under it. And once it is an
+   app rather than a page it wants a little air of its own at the top,
+   which is the second rule: eight pixels was fine beneath an address bar
+   and looks cramped without one.
+
+   A browser tab reports no inset and is not in standalone, so none of this
+   moves anything there. */
+#shell{padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+#gate{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (max-width:860px){
+  #rail{padding-top:calc(8px + env(safe-area-inset-top,0px))}
+  /* who is signed in is pinned to the corner of the SCREEN, not to the rail,
+     so padding the rail leaves it behind under the clock. It takes the same
+     inset itself. */
+  #roleChip{top:calc(7px + env(safe-area-inset-top,0px));right:calc(9px + env(safe-area-inset-right,0px))}
+}
+@media (max-width:560px),(max-height:480px) and (orientation:landscape){
+  #rail{padding-top:calc(7px + env(safe-area-inset-top,0px))}
+}
+@media (display-mode:standalone),(display-mode:fullscreen),(display-mode:minimal-ui){
+  @media (max-width:860px){
+    #rail{padding-top:calc(18px + env(safe-area-inset-top,0px));padding-bottom:10px}
+    #rail header{padding-top:2px}
+    #roleChip{top:calc(17px + env(safe-area-inset-top,0px))}   /* level with the mark */
+  }
+}
 </style>
 </head>
 <body>
@@ -19738,7 +19778,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '27 Nov 09:10 · 6bf1575'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '27 Nov 09:16 · f336513'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
