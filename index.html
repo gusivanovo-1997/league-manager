@@ -2349,8 +2349,14 @@ tspan.gstar{fill:var(--gold)}
       <button class="btn accent" id="gateJoinGo">Join the league</button>
     </div>
     <div id="gateMsg"></div>
-    <!-- only on a copy nobody has set up yet -->
-    <div id="gateCode" hidden><button class="btn sm" id="gateHaveCode">I have a code from another machine</button></div>
+    <!-- Two ways out of whichever screen is up. The second only appears on
+         a copy with nobody on it at all, because starting a competition
+         from nothing is the one thing that cannot be undone by signing in
+         again. -->
+    <div id="gateCode" hidden>
+      <button class="btn sm" id="gateHaveCode">I have a code from another machine</button>
+      <button class="btn sm" id="gateNewHere" hidden>Start a brand new competition here</button>
+    </div>
   </div>
 </div>
 
@@ -3310,17 +3316,29 @@ function inLeague(id, fn) {
   ROOT.active = l.id; bindDB();
   try { return fn(); } finally { ROOT.active = was; bindDB(); }
 }
+/* A team always has a squad, even an empty one. Something like forty places
+   in the tool walk straight into t.players — counting it, filtering it,
+   looking through it — so a single team that arrives without one takes the
+   whole screen down the moment it is drawn, and the competition looks lost
+   when it is perfectly intact. Every team the tool makes has the list; this
+   is for the ones that come from somewhere else. Insisted on once, here,
+   rather than guarded at each of the forty. */
+const fixTeams = l => {
+  if (!Array.isArray(l.teams)) l.teams = [];
+  l.teams.forEach(t => { if (t && !Array.isArray(t.players)) t.players = []; });
+  return l;
+};
 // anything saved before leagues existed becomes the first league
 function rootFrom(d) {
   if (d && Array.isArray(d.leagues) && d.leagues.length) {
     const r = Object.assign(blankRoot(), d);
-    r.leagues = d.leagues.map(l => Object.assign(blankLeague(), l, {
+    r.leagues = d.leagues.map(l => fixTeams(Object.assign(blankLeague(), l, {
       season: Object.assign(blankLeague().season, l.season || {}),
       form: Object.assign(blankLeague().form, l.form || {}),
       bulletin: Object.assign(blankLeague().bulletin, l.bulletin || {}),
       archive: Array.isArray(l.archive) ? l.archive : [],
       benched: l.benched && typeof l.benched === 'object' && !Array.isArray(l.benched) ? l.benched : {}
-    }));
+    })));
     // against THIS root's leagues, not the one still loaded: leagueById reads
     // the global ROOT, which at this moment is the old copy (or a blank one),
     // so the saved league never matched and every start fell back to the
@@ -3336,6 +3354,7 @@ function rootFrom(d) {
   l.bulletin = Object.assign(blankLeague().bulletin, (d && d.bulletin) || {});
   if (!Array.isArray(l.archive)) l.archive = [];
   if (!l.benched || typeof l.benched !== 'object' || Array.isArray(l.benched)) l.benched = {};
+  fixTeams(l);
   const r = blankRoot();
   r.access = Object.assign(blankRoot().access, (d && d.access) || {});
   r.leagues = [l]; r.active = l.id;
@@ -18925,6 +18944,7 @@ async function gateJoinGo() {
     : 'Joined, but nobody is named on it yet. Choose an owner PIN.';
 }
 $('gateJoinGo').onclick = gateJoinGo;
+$('gateNewHere').onclick = () => { gateWant = 'new'; showGate(); };
 $('gateCodeIn').onkeydown = e => { if (e.key === 'Enter') gateJoinGo(); };
 $('gateCodeIn').oninput = () => { $('gateMsg').textContent = ''; };
 /* When two copies have drifted apart far enough that neither is worth
@@ -19690,7 +19710,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '26 Nov 21:58 · 12e8dd3'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '26 Nov 22:18 · 4ba567e'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
@@ -19793,11 +19813,23 @@ const REF_VIEWS = ['dash', 'teams', 'players', 'fixtures', 'live', 'attend', 'ta
 const allowedView = v => isMgr() || REF_VIEWS.indexOf(v) >= 0;
 const pinOf = k => String((DB.access && DB.access[k]) || blankDB().access[k]);
 
-let gateSetup = false;                  // nobody on this copy yet: it is asking for an owner, not for a sign-in
-let gateWant = null;                    // and which of the two screens the person has asked for
+let gateSetup = false;                  // the owner is being chosen: the ONE screen where a PIN creates somebody
+let gateWant = null;                    // 'join' | 'pin' | 'new' — the screen that was asked for
 function showGate() {
   role = null; me = null;
-  gateSetup = !(ROOT.staff || []).length;
+  /* A PIN IS A SIGN-IN, NEVER A SIGN-UP.
+     An unused copy used to turn the first PIN typed into it into the owner
+     of the machine — so a referee arriving at a tablet, typing the PIN they
+     have always used, did not sign in as a referee: they became the owner,
+     and the PIN they were given quietly stopped meaning anything. Nobody
+     was told, because from the inside it looked like it had worked.
+
+     Making an owner is now one deliberate button of its own, and nothing
+     else on this screen can do it. Every other PIN typed anywhere is
+     matched against the people this machine knows, and if it knows nobody
+     yet, it says so and asks for the code — which is what brings the
+     league down, and everybody on it with the PINs they were given. */
+  const nobody = !(ROOT.staff || []).length;
   /* Nothing here but the sample league: this browser has never seen any of
      ours, so a keypad is asking a question it cannot answer — a fresh copy
      comes with an Owner and a starting PIN of its own, which is nobody's
@@ -19815,14 +19847,17 @@ function showGate() {
   const started = l => !!(l && (l.name || (l.teams || []).length || (l.fixtures || []).length ||
     (l.people || []).length || (l.publish || {}).url));
   const fresh = !(ROOT.leagues || []).some(l => l && !l.demo && started(l));
+  // nothing here and nobody here: the code is the only thing that helps
+  const want = gateWant || (fresh && nobody ? 'join' : 'pin');
+  gateSetup = want === 'new';
   /* And the code box is not only for an unused copy. A tablet already
      running one competition gets handed the code for a second, and whoever
      is holding it may have no PIN on this machine yet. So the swap is
      offered either way round, and the screen that was asked for is the one
      that opens. */
-  const join = (gateWant || (fresh && gateSetup ? 'join' : 'pin')) === 'join';
+  const join = want === 'join';
   $('gateTitle').textContent = join ? 'Enter your league code'
-    : gateSetup ? 'Choose an owner PIN' : 'Enter your PIN';
+    : gateSetup ? 'Choose the owner PIN for this machine' : 'Enter your PIN';
   $('gateJoin').hidden = !join;
   $('gatePin').hidden = join;
   $('gatePad').hidden = join;
@@ -19831,8 +19866,10 @@ function showGate() {
      unused copy there is nothing to sign in to yet, so the other screen is
      where a league gets started; on a tablet already running one it is
      simply the sign-in. */
-  $('gateHaveCode').textContent = join ? (gateSetup ? 'Setting up a brand new league here' : 'Sign in with a PIN instead')
-    : 'I have a code from another machine';
+  $('gateHaveCode').textContent = join ? 'Sign in with a PIN'
+    : gateSetup ? 'Go back' : 'I have a code from another machine';
+  // offered only where it is the honest answer: nobody on this copy at all
+  $('gateNewHere').hidden = !(join && nobody);
   $('gateMsg').className = '';
   $('leagueBar').hidden = true;
   $('syncChip').hidden = true;
@@ -20022,6 +20059,13 @@ function setupOwner(pin) {
     setTimeout(() => $('gatePin').classList.remove('err'), 900);
     return;
   }
+  /* The one place in the tool where typing a PIN creates somebody, so it
+     is the one place that stops and says so. Somebody handed a PIN by the
+     person who runs the competition is in the wrong screen, and this is
+     where they find that out rather than three weeks later. */
+  if (!ask('Make this the owner PIN for this machine?\n\nThe owner can see and change every competition on it. ' +
+      'If somebody gave you this PIN to use, this is not the screen for it — go back, paste their league code, ' +
+      'and sign in once it has come down.')) { $('gatePin').value = ''; return; }
   ROOT.staff = [pinStamp({ id: uid(), name: 'Owner', pin: pin, owner: true, roles: {} })];
   if (save() === false) return;
   gateSetup = false;
@@ -20034,7 +20078,12 @@ function tryPin(v) {
   if (gateSetup) return setupOwner(pin);
   const who = staffByPin(pin);
   if (who) return unlock(who);
-  $('gateMsg').textContent = 'That PIN is not recognised.';
+  /* "Not recognised" is the truth but not the whole of it. On a machine
+     that has never held a league there is nobody for a PIN to BE, however
+     right the PIN is, and the thing that fixes it is the code. */
+  $('gateMsg').textContent = (ROOT.staff || []).length ? 'That PIN is not recognised.'
+    : 'Nobody is on this machine yet, so there is no PIN here to match. Paste the league code you were given — ' +
+      'it brings the competition down and everybody on it, your own PIN included.';
   $('gatePin').value = '';
   $('gatePin').classList.add('err');
   setTimeout(() => $('gatePin').classList.remove('err'), 900);
