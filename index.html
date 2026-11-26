@@ -42,6 +42,19 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
+<!-- THE MARK, NAMED RATHER THAN DRAWN LATER. The tool used to put its own
+     icon on the tab from inside the script, which works for the tab and
+     for nothing else: a bookmark, a link somebody pastes into a chat, and
+     the moment a phone copies an icon for a new shortcut all read the
+     markup and none of them wait for a script to run. The page was
+     therefore iconless to all three, and they fell back on whatever was
+     cached — which is why the old mark kept coming back.
+     favicon.ico is asked for by name whether it is mentioned or not, so it
+     exists too, carrying the mark at 16, 32 and 48. -->
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="icon-32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="icon-48.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <style>
@@ -5243,7 +5256,11 @@ function ballImg(px) {
   return BALLSRC ? '<img src="' + BALLSRC + '" alt="" width="' + px + '" height="' + px + '">' : '';
 }
 if ($('gateBall')) $('gateBall').innerHTML = ballImg(52);   // the PIN screen signs itself
-if (BALLSRC) {                                             // and the tab strip
+/* Served from a site the tab icon is a real file, named above, and this
+   would only override it later and more slowly. Opened straight off a
+   disk there are no files beside the page, so the mark carried inside it
+   stands in — which is the only case this is for. */
+if (BALLSRC && location.protocol !== 'http:' && location.protocol !== 'https:') {
   const favicon = document.createElement('link');
   favicon.rel = 'icon'; favicon.href = BALLSRC;
   document.head.appendChild(favicon);
@@ -19721,7 +19738,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '27 Nov 08:59 · ea10529'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '27 Nov 09:10 · 6bf1575'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
