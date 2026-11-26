@@ -2378,6 +2378,28 @@ tspan.gstar{fill:var(--gold)}
     #roleChip{top:max(48px, calc(20px + env(safe-area-inset-top,0px)))}   /* level with the mark */
   }
 }
+
+/* ══════════════ THE STRIP STAYS PUT ══════════════
+   On a phone the top strip used to scroll away on every screen, for the
+   sake of the one screen where that is right. A referee with a game on
+   wants the whole screen for it — but that was being paid for on the
+   fixtures, the table, the squads and everywhere else, where the mark, the
+   competition you are in and the tabs would disappear the moment you
+   scrolled and had to be fetched back from the top of a long list.
+
+   So it is pinned, and the exception is made where it was actually meant:
+   with a match open the strip lets go and scrolls away exactly as it did.
+
+   The sub-tabs beneath it stay unpinned, and are not an oversight. They
+   belong to the list they head rather than to the app, and they scroll
+   with it.
+
+   Short landscape keeps the old behaviour whatever is on: a strip this
+   tall, pinned to a screen that short, is most of the screen. */
+@media (max-width:860px) and (min-height:481px){
+  #rail{position:sticky;top:0}
+  body.inmatch #rail{position:relative;top:auto}
+}
 </style>
 </head>
 <body>
@@ -5617,6 +5639,10 @@ function render() {
   paintCrests();
   document.body.classList.toggle('noboot', !bootShown());
   document.body.classList.toggle('cupmode', isCup());
+  /* A match on the screen takes the screen: on a phone the strip along the
+     top lets go and scrolls away with everything else, which is what a
+     referee at the side of a court wants. Every other screen keeps it. */
+  document.body.classList.toggle('inmatch', currentView === 'live' && !!live.id);
   starsRefresh();
   paintFinalsTab();
   paintSubTabs();
@@ -11521,6 +11547,9 @@ function drawNextUp() {
 }
 function drawLive() {
   const f = DB.fixtures.find(x => x.id === live.id);
+  // opening or closing a match does not go through render(), and the strip
+  // overhead has to know either way
+  document.body.classList.toggle('inmatch', !!f && currentView === 'live');
   if (!f) { drawNextUp(); return; }
   // a confirmed result: a referee may look and tick attendance, only a manager may change it
   const locked = f.status === 'final' && !isMgr();
@@ -19785,7 +19814,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '27 Nov 09:22 · 93ced7c'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '27 Nov 09:36 · c69f50a'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
