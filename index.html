@@ -2400,6 +2400,12 @@ tspan.gstar{fill:var(--gold)}
   #rail{position:sticky;top:0}
   body.inmatch #rail{position:relative;top:auto}
 }
+/* [hidden] HAS TO MEAN HIDDEN. The attribute carries its own display:none,
+   and a class that sets a display wins over it — so a control switched off
+   because of who is signed in sat there in plain sight, hidden in the
+   markup and visible on the screen. Two classes do it, and both hold
+   something that is somebody's and not everybody's. */
+.row[hidden],.dact[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -2952,7 +2958,7 @@ tspan.gstar{fill:var(--gold)}
       </details>
     </div>
 
-    <div class="card">
+    <div class="card" id="cardLive">
       <h3>2 · The live page</h3>
       <div class="small muted" style="line-height:1.8;margin-bottom:11px">
         The page players and parents watch: the table, the fixtures, the results and the stats, at the same
@@ -2982,14 +2988,15 @@ tspan.gstar{fill:var(--gold)}
 
     <div class="card" id="cardTablets">
       <h3>3 · Share this league between tablets</h3>
-      <div class="note" id="shareMgrNote" hidden style="margin:0 0 12px">Handing the codes out is the
-        owner's. Pasting one you have been given is yours — <b>Join a shared league</b> below.</div>
-      <label class="row small" style="gap:7px;margin:0 0 10px"><input type="checkbox" id="pubShare">
+      <div class="note" id="shareMgrNote" hidden style="margin:0 0 12px">Whether a league is shared at
+        all is the owner's. Once it is, the code for it is yours to copy and to hand on — and a code
+        you have been given goes in with <b>Join a shared league</b> below.</div>
+      <label class="row small" id="shareTick" style="gap:7px;margin:0 0 10px"><input type="checkbox" id="pubShare">
         <b>share this league</b> — every tablet reads and writes the same copy through the web app</label>
       <div class="note" id="shareNote" style="margin:0 0 12px"></div>
       <div class="grid g2">
         <div class="shbox" id="shboxRuns">
-          <b>This tablet runs the league</b>
+          <b>The code for this league</b>
           <span class="small muted">Hand this code to the other tablet. It carries the address and the key —
             treat it like a password.</span>
           <code class="blk" id="shareCodeBox">Turn sharing on to get a code.</code>
@@ -2997,10 +3004,12 @@ tspan.gstar{fill:var(--gold)}
             <button class="btn sm accent" id="shareCode">Copy the join code</button>
             <button class="btn sm" id="shareNow">Sync now</button>
           </div>
-          <div class="row"><button class="btn sm" id="shareAll">Copy a code for <b>all</b> my leagues</button></div>
-          <span class="small muted">The join code above is <b>this league alone</b> — that is the one to
-            hand to a manager or a referee with their PIN. The all-leagues code is for setting up
-            another machine of your own: paste it once and every competition you run is there.</span>
+          <div id="shboxAll">
+            <div class="row"><button class="btn sm" id="shareAll">Copy a code for <b>all</b> my leagues</button></div>
+            <span class="small muted">The join code above is <b>this league alone</b> — that is the one to
+              hand to a manager or a referee with their PIN. The all-leagues code is for setting up
+              another machine of your own: paste it once and every competition you run is there.</span>
+          </div>
         </div>
         <div class="shbox">
           <b>This tablet is joining one</b>
@@ -3322,6 +3331,75 @@ const LEAGUE_KEYS = ['id', 'name', 'season', 'form', 'people', 'teams', 'fixture
 const ROOT_KEYS = ['version', 'access', 'staff'];
 let ROOT = blankRoot();
 const leagueById = id => ROOT.leagues.find(l => l.id === id);
+/* SHA-256, so that a PIN can be CHECKED without being KEPT.
+   The owner's PIN travels with the league — it has to, or signing in on a
+   tablet he has not set up himself could not work — and it was travelling
+   readable: into the shared document on the web app, and from there into
+   the storage of every tablet that pulls it. Hashed, a device can tell
+   whether the PIN typed into it is the right one without ever holding the
+   PIN itself.
+   The algorithm is here rather than borrowed because the tool has no
+   dependencies, and rather than crypto.subtle because that is asynchronous
+   and signing in is not. Its constants are derived instead of printed —
+   the first thirty-two bits of the fractional parts of the square roots and
+   cube roots of the first primes, which is where they come from.
+   BE CLEAR WHAT THIS BUYS. A PIN is four to eight digits, so anybody
+   holding the hash and willing to write a loop can find it again. What it
+   stops is a PIN being READ — out of a backup file, out of the shared
+   document, off another tablet — which is the way one actually leaks. */
+const SHA256 = (() => {
+  const K = [], H = [];
+  for (let n = 2; K.length < 64; n++) {
+    let prime = true;
+    for (let d = 2; d * d <= n; d++) if (n % d === 0) { prime = false; break; }
+    if (!prime) continue;
+    K.push(Math.floor((Math.cbrt(n) % 1) * 4294967296));
+    if (H.length < 8) H.push(Math.floor((Math.sqrt(n) % 1) * 4294967296));
+  }
+  const rr = (x, n) => (x >>> n) | (x << (32 - n));
+  return str => {
+    const b = [];
+    for (let i = 0; i < str.length; i++) {                      // UTF-8, as the standard takes it
+      const c = str.charCodeAt(i);
+      if (c < 128) b.push(c);
+      else if (c < 2048) b.push(192 | (c >> 6), 128 | (c & 63));
+      else b.push(224 | (c >> 12), 128 | ((c >> 6) & 63), 128 | (c & 63));
+    }
+    const bits = b.length * 8;
+    b.push(128);
+    while (b.length % 64 !== 56) b.push(0);
+    b.push(0, 0, 0, 0, (bits >>> 24) & 255, (bits >>> 16) & 255, (bits >>> 8) & 255, bits & 255);
+    const h = H.slice(), w = new Array(64);
+    for (let i = 0; i < b.length; i += 64) {
+      for (let t = 0; t < 16; t++)
+        w[t] = (b[i + t * 4] << 24) | (b[i + t * 4 + 1] << 16) | (b[i + t * 4 + 2] << 8) | b[i + t * 4 + 3];
+      for (let t = 16; t < 64; t++) {
+        const x = w[t - 15], y = w[t - 2];
+        const s0 = rr(x, 7) ^ rr(x, 18) ^ (x >>> 3), s1 = rr(y, 17) ^ rr(y, 19) ^ (y >>> 10);
+        w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;
+      }
+      let a = h[0], bb = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], hh = h[7];
+      for (let t = 0; t < 64; t++) {
+        const t1 = (hh + (rr(e, 6) ^ rr(e, 11) ^ rr(e, 25)) + ((e & f) ^ (~e & g)) + K[t] + w[t]) | 0;
+        const t2 = ((rr(a, 2) ^ rr(a, 13) ^ rr(a, 22)) + ((a & bb) ^ (a & c) ^ (bb & c))) | 0;
+        hh = g; g = f; f = e; e = (d + t1) | 0; d = c; c = bb; bb = a; a = (t1 + t2) | 0;
+      }
+      const v = [a, bb, c, d, e, f, g, hh];
+      for (let j = 0; j < 8; j++) h[j] = (h[j] + v[j]) | 0;
+    }
+    return h.map(v => (v >>> 0).toString(16).padStart(8, '0')).join('');
+  };
+})();
+/* The salt is the person's own id: it travels with them, it never changes,
+   and it means two people who happen to pick the same PIN do not make the
+   same hash — so a staff list is not also a list of who shares a PIN. */
+const pinHash = (pin, id) => SHA256('outfielder.pin.v1.' + String(id || '') + '.' + String(pin || ''));
+/* Does this PIN belong to this person? A record holds the PIN itself when
+   it was set on THIS machine, and only the hash when it arrived from
+   another one. Either answers the question; neither has to be present. */
+const pinSame = (s, pin) => !!s && String(pin || '') !== '' &&
+  (s.pin ? String(s.pin) === String(pin) : !!s.pinHash && s.pinHash === pinHash(pin, s.id));
+const hasPin = s => !!(s && (s.pin || s.pinHash));
 /* Everyone who signs in is a named person holding their own PIN. The owner
    sees every league; everybody else sees only the ones they are on, and
    with the role they were given there. A file from before this existed is
@@ -3360,16 +3438,17 @@ function nameStamp(s, name) {
 const anonName = n => !n || n === 'Owner' || n === 'New person';
 function pinStamp(s, pin) {
   if (!s) return s;
-  if (pin != null) s.pin = String(pin);
+  // the hash is kept beside the PIN, because the hash is the part that travels
+  if (pin != null) { s.pin = String(pin); s.pinHash = pinHash(s.pin, s.id); }
   s.pinAt = Date.now();
   /* The old single-PIN field is what a copy saved before people existed is
      rebuilt from. Kept in step with the owner, so that rebuild can never
      bring back a PIN the owner has already replaced. */
-  if (s.owner) { ROOT.access = ROOT.access || {}; ROOT.access.managerPin = String(s.pin); }
+  if (s.owner && s.pin) { ROOT.access = ROOT.access || {}; ROOT.access.managerPin = String(s.pin); }
   return s;
 }
-const staffByPin = p => (ROOT.staff || []).find(s => s.owner && String(s.pin) === String(p))
-  || (ROOT.staff || []).find(s => String(s.pin) === String(p));
+const staffByPin = p => (ROOT.staff || []).find(s => s.owner && pinSame(s, p))
+  || (ROOT.staff || []).find(s => pinSame(s, p));
 const rolesOf = s => (s && s.roles) || {};
 const activeLeague = () => leagueById(ROOT.active) || ROOT.leagues[0];
 const leagueName = l => (l && (l.name || (l.season && l.season.name))) || 'League';
@@ -5525,7 +5604,7 @@ function buildNav() {
      taking the whole Competition tab away to hide one of its four pages
      left a cup looking like a tool with a part missing. The tab stays; the
      Table page inside it is what a cup does without. */
-  $('nav').innerHTML = VIEWS.filter(([k]) => allowedView(k)).map(([k, label]) =>
+  $('nav').innerHTML = VIEWS.filter(([k]) => firstAllowed(k)).map(([k, label]) =>
     '<button data-nav="' + k + '">' +
       (k === 'live' ? '<span class="livedot"></span>' : icon(k)) +
       (k === 'live' ? '<span class="nvlabel">' + label + '</span>' : label) +
@@ -5545,7 +5624,7 @@ function buildNav() {
 }
 function go(v) {
   if (!role) return;                      // nothing renders until a PIN is in
-  if (!allowedView(v)) v = 'dash';
+  v = firstAllowed(v) || 'dash';
   if (v === 'table' && isCup()) v = 'fixtures';      // a cup opens on its draw
   currentView = v;
   freshView = true;                       // this render is an arrival, so it animates
@@ -17888,10 +17967,16 @@ function staffDoc() {
       pin: String(s.pin || ''), pinAt: +s.pinAt || 0, role: rolesOf(s)[lg] }));
   const own = (ROOT.staff || []).find(s => s && s.owner);
   const L = activeLeague();
-  // and this machine's owner goes up for a league that is this machine's, or that nobody has claimed yet
+  /* and this machine's owner goes up for a league that is this machine's,
+     or that nobody has claimed yet — HASHED, never the PIN itself. This is
+     the one record that reaches every tablet on the league, so it is the
+     one that must not be readable when it gets there. The others are a
+     manager's to read back to somebody who has forgotten theirs, which is
+     the whole reason they are on this list, so they go as they are. */
   if (own && (ownsLeague(own, L) || !(L && L.ownerId)))
     out.push({ id: own.id, name: own.name || 'Owner', nameAt: +own.nameAt || 0,
-      pin: String(own.pin || ''), pinAt: +own.pinAt || 0, role: 'owner' });
+      pinHash: own.pinHash || (own.pin ? pinHash(own.pin, own.id) : ''),
+      pinAt: +own.pinAt || 0, role: 'owner' });
   return out.sort((a, b) => String(a.id).localeCompare(String(b.id)));   // one order, so the hash is steady
 }
 /* A MACHINE THAT MADE ITSELF AN OWNER. Setting a PIN on an unused copy is
@@ -17929,9 +18014,21 @@ function staffPut(rec) {
      PINs were stamped: it may fill in a PIN that is missing here, and it
      may not replace one. The owner's identity travels with their PIN, so
      the two can never come apart. */
+  /* A record arriving from another machine carries the hash where the
+     owner's is concerned and the PIN itself for everybody else, and one
+     saved before either existed carries neither. Any of the three is a
+     PIN as far as "is there one, and is it newer" goes. */
   const newer = (inc, mine) => {
     const a = +(inc && inc.pinAt) || 0, b = +(mine && mine.pinAt) || 0;
-    return !!(inc && inc.pin) && (a > b || (!mine.pin && a >= b));
+    return hasPin(inc) && (a > b || (!hasPin(mine) && a >= b));
+  };
+  /* Taking one. A hash that arrives stands on its own: the PIN that made it
+     was never sent, so there is nothing here to keep beside it, and keeping
+     a stale one would let an old PIN go on working after it was changed. */
+  const takePin = (dst, inc) => {
+    if (inc.pin) { dst.pin = String(inc.pin); dst.pinHash = pinHash(dst.pin, dst.id); }
+    else { dst.pin = ''; dst.pinHash = String(inc.pinHash || ''); }
+    dst.pinAt = +inc.pinAt || 0;
   };
   // a name moves forward the same way, so a machine that only ever knew
   // somebody as "Owner" cannot rename them back to it
@@ -17942,8 +18039,9 @@ function staffPut(rec) {
   };
   if (rec.role === 'owner') {
     const own = (ROOT.staff || []).find(x => x && x.owner);
-    if (!own) { ROOT.staff.push({ id: rec.id, name: rec.name || 'Owner', nameAt: +rec.nameAt || 0,
-      pin: String(rec.pin || ''), pinAt: +rec.pinAt || 0, owner: true, roles: {} }); return; }
+    if (!own) { const o = { id: rec.id, name: rec.name || 'Owner', nameAt: +rec.nameAt || 0,
+      pin: '', pinHash: '', pinAt: 0, owner: true, roles: {} };
+      takePin(o, rec); ROOT.staff.push(o); return; }
     if (own.id !== rec.id) {
       /* The placeholder hands the machine over. Everything this owner holds
          is local to the tablet — a PIN typed into an empty copy — and the
@@ -17956,11 +18054,11 @@ function staffPut(rec) {
         if (!o) { o = { id: rec.id, name: '', pin: '', owner: false, roles: {} }; ROOT.staff.push(o); }
         o.owner = true;
         if (newerName(rec, o) || anonName(o.name)) { o.name = rec.name || 'Owner'; o.nameAt = +rec.nameAt || 0; }
-        if (newer(rec, o) || !o.pin) { o.pin = String(rec.pin || ''); o.pinAt = +rec.pinAt || 0; }
+        if (newer(rec, o) || !hasPin(o)) takePin(o, rec);
         own.owner = false;
         if (!Object.keys(rolesOf(own)).length) ROOT.staff = (ROOT.staff || []).filter(x => x !== own);
         // their PIN was the machine's, and the machine is not theirs any more
-        ROOT.access = ROOT.access || {}; ROOT.access.managerPin = o.pin;
+        ROOT.access = ROOT.access || {}; ROOT.access.managerPin = o.pin || '';
         if (me && me.id === own.id) ownerTaken = true;
         return;
       }
@@ -17975,20 +18073,20 @@ function staffPut(rec) {
       if (!o) { o = { id: rec.id, name: '', pin: '', owner: false, roles: {} }; ROOT.staff.push(o); }
       o.roles = Object.assign({}, o.roles, { [lg]: 'manager' });
       if (newerName(rec, o)) { o.name = rec.name; o.nameAt = +rec.nameAt || 0; }
-      if (newer(rec, o)) { o.pin = String(rec.pin); o.pinAt = +rec.pinAt || 0; }
+      if (newer(rec, o)) takePin(o, rec);
       return;
     }
     if (me && own.id === me.id) return;            // never under the person signed in
     if (newerName(rec, own)) { own.name = rec.name; own.nameAt = +rec.nameAt || 0; }
-    if (newer(rec, own)) { own.id = rec.id; own.pin = String(rec.pin); own.pinAt = +rec.pinAt || 0;
-      ROOT.access = ROOT.access || {}; ROOT.access.managerPin = own.pin; }
+    if (newer(rec, own)) { own.id = rec.id; takePin(own, rec);
+      if (own.pin) { ROOT.access = ROOT.access || {}; ROOT.access.managerPin = own.pin; } }
     return;
   }
   let s = (ROOT.staff || []).find(x => x && x.id === rec.id);
   if (s && s.owner) return;                        // an owner is not demoted to a referee by a stale list
   if (!s) { s = { id: rec.id, name: '', pin: '', owner: false, roles: {} }; ROOT.staff.push(s); }
   if (newerName(rec, s)) { s.name = rec.name; s.nameAt = +rec.nameAt || 0; }
-  if (newer(rec, s)) { s.pin = String(rec.pin); s.pinAt = +rec.pinAt || 0; }
+  if (newer(rec, s)) takePin(s, rec);
   s.roles = s.roles || {};
   s.roles[lg] = rec.role || 'ref';
 }
@@ -18917,14 +19015,20 @@ function renderPublish() {
      tablet. A manager publishes to them; only the owner sets them. */
   const own = isOwner();
   $('cardWebApp').hidden = !own;
-  /* A manager runs a competition; they are the ones handed a code and told
-     to put it on their own tablet. The whole card used to be the owner's, so
-     there was nowhere for them to paste it — and a manager given a second
-     competition had no way of reaching it at all. The card is theirs now;
-     handing codes OUT, and throwing this copy away for the shared one, are
-     still the owner's. */
-  $('cardTablets').hidden = !isMgr();
-  $('shboxRuns').hidden = !own;
+  $('cardLive').hidden = !isMgr();        // publishing the players' page is a manager's
+  /* Moving a league between tablets is everybody's. A referee is handed a
+     code and told to put it on their own tablet, and could not reach this
+     page at all; a manager could reach it but not copy a code, so the one
+     person who could hand one over was the owner, and a referee at a new
+     tablet waited for him. A code opens a league to somebody who must still
+     sign in with a PIN that league knows — it is not a secret from the
+     people already on it. Whether a league is shared in the first place,
+     the all-leagues code, and throwing this copy away for the shared one
+     are still the owner's. */
+  $('cardTablets').hidden = false;
+  $('shboxRuns').hidden = false;
+  $('shboxAll').hidden = !own;
+  $('shareTick').hidden = !isMgr();
   $('shareMgrNote').hidden = own;
   $('shareTake').hidden = !own;
   $('shareTakeNote').hidden = !own;        // all about a button a manager has not got
@@ -18986,15 +19090,19 @@ $('pubShare').onchange = () => {
 /* A join code is the address and the key in one string: everything another
    tablet needs to pick the league up, and nothing else. */
 $('shareCode').onclick = () => {
-  if (!requireOwner('The join code')) return;
+  if (!role) return;                      // anybody this league has signed in
   const c = pubCfg();
-  if (!c.url || !c.key) return toast('Set the web app up first.', 'bad');
-  if (!c.share) return toast('Tick "share this league" first.', 'bad');
+  // what to do about it depends on whose job it is
+  if (!c.url || !c.key) return toast(isOwner() ? 'Set the web app up first.'
+    : 'This league has no web app yet, so there is no code for it — that is the owner’s to set up.', 'bad');
+  if (!c.share) return toast(isMgr() ? 'Tick "share this league" first.'
+    : 'This league is not shared yet, so there is no code for it — ask the owner to turn sharing on.', 'bad');
   const code = joinCode();
   copyPlain(code).then(ok => toast(ok ? 'Join code copied — paste it into the other tablet.' : 'Could not copy: ' + code, ok ? 'ok' : 'bad'));
 };
 $('shareAll').onclick = () => {
-  if (!requireOwner('The all-leagues code')) return;
+  // every competition on the machine in one string: the machine's owner, not the open league's
+  if (!isOwner()) { toast('A code for every competition is the owner’s.', 'bad'); return; }
   const code = allCode();
   if (!code) return toast('No league is shared yet — tick "share this league" on the ones you want to carry.', 'bad');
   const n = ROOT.leagues.map(codeOf).filter(Boolean).length;
@@ -19872,7 +19980,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '27 Nov 12:56 · b9c2e6e'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '27 Nov 16:05 · 1642525'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
@@ -19971,8 +20079,23 @@ function canTouch(s) {
   const mine = mgrLeagues().map(l => l.id), on = Object.keys(rolesOf(s));
   return on.length > 0 && on.every(id => mine.indexOf(id) >= 0);
 }
-const REF_VIEWS = ['dash', 'teams', 'players', 'fixtures', 'live', 'attend', 'table', 'results', 'finals', 'stats', 'honours'];
+/* 'share' is on this list for one part of that page: the join code for the
+   league they are already on, and the box to paste one they have been
+   given. A code is not a secret from the people who hold a PIN for the
+   league it opens — they are already in it — and making the owner the only
+   person who could hand one over meant a referee standing at a new tablet
+   had to wait for him. The web app, the live page and throwing this copy
+   away for the shared one are still not theirs, and the cards that do them
+   are not drawn. */
+const REF_VIEWS = ['dash', 'teams', 'players', 'fixtures', 'live', 'attend', 'table', 'results', 'finals', 'stats', 'honours', 'share'];
 const allowedView = v => isMgr() || REF_VIEWS.indexOf(v) >= 0;
+/* A rail button is a place, not a page: Communication holds the bulletin,
+   the public page and the sign-up form. A referee may have one of the
+   three, so the button is offered and tapping it lands on the page they
+   actually have, rather than bouncing them home from a parent view that
+   was never theirs. */
+const firstAllowed = v => allowedView(v) ? v
+  : ((SUBTABS[v] || []).find(([k]) => allowedView(k)) || [])[0] || '';
 const pinOf = k => String((DB.access && DB.access[k]) || blankDB().access[k]);
 
 let gateSetup = false;                  // the owner is being chosen: the ONE screen where a PIN creates somebody
@@ -20353,7 +20476,10 @@ function roleSummary(s) {
    upgrade. Anyone still signing in with one is using a password that is not
    a secret, and the row says so until it is changed. */
 const PRINTED = { '4564': 1, '2026': 1 };
-const weakPin = p => !!PRINTED[String(p || '')];
+/* By hash as well, so the warning follows the person onto a tablet that
+   holds no copy of what their PIN actually is. */
+const weakPin = s => !s ? false : s.pin ? !!PRINTED[String(s.pin)]
+  : !!s.pinHash && Object.keys(PRINTED).some(p => pinHash(p, s.id) === s.pinHash);
 const CHEV = '<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>';
 const LINK_ICON = '<svg viewBox="0 0 24 24"><path d="M9.4 14.6a4 4 0 0 0 5.7 0l3.1-3.1a4 4 0 0 0-5.7-5.7l-1.3 1.3"/>' +
   '<path d="M14.6 9.4a4 4 0 0 0-5.7 0l-3.1 3.1a4 4 0 0 0 5.7 5.7l1.3-1.3"/></svg>';
@@ -20372,21 +20498,31 @@ function paintStaff() {
   const fixed = s => s.owner || (!own && self(s));
   $('stfList').innerHTML = list.length ? list.map(s => {
     const open = !!stfOpen[s.id];
+    const noPlain = !s.pin && !!s.pinHash;      // the hash reached this machine; the PIN never did
     return '<div class="stf' + (open ? ' open' : '') + '">' +
       '<div class="stf-top">' +
         (fixed(s) ? '<span class="stf-ex"></span>'
           : '<button class="stf-ex" data-sfx="' + esc(s.id) + '" title="Which leagues">' + CHEV + '</button>') +
         '<div class="stf-who"><input data-sfn="' + esc(s.id) + '" value="' + esc(s.name || '') + '">' +
           '<div class="small muted stf-sum">' + esc(roleSummary(s)) +
-            (weakPin(s.pin) ? ' · <span class="pill bad">this PIN is printed in the app — change it</span>' : '') +
+            (noPlain ? ' · <span class="muted">PIN set on another machine — this one keeps no copy of it</span>' : '') +
+            (weakPin(s) ? ' · <span class="pill bad">this PIN is printed in the app — change it</span>' : '') +
           '</div></div>' +
         /* Anybody whose row is on this page may read the PIN on it: a manager
            has to be able to tell a referee who has forgotten theirs, and to
            read back their own. Which rows those are is the control — a
            manager is only ever shown their own leagues' people. */
+        /* A row whose PIN is not here to be read. The owner's travels with
+           the league as a hash, so every tablet but the one it was set on
+           can CHECK it and none of them can show it. Typing a new one over
+           the top still works, and that is the only thing left to do with
+           it. */
         '<div class="stf-pin"><input data-sfp="' + esc(s.id) + '" type="password" value="' + esc(s.pin || '') +
+          (noPlain ? '" placeholder="— — — —' : '') +
           '" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="PIN">' +
-          '<button class="btn ico stf-eye" data-sfeye="' + esc(s.id) + '" title="Show this PIN">' + EYE + '</button></div>' +
+          '<button class="btn ico stf-eye" data-sfeye="' + esc(s.id) + '"' +
+            (noPlain ? ' disabled title="Set on another machine — this one keeps no copy of it. Type a new PIN to change it."'
+                     : ' title="Show this PIN"') + '>' + EYE + '</button></div>' +
         (s.owner || fixed(s) ? '' :
           '<button class="btn ico" data-sfcode="' + esc(s.id) + '" title="Copy their join code — every league they are on">' + LINK_ICON + '</button>') +
         (s.owner ? '<span class="pill acc">owner</span>' : fixed(s) ? '<span class="pill acc">you</span>'
@@ -20437,8 +20573,9 @@ function paintStaff() {
   $('stfList').querySelectorAll('[data-sfp]').forEach(i => i.onchange = () => {
     const s = find(i.dataset.sfp); if (!s) return;
     const v = i.value.trim();
-    if (!/^\d{4,8}$/.test(v)) { i.value = s.pin; return toast('A PIN is 4 to 8 digits.', 'bad'); }
-    if ((ROOT.staff || []).some(x => x !== s && String(x.pin) === v)) { i.value = s.pin; return toast('Somebody already has that PIN.', 'bad'); }
+    if (!/^\d{4,8}$/.test(v)) { i.value = s.pin || ''; return toast('A PIN is 4 to 8 digits.', 'bad'); }
+    // by hash as well as by PIN, so a clash with somebody whose PIN is not kept here is still caught
+    if ((ROOT.staff || []).some(x => x !== s && pinSame(x, v))) { i.value = s.pin || ''; return toast('Somebody already has that PIN.', 'bad'); }
     pinStamp(s, v); keep('PIN saved.');
     syncStaffTo(staffLeagues(s));            // a PIN is their key to every one of them
   });
