@@ -3236,7 +3236,7 @@ tspan.gstar{fill:var(--gold)}
           league — the other competitions are left alone.</span>
           <button class="btn" id="btnRestore2">Restore from .json</button>
           <input type="file" id="restoreInput" accept=".json" hidden></div>
-        <div class="dact"><b>Back up every competition</b><span>One file holding all of them, not just the
+        <div class="dact" id="dactAll"><b>Back up every competition</b><span>One file holding all of them, not just the
           one you have open. Losing this browser loses the lot, so this is the file to keep.</span>
           <button class="btn accent" id="btnBackupAll">Back up everything</button></div>
         <div class="dact" id="dactSafety"><b>Step back</b><span id="safetyWhat">Nothing to step back to
@@ -14212,7 +14212,14 @@ function backup() {
    is the one to keep, because losing the browser loses all of them at once
    and a per-league file only ever brings one of them back. */
 function backupAll() {
-  if (!requireMgr('Backing up')) return;
+  /* The owner's, and nobody else's. This file is every competition on the
+     machine AND the whole staff list — every person's PIN in plain text,
+     the owner's among them. A manager could save it, open it in any text
+     editor and read the PIN that runs everything. The per-league backup
+     above is what a manager wants anyway: it is the one a restore takes,
+     and it carries no PINs at all. */
+  if (!isOwner()) { toast('A backup of every competition is the owner’s to take — ' +
+    'use Back up this league for the one you are in.', 'bad'); return; }
   const out = { version: 2, access: ROOT.access, staff: ROOT.staff, leagues: ROOT.leagues, active: ROOT.active };
   download('outfielder-all-competitions-' + todayISO() + '.json', JSON.stringify(out, null, 1), 'application/json');
 }
@@ -17887,6 +17894,28 @@ function staffDoc() {
       pin: String(own.pin || ''), pinAt: +own.pinAt || 0, role: 'owner' });
   return out.sort((a, b) => String(a.id).localeCompare(String(b.id)));   // one order, so the hash is steady
 }
+/* A MACHINE THAT MADE ITSELF AN OWNER. Setting a PIN on an unused copy is
+   how a copy becomes usable at all, so anybody holding a fresh tablet can
+   do it — and until now that stood for ever: the real owner arriving later
+   with the league was demoted to manager OF it, on a machine that was never
+   theirs, while whoever typed first kept the keys.
+
+   The test is what the local owner actually RUNS. A league made here, or
+   restored here from a backup, is theirs and they are real. A machine
+   carrying nothing but leagues pasted in from somebody else's code has an
+   owner who has never run anything — a placeholder, left behind by the one
+   screen that turns a PIN into a person. The league's own owner takes the
+   machine back, and the placeholder keeps only what the league gives them. */
+/* Two ways to be real, and either is enough. Asking only "does this machine
+   run a league of its own" was not: a tablet that holds nothing but joined
+   leagues includes the OWNER'S second tablet, and the first competition it
+   joined that somebody else runs would have handed his tablet to them. A
+   league that names you as its owner is the league's own word for it, and
+   it travels, so it is the answer wherever the tool is opened. */
+const selfMade = own => !ROOT.leagues.some(l => l && !l.demo &&
+  ((!l.joined && (l.name || (l.teams || []).length || (l.fixtures || []).length || (l.people || []).length)) ||
+   (own && l.ownerId && l.ownerId === own.id)));
+let ownerTaken = false;                  // the placeholder was the one signed in: they go back to the gate
 function staffPut(rec) {
   if (!rec || !rec.id) return;
   const lg = ROOT.active;
@@ -17916,10 +17945,29 @@ function staffPut(rec) {
     if (!own) { ROOT.staff.push({ id: rec.id, name: rec.name || 'Owner', nameAt: +rec.nameAt || 0,
       pin: String(rec.pin || ''), pinAt: +rec.pinAt || 0, owner: true, roles: {} }); return; }
     if (own.id !== rec.id) {
-      /* Another machine's owner, and this machine already has one of its own
-         — made when somebody set this copy up before joining. Two owners of
-         one machine is not a thing, and the one that was here first is not
-         evicted by a list arriving over the wire; that is how a PIN was
+      /* The placeholder hands the machine over. Everything this owner holds
+         is local to the tablet — a PIN typed into an empty copy — and the
+         league that has just arrived names somebody else. They are not
+         evicted from the league, only from the machine: whatever role the
+         list gives them below is what they keep, and if it gives them none
+         they were never anything here at all. */
+      if (selfMade(own)) {
+        let o = (ROOT.staff || []).find(x => x && x.id === rec.id);
+        if (!o) { o = { id: rec.id, name: '', pin: '', owner: false, roles: {} }; ROOT.staff.push(o); }
+        o.owner = true;
+        if (newerName(rec, o) || anonName(o.name)) { o.name = rec.name || 'Owner'; o.nameAt = +rec.nameAt || 0; }
+        if (newer(rec, o) || !o.pin) { o.pin = String(rec.pin || ''); o.pinAt = +rec.pinAt || 0; }
+        own.owner = false;
+        if (!Object.keys(rolesOf(own)).length) ROOT.staff = (ROOT.staff || []).filter(x => x !== own);
+        // their PIN was the machine's, and the machine is not theirs any more
+        ROOT.access = ROOT.access || {}; ROOT.access.managerPin = o.pin;
+        if (me && me.id === own.id) ownerTaken = true;
+        return;
+      }
+      /* A REAL owner of this machine — they run a competition of their own
+         here — and another machine's owner has arrived with a league. Two
+         owners of one machine is not a thing, and the one who was here first
+         is not evicted by a list coming over the wire; that is how a PIN was
          taken over. Theirs is kept as what they actually are HERE: the
          person who runs this league. They can sign in and work it, and
          nothing of this machine itself is in their hands. */
@@ -17972,6 +18020,16 @@ function staffMerge(list) {
   (ROOT.staff || []).slice().forEach(s => {
     if (s && !s.owner && rolesOf(s)[lg] && !still[s.id]) staffDrop(s.id);
   });
+  /* The person signed in was this machine's placeholder owner and has just
+     stopped being one. Carrying on with the screen they had would be the
+     old powers under a new name, so they go back to the gate and sign in as
+     whatever this league actually makes them — which may be nothing. */
+  if (ownerTaken) {
+    ownerTaken = false;
+    lock();
+    toast('This competition names its own owner, so this machine is no longer yours to run. ' +
+      'Sign in with your PIN for the role you were given.', 'bad');
+  }
 }
 const deviceId = DEVICE;                 // the same id the live screen stamps matches with
 /* SY.rfin — which fixtures the SHARED copy is known to hold as finished.
@@ -19814,7 +19872,7 @@ function flashGoal(which) {
 /* Stamped as the file is published. Two devices quietly running different
    builds is the hardest kind of fault to see from the outside — one of them
    behaves, the other does not, and nothing on either screen says why. */
-const BUILD = '27 Nov 09:36 · c69f50a'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
+const BUILD = '27 Nov 12:56 · b9c2e6e'.indexOf('%%') === 0 ? 'working copy' : '%%BUILD%%';
 const ROLE_KEY = 'futsal.role';
 /* The PIN is asked for once and then not again for five minutes, so a
    refresh — or a phone reloading the page from under you — walks straight
@@ -20132,7 +20190,11 @@ document.addEventListener('click', e => { if (!e.target.closest('.lgbar')) close
 /* Creating a league is the owner's: a new competition with nobody on it yet
    and its own live page still to be set up. */
 function newLeague() {
-  if (!requireOwner('Creating a league')) return;
+  /* The machine's owner, not the open league's. A new competition belongs
+     to nobody yet, so asking whether this person runs whatever happens to
+     be on screen is the wrong question — and it answered no for an owner
+     who had one of somebody else's leagues open at the time. */
+  if (!isOwner()) { toast('Creating a competition is the owner’s to do.', 'bad'); return; }
   const nm = prompt('What is the new league called?', 'New league');
   if (nm === null) return;
   const l = blankLeague();
@@ -20223,6 +20285,8 @@ function paintAccess() {
   const own = isOwner();
   $('cardLeagues').hidden = !own;
   $('cardReset').hidden = !own;
+  // every competition in one file, with every PIN in it: the owner's alone
+  if ($('dactAll')) $('dactAll').hidden = !own;
   $('cardStaff').hidden = !isMgr();
   if (!isMgr()) return;
   $('stfHowOwn').hidden = !own;
@@ -20281,6 +20345,15 @@ function roleSummary(s) {
   const parts = Object.keys(by).map(k => ROLEWORD[k] + ' in ' + by[k].join(', '));
   return parts.length ? parts.join(' · ') : 'no league yet';
 }
+/* THE PINS THAT ARE PRINTED IN THE APP. A copy saved before people existed
+   is migrated by turning its old manager and referee PINs into an owner and
+   a referee, and those two numbers are written into this file as the
+   fallback — so they are in the published page, readable by anybody who
+   opens it. They were only ever meant to get an old file through the
+   upgrade. Anyone still signing in with one is using a password that is not
+   a secret, and the row says so until it is changed. */
+const PRINTED = { '4564': 1, '2026': 1 };
+const weakPin = p => !!PRINTED[String(p || '')];
 const CHEV = '<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>';
 const LINK_ICON = '<svg viewBox="0 0 24 24"><path d="M9.4 14.6a4 4 0 0 0 5.7 0l3.1-3.1a4 4 0 0 0-5.7-5.7l-1.3 1.3"/>' +
   '<path d="M14.6 9.4a4 4 0 0 0-5.7 0l-3.1 3.1a4 4 0 0 0 5.7 5.7l1.3-1.3"/></svg>';
@@ -20304,7 +20377,9 @@ function paintStaff() {
         (fixed(s) ? '<span class="stf-ex"></span>'
           : '<button class="stf-ex" data-sfx="' + esc(s.id) + '" title="Which leagues">' + CHEV + '</button>') +
         '<div class="stf-who"><input data-sfn="' + esc(s.id) + '" value="' + esc(s.name || '') + '">' +
-          '<div class="small muted stf-sum">' + esc(roleSummary(s)) + '</div></div>' +
+          '<div class="small muted stf-sum">' + esc(roleSummary(s)) +
+            (weakPin(s.pin) ? ' · <span class="pill bad">this PIN is printed in the app — change it</span>' : '') +
+          '</div></div>' +
         /* Anybody whose row is on this page may read the PIN on it: a manager
            has to be able to tell a referee who has forgotten theirs, and to
            read back their own. Which rows those are is the control — a
